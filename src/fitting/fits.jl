@@ -89,3 +89,55 @@ function fit_t1_ir(TIs::AbstractVector{<:Real},
     (T1 = best.T1, A = best.A, B = best.B,
      residual = sqrt(best_sse / length(ti)))
 end
+
+"""
+    fit_t1_generalized_ir(TIs, αs, mags; T1_range, n_grid)
+
+Fit T1 to (TI, α, |S|) triples under the generalized-IR model
+
+    |S| = |A · (1 − (1 − cos α) · exp(−TI / T1))|
+
+A log-spaced T1 grid is scanned; at each candidate T1, the optimal |A| is
+the closed-form ratio `sum(m · |y|) / sum(|y|²)`. Returns `(T1, A,
+residual)`. Works for any mix of α values (e.g. IR at 180°, SR at 90°,
+small-tip at 10°) because the sign pattern of `y` is fully determined by
+T1 and α — no magnitude-null ambiguity like the pure-IR case.
+
+Degenerate at length < 2 — throws.
+"""
+function fit_t1_generalized_ir(TIs::AbstractVector{<:Real},
+                               αs::AbstractVector{<:Real},
+                               mags::AbstractVector{<:Real};
+                               T1_range::NTuple{2,<:Real} = (5e-3, 5.0),
+                               n_grid::Int = 300)
+    length(TIs) == length(αs) == length(mags) ||
+        error("TIs, αs, mags must be same length")
+    length(TIs) >= 2 || error("Need ≥2 samples for generalized IR fit")
+
+    ti = Float64.(TIs)
+    al = Float64.(αs)
+    m  = Float64.(mags)
+
+    T1_candidates = exp.(range(log(T1_range[1]), log(T1_range[2]);
+                               length = n_grid))
+
+    best_sse = Inf
+    best_T1  = NaN
+    best_A   = NaN
+    for T1 in T1_candidates
+        y = @. 1 - (1 - cos(al)) * exp(-ti / T1)
+        ay = abs.(y)
+        den = sum(abs2, ay)
+        den > 0 || continue
+        A = sum(m .* ay) / den           # closed-form |A|
+        r = A .* ay .- m
+        sse = sum(abs2, r)
+        if sse < best_sse
+            best_sse = sse
+            best_T1  = T1
+            best_A   = A
+        end
+    end
+
+    (T1 = best_T1, A = best_A, residual = sqrt(best_sse / length(ti)))
+end

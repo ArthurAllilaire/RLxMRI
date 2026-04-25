@@ -12,13 +12,13 @@ function rotation_matrix(α::Real, β::Real, γ::Real)
 end
 
 """
-    apply_transform(obj, euler, translation)
+    apply_transform!(obj, euler, translation)
 
 Rotate every spin position of `obj` by the given Euler angles (radians)
 and then translate by `translation` (metres). Returns the same phantom
 (positions are mutated in place).
 """
-function apply_transform(obj, euler::NTuple{3,<:Real}, translation::NTuple{3,<:Real})
+function apply_transform!(obj, euler::NTuple{3,<:Real}, translation::NTuple{3,<:Real})
     length(obj.x) == 0 && return obj
     R = rotation_matrix(euler...)
     @inbounds for i in eachindex(obj.x)
@@ -66,9 +66,9 @@ function apply_per_spin_noise!(obj, aug::AugmentConfig, rng::AbstractRNG)
         end
     end
     if aug.B0_sigma_Hz > 0
-        ω = 2π * aug.B0_sigma_Hz
+        omega = 2π * aug.B0_sigma_Hz
         @inbounds for i in 1:n
-            obj.Δw[i] += ω * randn(rng)
+            obj.Δw[i] += omega * randn(rng)
         end
     end
 

@@ -3,23 +3,23 @@
         # At 1 mm voxels, voxelised volume should track (4/3)πr³ within 2 %
         # for a 15 mm diameter sphere (radius 7.5 mm).
         r = 7.5e-3
-        Δx = 1e-3
-        xs, ys, zs = voxelise_sphere((0.0, 0.0, 0.0), r, Δx)
-        voxel_vol = length(xs) * Δx^3
+        delta_x = 1e-3
+        xs, ys, zs = voxelise_sphere((0.0, 0.0, 0.0), r, delta_x)
+        voxel_vol = length(xs) * delta_x^3
         @test isapprox(voxel_vol, sphere_volume(r); rtol = 0.02)
 
         # Coordinates are in metres and lie inside the sphere
         @test all(@.(xs^2 + ys^2 + zs^2) .<= r^2 + 1e-12)
 
         # Finer grid is more accurate
-        Δx2 = 0.5e-3
-        xs2, _, _ = voxelise_sphere((0.0, 0.0, 0.0), r, Δx2)
-        voxel_vol2 = length(xs2) * Δx2^3
+        delta_x2 = 0.5e-3
+        xs2, _, _ = voxelise_sphere((0.0, 0.0, 0.0), r, delta_x2)
+        voxel_vol2 = length(xs2) * delta_x2^3
         @test abs(voxel_vol2 - sphere_volume(r)) <
               abs(voxel_vol  - sphere_volume(r))
 
         # Non-centred sphere returns the same count (invariance under translation)
-        xs3, _, _ = voxelise_sphere((0.1, -0.05, 0.03), r, Δx)
+        xs3, _, _ = voxelise_sphere((0.1, -0.05, 0.03), r, delta_x)
         @test length(xs3) == length(xs)
     end
 

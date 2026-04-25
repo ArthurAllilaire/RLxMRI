@@ -5,7 +5,7 @@ struct SphereDescriptor
     T1::Float64                 # s
     T2::Float64                 # s
     T2s::Float64                # s
-    Δw::Float64                 # rad/s
+    delta_w::Float64            # rad/s
     label::Symbol
 end
 
@@ -122,9 +122,9 @@ function _empty_phantom(name::AbstractString = "empty")
     Phantom(name = String(name), x = Float64[])
 end
 
-function build_sphere(d::SphereDescriptor, Δx::Real;
+function build_sphere(d::SphereDescriptor, delta_x::Real;
                       name::AbstractString = String(d.label))
-    x, y, z = voxelise_sphere(d.centre, d.radius, Δx)
+    x, y, z = voxelise_sphere(d.centre, d.radius, delta_x)
     n = length(x)
     n == 0 && return _empty_phantom(name)
     Phantom(
@@ -134,7 +134,7 @@ function build_sphere(d::SphereDescriptor, Δx::Real;
         T1  = fill(d.T1,  n),
         T2  = fill(d.T2,  n),
         T2s = fill(d.T2s, n),
-        Δw  = fill(d.Δw,  n),
+        Δw  = fill(d.delta_w, n),
     )
 end
 
@@ -147,11 +147,11 @@ Voxelise the sphere descriptors of one plate and concatenate into a single
 function build_plate(plate::Symbol, cfg::PhantomConfig)
     rng = Random.MersenneTwister(cfg.rng_seed + hash(plate) % 10_000)
     descs = sphere_descriptors(plate, cfg; rng)
-    Δx = cfg.voxel_size_mm * 1e-3
+    delta_x = cfg.voxel_size_mm * 1e-3
     isempty(descs) && return _empty_phantom(String(plate))
     parts = Phantom[]
     for d in descs
-        p = build_sphere(d, Δx)
+        p = build_sphere(d, delta_x)
         length(p.x) > 0 && push!(parts, p)
     end
     isempty(parts) && return _empty_phantom(String(plate))
@@ -167,8 +167,8 @@ Voxelise a 100 mm-radius water sphere and cut out all contrast + fiducial
 sphere volumes. Spins are labelled as bulk water.
 """
 function build_background_water(cfg::PhantomConfig)
-    Δx = cfg.voxel_size_mm * 1e-3
-    xs, ys, zs = voxelise_sphere((0.0, 0.0, 0.0), HOUSING_RADIUS_M, Δx)
+    delta_x = cfg.voxel_size_mm * 1e-3
+    xs, ys, zs = voxelise_sphere((0.0, 0.0, 0.0), HOUSING_RADIUS_M, delta_x)
     isempty(xs) && return _empty_phantom("water")
     keep = trues(length(xs))
     for d in all_sphere_descriptors(cfg)
@@ -209,7 +209,7 @@ function build_phantom(cfg::PhantomConfig = PhantomConfig())
     filter!(p -> length(p.x) > 0, parts)
     obj = isempty(parts) ? _empty_phantom("qalibremd") : reduce(+, parts)
     obj.name = "qalibremd"
-    obj = apply_transform(obj, cfg.rotation, cfg.translation_mm .* 1e-3)
+    obj = apply_transform!(obj, cfg.rotation, cfg.translation_mm .* 1e-3)
     obj = apply_per_spin_noise!(obj, cfg.augment, rng)
     obj
 end

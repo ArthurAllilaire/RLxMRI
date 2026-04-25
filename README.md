@@ -96,11 +96,31 @@ The manual PDF lives at the repo root.
 
 | Plate | z [mm]  | Contents |
 |------:|--------:|----------|
-| 1 | —       | 6 fiducial spheres (blue) |
+| 1 | —       | 5 fiducial spheres (blue) |
 | 2 | −60     | 13 fiducial spheres + slice-profile wedges (green) |
 | 3 | **−23.5** | 21 fiducial spheres + **14 PD spheres** (yellow, H₂O/D₂O) |
 | 4 | **+16.5** | 13 fiducial spheres + **14 T2 spheres** (red, MnCl₂) + resolution insets |
 | 5 | **+56.5** | 4 fiducial spheres + **14 T1 spheres** (blue-green, NiCl₂) + resolution inset |
+
+**Note on the per-plate fiducial counts.** The manual's table above lists
+`5, 13, 21, 13, 4 = 56` fiducials by plate, yet elsewhere it states 57
+total. This is a book-keeping artefact, not a geometric disagreement.
+The manual (§2.3) is explicit that the 57 fiducials sit on a **40 mm
+3-D cubic grid** clipped to the ~95 mm housing radius. The plate
+z-positions `{−60, −23.5, +16.5, +56.5}` mm are *not* on that lattice
+(the grid's z-slices are at `{−80, −40, 0, +40, +80}` mm), so the
+manual's per-plate breakdown reflects which support plate each fiducial
+is mechanically attached to — not a geometric fact about the lattice.
+
+Our code models the geometric lattice directly. Enumerating integer
+offsets `(i, j, k) ∈ {−2, ±1, 0} ^3` subject to `i² + j² + k² ≤ 5`
+(the clip) gives exactly `5, 13, 21, 13, 5 = 57` points per z-slice —
+symmetric about the equator, as expected from a cubic lattice clipped
+to a sphere. `fiducial_grid_centres()` in
+`src/geometry/plate_layouts.jl` produces precisely this set, and
+`test/test_geometry.jl` asserts both the total (57) and that every
+point lies inside the 95 mm clip. Treat the manual's "6 and 4" pole
+counts as mounting-plate labelling; the geometry is 5 / 13 / 21 / 13 / 5.
 
 Additional resolution-inset coffins at V = +19 mm and V = +58 mm are
 omitted from v1 (small features, mostly for geometric-distortion assessment).
@@ -275,6 +295,68 @@ Key primitives exposed for later RL use:
 | `fit_t1_ir(TIs, mags)` / `fit_t2_se(TEs, mags)` | monoexponential fits |
 | `adaptive_TI_schedule(T1_hint)` / `adaptive_TE_schedule(T2_hint)` | log-spaced sweeps sized to the target |
 | `run_e0(; field)` | full 14 + 14 sphere sweep |
+
+---
+
+## E1 — single-sphere T1 estimation (RL)
+
+First RL experiment on the ladder. One episode = one unknown (T1, T2)
+sphere. Agent picks from a discrete set of IR-prep blocks; a Levenberg-like
+running T1 fit is updated after every block. Reward = per-step parameter
+error + terminal bonus for |err| < 3 % − a scan-time cost (PLAN.md §4 E1).
+
+Anti-memorisation comes free via `E1Env`: each episode's T1 is drawn
+log-uniformly from `[20 ms, 2 s]` and T2 = U(0.3, 1.0)·T1, so the agent
+never sees the 14 manual values as a finite set.
+
+### Action space (default)
+
+| Action index | TI [ms] | α [°] |
+|---|---|---|
+| 1–3 | 10 | 10 / 90 / 180 |
+| 4–6 | 30 | 10 / 90 / 180 |
+| 7–9 | 100 | 10 / 90 / 180 |
+| 10–12 | 300 | 10 / 90 / 180 |
+| 13–15 | 1000 | 10 / 90 / 180 |
+| 16–18 | 3000 | 10 / 90 / 180 |
+
+α = 180° → canonical IR; α = 90° → saturation recovery; α = 10° →
+small-tip prep (weak). All feed the same generalized-IR fit (see
+`fit_t1_generalized_ir`) which handles mixed α natively.
+
+### Training
+
+Python side uses [Stable-Baselines3](https://stable-baselines3.readthedocs.io/)
+PPO and Julia is called via [juliacall](https://juliapy.github.io/PythonCall.jl/).
+One Julia runtime per Python worker, `:analytical` signal backend for the
+training hot path (closed-form, orders of magnitude faster than
+`simulate()`; PLAN.md §7).
+
+```bash
+# one-time: install Python deps
+pip install --user juliacall gymnasium 'stable-baselines3[extra]'
+
+# fixed 8-block IR grid baseline (no learning)
+python python/baseline_e1.py --episodes 200
+
+# train PPO; writes runs/e1/ppo/policy.zip + eval_history.json
+python python/train_e1.py --timesteps 50000 --out runs/e1/ppo
+
+# head-to-head on held-out seeds
+python python/eval_e1.py --policy runs/e1/ppo/policy.zip --episodes 500
+```
+
+### Fidelity validation
+
+The training backend is analytical; swap in the full KomaMRI solver for
+a spot check (slow, do not use for training):
+
+```python
+env = QalibreMDE1Env(backend="simulate")
+```
+
+See `test/test_e1.jl` for an automated cross-check that the two backends
+agree within the ~0.5 % RF-duration bias observed in E0.
 
 ---
 

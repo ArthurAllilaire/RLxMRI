@@ -57,7 +57,7 @@ using LinearAlgebra: I, det
         @test all(0.0 .<= obj.ρ .<= 1.0)
     end
 
-    @testset "B0 jitter sets Δw" begin
+    @testset "B0 jitter sets delta_w" begin
         cfg_j = PhantomConfig(
             voxel_size_mm = 3.0, include_plates = [:T1],
             augment = AugmentConfig(B0_sigma_Hz = 20.0),

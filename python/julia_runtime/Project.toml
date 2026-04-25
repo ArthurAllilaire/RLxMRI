@@ -1,0 +1,6 @@
+[deps]
+PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
+QalibreMDPhantom = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
+
+[compat]
+PythonCall = "0.9.31"

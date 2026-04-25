@@ -70,6 +70,32 @@ function se_sequence(TE::Real;
 end
 
 """
+    generalized_ir_signal(T1, T2; TI, α, n_adc = 64, dur_adc = 2e-3)
+
+Analytical (closed-form) magnitude readout of an IR-prep / 90°-excite /
+ADC block. The prep pulse tips Mz by angle `α` (so α = π is canonical
+inversion recovery, α = π/2 is saturation recovery, α = 10° is a
+small-tip prep). Assumes perfect transverse spoiling after the prep so
+that only Mz is carried forward to the excitation. The returned vector is
+
+    |Mz(TI)| · exp(−t_i / T2),  t_i ∈ [0, dur_adc]
+
+with `n_adc` uniformly spaced samples. Orders of magnitude faster than
+`simulate()` and equivalent in the single-spin limit — exactly what
+PLAN.md §7 calls for on the training hot path.
+"""
+function generalized_ir_signal(T1::Real, T2::Real;
+                               TI::Real, α::Real,
+                               n_adc::Int = 64,
+                               dur_adc::Real = 2e-3)
+    Mz_after_prep = cos(α)
+    Mz_at_excite  = 1 - (1 - Mz_after_prep) * exp(-TI / T1)
+    amp           = abs(Mz_at_excite)
+    ts            = range(0, dur_adc; length = n_adc)
+    Float64[amp * exp(-t / T2) for t in ts]
+end
+
+"""
     single_spin_phantom(; T1, T2, ρ = 1.0)
 
 Zero-dimensional phantom (one spin at the origin) with the given

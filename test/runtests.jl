@@ -11,4 +11,5 @@ using KomaMRI
     include("test_determinism.jl")
     include("test_simulation.jl")
     include("test_baseline.jl")
+    include("test_e1.jl")
 end

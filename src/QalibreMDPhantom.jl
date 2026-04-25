@@ -38,12 +38,15 @@ include("sequences/blocks.jl")
 include("fitting/fits.jl")
 include("baselines/e0.jl")
 
+# --- RL experiments -------------------------------------------------------
+include("rl/e1.jl")
+
 export PhantomConfig, AugmentConfig, SphereDescriptor,
        build_phantom, build_plate, build_sphere, build_background_water,
        sphere_descriptors, all_sphere_descriptors,
        voxelise_sphere, sphere_volume,
        contrast_plate_centres, fiducial_grid_centres,
-       rotation_matrix, apply_transform, apply_per_spin_noise!,
+       rotation_matrix, apply_transform!, apply_per_spin_noise!,
        T1_ARRAY, T2_OF_T1_ARRAY, T1_ARRAY_LEGACY,
        T2_ARRAY, T1_OF_T2_ARRAY_DEFAULT,
        PD_FRACTIONS, pd_t1, pd_t2,
@@ -58,6 +61,10 @@ export PhantomConfig, AugmentConfig, SphereDescriptor,
        measure_t1, measure_t2,
        default_TI_schedule, default_TE_schedule,
        adaptive_TI_schedule, adaptive_TE_schedule,
-       run_e0
+       run_e0,
+       # generalized IR
+       generalized_ir_signal, fit_t1_generalized_ir,
+       # E1 environment
+       E1Env, e1_reset!, e1_step!, e1_n_actions, e1_obs_dim, e1_action_table
 
 end # module
