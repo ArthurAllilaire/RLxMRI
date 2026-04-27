@@ -129,10 +129,10 @@ function run_e0(; field::Symbol = :T3, verbose::Bool = true,
 
     verbose && @info "E0: T2 mapping on the T2 array" field n_TEs
     t2_est = zeros(14)
-    T1_of_T2 = T1_OF_T2_ARRAY_DEFAULT
+    t1_of_t2 = T1_OF_T2_ARRAY[field]
     for i in 1:14
         TEs = adaptive_TE_schedule(t2_true[i]; n = n_TEs)
-        res = measure_t2(T1_of_T2, t2_true[i]; TEs = TEs)
+        res = measure_t2(t1_of_t2[i], t2_true[i]; TEs = TEs)
         t2_est[i] = res.T2_est
         verbose && @info "  T2-$i" T2_true_ms = 1000*t2_true[i] T2_est_ms = 1000*res.T2_est
     end

@@ -40,7 +40,7 @@ function _build_t2_descriptors(cfg::PhantomConfig)
     for i in eachindex(centres)
         push!(descs, SphereDescriptor(
             centres[i], CONTRAST_RADIUS_M, 1.0,
-            T1_OF_T2_ARRAY_DEFAULT, t2[i], t2[i], 0.0, Symbol("T2_$i")))
+            T1_OF_T2_ARRAY[cfg.field][i], t2[i], t2[i], 0.0, Symbol("T2_$i")))
     end
     descs
 end

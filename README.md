@@ -162,26 +162,25 @@ SN 0001–0041 legacy T1 values are stored separately as `T1_ARRAY_LEGACY`.
 
 **T2 array — MnCl₂ in water** (spheres T2-1 … T2-14):
 
-| # | T2@1.5T [ms] | T2@3T [ms] |
-|--:|--:|--:|
-| 1  | 2640  | 2756  |
-| 2  | 2292  | 2281  |
-| 3  | 1923  | 1961  |
-| 4  | 1609  | 1552  |
-| 5  | 1245  | 1341  |
-| 6  | 1004  | 1017  |
-| 7  | 782.9 | 782.1 |
-| 8  | 533.1 | 589.7 |
-| 9  | 400.5 | 443.6 |
-| 10 | 261.0 | 314.8 |
-| 11 | 189.8 | 237.4 |
-| 12 | 154.7 | 170.1 |
-| 13 | 100.2 | 123.8 |
-| 14 | 79.65 | 86.9  |
+| # | T1@1.5T [ms] | T2@1.5T [ms] | T1@3T [ms] | T2@3T [ms] |
+|--:|--:|--:|--:|--:|
+| 1  | 2640  | 2640  | 2756  | 2756  |
+| 2  | 2292  | 2292  | 2281  | 2281  |
+| 3  | 1923  | 1923  | 1961  | 1961  |
+| 4  | 1489  | 1609  | 1552  | 1552  |
+| 5  | 1245  | 1245  | 1341  | 1341  |
+| 6  | 1004  | 1004  | 1017  | 1017  |
+| 7  | 733.9 | 782.9 | 782.1 | 782.1 |
+| 8  | 533.1 | 533.1 | 589.7 | 589.7 |
+| 9  | 400.3 | 400.5 | 443.8 | 443.6 |
+| 10 | 261.0 | 261.0 | 299.8 | 314.8 |
+| 11 | 189.8 | 189.8 | 237.8 | 237.4 |
+| 12 | 154.7 | 154.7 | 170.5 | 170.1 |
+| 13 | 102.1 | 100.2 | 121.8 | 123.8 |
+| 14 | 79.65 | 79.65 | 86.9  | 86.9  |
 
-T1 of the MnCl₂ spheres is long (~water); v1 defaults to `T1 = 3.0 s`
-(`T1_OF_T2_ARRAY_DEFAULT`), overrideable per sphere via
-`PhantomConfig.custom_sphere_map`.
+Per-sphere T1 values are stored in `T1_OF_T2_ARRAY`, keyed by field strength,
+overrideable per sphere via `PhantomConfig.custom_sphere_map`.
 
 **PD array — H₂O / D₂O mixtures** (spheres PD-1 … PD-14):
 
