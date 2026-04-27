@@ -361,9 +361,33 @@ Orchestrator `run_e0(; field)`:
 3. Return per-sphere error + aggregate MAPE.
 
 Observed: **T1 MAPE = 0.51 %, T2 MAPE = 0.014 %** at both 1.5 T and
-3 T. The systematic 0.5 % T1 offset is RF-duration bias — finite
-pulses shift effective TI. Acceptable: it's the *yardstick* the RL
-agent has to match; systematic bias on both sides is a wash.
+3 T. Acceptable: it's the *yardstick* the RL agent has to match;
+systematic bias on both sides is a wash.
+
+**What the numbers mean and why T1 has a 0.5 % offset**
+
+MAPE (Mean Absolute Percentage Error) measures how far estimated
+values are from ground truth on average. T2 at 0.014 % is essentially
+perfect. T1 at 0.51 % is also very small, but the error is
+*systematic* — a consistent bias rather than random noise.
+
+The culprit is **RF-duration bias**. The inversion-recovery fitting
+equation assumes an instantaneous 180° pulse: magnetisation is flipped
+at time 0 and then recovers for exactly TI seconds. In reality the
+inversion pulse has finite duration (order 1–10 ms), and T1 relaxation
+proceeds throughout the pulse. By the time the pulse ends, the
+magnetisation hasn't been perfectly inverted — it has already partially
+recovered. The *effective* TI is therefore slightly different from the
+nominal TI written into the sequence. Because the fit uses the nominal
+TI, this produces a small but consistent error in the recovered T1.
+
+Why the bias is field-strength independent: pulse duration is a
+hardware/sequence property, not a function of B₀, so the offset is the
+same at 1.5 T and 3 T.
+
+Why T2 is unaffected: spin-echo T2 estimation does not depend on
+inversion-time precision in the same way, so it is immune to this
+particular artefact.
 
 Running it yourself:
 

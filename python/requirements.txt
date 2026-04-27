@@ -1,0 +1,3 @@
+juliacall
+gymnasium
+stable-baselines3[extra]

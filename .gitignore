@@ -1,0 +1,10 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Training runs (model weights, tensorboard logs, eval history)
+runs/
+
+# Julia
+python/julia_runtime/pyjuliapkg/
