@@ -139,29 +139,61 @@ The simplest thing that is still meaningful RL.
   values is better than a fixed 8-block IR grid within the same scan
   time budget.
 
-### E2 — Single-plate multi-sphere T1 & T2 mapping (weeks 3–4)
+### E2 — Single-plate multi-sphere T1 & T2 mapping with gradients and localisation (weeks 3–4)
 
 Scale the action space and observation, keep only one plate so voxel
-count stays low.
+count stays low. Key addition vs E1: live `KomaMRI.simulate()` every
+step, full gradient encoding, 2D image reconstruction, and a seeded
+localisation sub-task.
 
 * **Env:** `PhantomConfig(include_plates = [:T1])` at coarse voxel size
   (3–4 mm) for training, fine (1 mm) for evaluation. Agent sees 14
-  spheres simultaneously (signal becomes a sum).
-* **Action space:** continuous IR-SE parameters (TI, TE, TR, α, inversion
-  flag).
-* **Reward:** mean over spheres of −|T̂ᵢ − Tᵢ_true|/Tᵢ_true, with a
-  per-step time cost. Separate channels for T1-plate (NiCl₂) and T2-plate
-  (MnCl₂) versions of the experiment.
+  spheres simultaneously; signal is spatially encoded (not a scalar sum).
+* **Simulator call per step:** `KomaMRI.simulate(phantom_episode,
+  seq_block, scanner)` is called on every RL step. The phantom is cached
+  per episode (no re-voxelisation); only `simulate` runs per step. Do
+  not subset the phantom spatially before `simulate` — spins outside the
+  excited slice still affect steady-state magnetisation.
+* **Gradient encoding:** each sequence block includes slice-selection
+  (Gz sinc RF), frequency-encoding readout (Gx), and phase-encoding
+  steps (Gy). The agent does not choose Gx/Gy directly; those are fixed
+  by FOV and matrix size. The agent's spatial action is `slice_z`
+  (slice centre position, ±60 mm).
+* **Action space:** continuous — (TI, TE, TR, α, slice_z). TI range
+  10–3000 ms; α 5–180°; slice_z ±60 mm. Readout bandwidth, FOV, and
+  matrix size fixed (16×8 at 3–4 mm for training; 128×128 at 1 mm for
+  evaluation).
+* **Observation:** (1) magnitude of 2D reconstructed image (FFT of
+  k-space, downsampled to 16×16 for training); (2) running per-sphere
+  T1 estimate from a pixel-wise Levenberg–Marquardt fit on accumulated
+  (TI, ROI-mean-signal) pairs; (3) scan budget state (time used, blocks
+  remaining). For the first 1–2 blocks (insufficient TIs for a fit),
+  the running T1 estimate is zero-initialised.
+* **Localisation sub-task (simplified):** phantom pose is randomised per
+  episode via `AugmentConfig` (rotation up to 15°, translation up to
+  ±20 mm). The first step of every episode is a fixed "scout" block —
+  three fast orthogonal thick-slice acquisitions at TR=300 ms without
+  inversion — whose images are included in the initial observation. The
+  agent uses these to decide where to centre the diagnostic slice. Full
+  6-DoF pose estimation as an explicit terminal output is deferred to E5.
+* **Reward:** dense −MAPE_mean across 14 spheres per step + terminal
+  bonus +B if MAPE < 5 % at scan end. Hard budget truncation; no soft
+  time penalty.
 * **Domain randomisation via the existing `AugmentConfig`:**
   * `rotation` uniformly over SO(3) — kills position memorisation.
-  * `translation_mm` ~ 𝒩(0, 5 mm).
+  * `translation_mm` ~ 𝒩(0, 5 mm) (up to ±20 mm for localisation stress).
   * `T1_sigma_rel = 0.05`, `T2_sigma_rel = 0.05` — jitter values per
     episode so the agent can't look up.
   * `B0_sigma_Hz` ~ 𝒰(0, 10) — off-resonance, as Wetscherek notes both
     KomaMRI and MRzero handle this natively.
   * Optional: `drop_sphere_p = 0.05` — robustness to missing data.
+* **Noise:** complex Gaussian on real and imaginary channels after
+  `simulate()` — `s += σ * (randn(n) + im*randn(n))`. Training at
+  `σ = 0.05 × rms(signal)`; evaluation sweeps `σ ∈ {0, 0.02, 0.05,
+  0.10, 0.20}`. Same σ for both channels; independent per sample.
 * **Success:** MAPE < 5 % across spheres at 3× speedup vs the E0 grid
-  baseline.
+  baseline. Trained agent's TI-choice histogram should show a non-uniform
+  adaptive policy (not a fixed grid).
 
 ### E3 — MRF-style fingerprinting via learned FA/TR schedules
 
@@ -172,6 +204,23 @@ how well the acquired signal evolution projects onto a pre-computed
 Bloch dictionary. This is the most direct tie-in to the qMRI literature
 cited in the interim (Jordan et al., 2021 [12]).
 
+Two additions from the M1 supervisor meeting worth incorporating here:
+
+* **K-space line interleaving across TIs:** rather than acquiring one
+  full k-space per TI, interleave phase-encode lines across TI values —
+  some lines at TI=300 ms, others at TI=1000 ms — so the T1 map can be
+  recovered from less total data. KomaMRI has reconstruction scripts
+  that handle this (compressed-sensing / MRF regime). Start E3 with the
+  simple "one full image per TI" approach; treat interleaving as a
+  stretch within E3.
+* **Model-based backprop reconstruction:** instead of a pixel-wise
+  exponential fit, initialise a T1/T2/PD map guess, forward-simulate
+  the expected signal for each acquired k-space line, compute the
+  residual vs acquired data, and backpropagate through the signal model
+  to update the map. Works from far fewer k-space lines than direct
+  fitting if the forward model is accurate. Requires a differentiable
+  signal approximation (MRzero PDG framework is the natural candidate).
+
 ### E4 — Adaptive k-space trajectories (stretch)
 
 Single 2D slice through Plate T1, action = next radial spoke angle +
@@ -180,11 +229,20 @@ k-space angle"*). Reward combines image-space reconstruction error with
 scan-time penalty. This is the experiment that most closely mirrors the
 Walker-Samuel "autonomous sensing" paradigm.
 
-### E5 — Parameter-map + pose estimation (stretch)
+### E5 — Parameter-map + full pose estimation (stretch)
 
-Agent must simultaneously localise the sphere centroids (x, y) and
-estimate each sphere's T1/T2. Bridges toward the "autonomous qMRI
-mapping" extension in the interim §3.1.4.
+Agent must simultaneously localise the phantom in 6 DoF (translation
+(x₀, y₀, z₀) + rotation (θ_x, θ_y, θ_z) relative to scanner
+isocentre) and estimate each sphere's T1/T2/PD. Total unknowns: 6 pose
++ 3×14 tissue = 48 per episode. The terminal action includes an explicit
+pose estimate alongside the T1 map.
+
+This bridges toward the "autonomous qMRI mapping" extension in the
+interim §3.1.4 and the clinical localiser-then-map workflow discussed
+with the supervisor. A realistic target: 10-second localiser policy
+followed by a diagnostic mapping policy, both learned end-to-end.
+Robustness to translational motion (supervisor mentioned 3 cm patient
+movement as a realistic stress test) should be measured explicitly.
 
 ---
 
@@ -359,13 +417,13 @@ for interpretability only.
 
 | Week | Deliverable |
 |-----:|---|
-| 1 | E0 running: IR-TSE + multi-TE SE on the full twin, fits within 3 % of manual. Pulseq block library v1. |
-| 2 | `QalibreMDPhantomGym.jl` + juliacall Python wrapper. Random-policy episodes roll in a Jupyter notebook. |
-| 3 | E1 trained: PPO on single-sphere T1, beats fixed IR grid on held-out configs. |
-| 4 | E1 ablations: no-randomisation vs full-randomisation; report memorisation failure explicitly. |
-| 5–6 | E2 trained on the T1 plate with full `AugmentConfig` randomisation. |
-| 7 | E3 pilot (MRF-style FA/TR schedules with dictionary matching). |
-| 8 | Pareto curves, write-up. If time permits, start E4 as stretch. |
+| 1 | ~~E0 running: IR-TSE + multi-TE SE on the full twin, fits within 3 % of manual. Pulseq block library v1.~~ **Done.** |
+| 2–3 | ~~`QalibreMDPhantomGym.jl` + juliacall Python wrapper. E1 trained: PPO on single-sphere T1, beats fixed IR grid.~~ **Done.** |
+| 4 | E2: gradient-encoded sequence blocks, 2D reconstruction, 14-sphere T1 map, noise, localisation scout step. |
+| 5 | E2 evaluation: Pareto curve (MAPE vs scan time), TI-choice histogram, noise robustness sweep. |
+| 6 | E3 pilot (MRF-style FA/TR schedules with dictionary matching; k-space line interleaving stretch). |
+| 7 | E3 evaluation + model-based backprop reconstruction pilot. |
+| 8 | Pareto curves, write-up. If time permits, start E4 (radial k-space) or E5 (full pose estimation) as stretch. |
 
 ---
 
@@ -374,10 +432,12 @@ for interpretability only.
 * **"Dwell" terminology** — supervisor queried what "dwell longer on
   specific k-space coordinates" meant in the interim. Clarify before
   promising it as a mechanism; in E3/E4 this probably translates to
-  longer ADC or repeated acquisition at the same k-space location.
-* **PDG vs EPG** — interim said MRzero is EPG; supervisor corrected
-  that it uses phase distribution graphs. Update the write-up and make
-  sure any comparison plots reflect this.
+  longer ADC or repeated acquisition at the same k-space location, or
+  intentional over-sampling of low-frequency k-space for SNR.
+* **PDG vs EPG** — interim incorrectly stated MRzero uses EPG; supervisor
+  corrected that it uses Phase Distribution Graphs (PDG). Update the
+  write-up and all comparison plots before submission. Do not use "EPG"
+  to describe MRzero anywhere.
 * **Fixed vs adaptive sequences** — supervisor's single strongest point:
   *"one of the core ideas of this project is that there might be no
   such thing as a 'final sequence' … the optimal sequence might differ

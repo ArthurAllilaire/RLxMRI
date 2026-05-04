@@ -168,3 +168,78 @@ Policy gradient theorem
 - Multi-agent RL
 - Distributional RL (C51, QR-DQN)
 - The evolutionary algorithm connection — NES/CMA-ES exist but are outclassed by PPO/SAC on anything with a gradient signal
+
+---
+
+## Stage 6 — Gaps after Spinning Up (project-specific)
+
+Spinning Up covers the algorithms well. These are the things it doesn't cover that matter for this project.
+
+### Reward shaping (caused E1 to fail — read this first)
+
+Spinning Up barely touches reward design. The formal result you need is **potential-based reward shaping** (Ng, Harada & Russell 1999): you can add `F(s,s') = γΦ(s') − Φ(s)` to any reward without changing the optimal policy. This justifies dense rewards derived from a "progress" signal.
+
+E1's terminal bonus `+1.0` was additive and unrelated to the per-step cost structure — so the agent only needed to collect the bonus, not improve the sequence. The E2 dense `−MAPE_t` reward is approximately potential-based (Φ(s) = −MAPE). Keep the terminal bonus small or zero.
+
+**Read**: Ng, Harada & Russell "Policy Invariance Under Reward Transformations" (1999) — 4 pages, §3 is the key theorem.
+
+---
+
+### Partial observability — this task is a POMDP
+
+Spinning Up assumes full observability. This task is a **POMDP**: the agent can't see `T1_true`, only accumulated signals. Standard PPO/SAC treat the observation as Markovian, which works if the observation is rich enough. For this project the running LM estimate in the observation carries most of the needed state, so an MLP policy is probably fine — but flag the POMDP framing in the report (it's the honest description). If the MLP fails on E2, try `RecurrentPPO` from `sb3-contrib`, which gives the policy an LSTM over history.
+
+---
+
+### Entropy regularisation in PPO (directly relevant to E1 collapse)
+
+Spinning Up mentions entropy but doesn't emphasise `ent_coef`. In SB3:
+
+```python
+PPO(..., ent_coef=0.01)  # adds α·H(π) to the training loss
+```
+
+A higher `ent_coef` (0.01–0.1) prevents the policy collapsing to a single repeated action. E1 almost certainly had this too low or zero. Set it and monitor `H(π)` during training.
+
+---
+
+### Diagnosing degenerate policies
+
+Spinning Up doesn't cover diagnostics. Key checks to add to your eval loop:
+
+- **Action entropy over training**: if `H(π(·|s))` → 0, the policy has collapsed
+- **Action histogram across episodes**: plot distribution of chosen TIs — a spike on one value is bad
+- **Episode return vs training step**: immediate plateau = trivial solution found
+- **Correlation of actions with T1_true**: an adaptive policy should show `TI_chosen` varying with `T1_true`; a degenerate policy shows no correlation
+
+---
+
+### Practical SB3 details (Spinning Up is from-scratch)
+
+- **`VecEnv`**: SB3 expects vectorised environments. `make_vec_env(env_fn, n_envs=4)` runs 4 envs in parallel — more data per PPO update. Each env needs its own Julia runtime; test whether 4 parallel runtimes fits in memory before committing.
+- **`EvalCallback`**: auto-evaluates on a held-out set during training, saves best model checkpoint
+- **Custom logging**: add MAPE and action entropy as custom scalars with `logger.record()` inside a callback
+- **Hyperparameters that matter most**: `n_steps` (increase if episodes are long — should cover several full episodes), `batch_size`, `ent_coef`, `clip_range`
+
+---
+
+### Active sensing / optimal experiment design (for the report novelty claim)
+
+Spinning Up has nothing on this, but it's the academic framing that makes the project publishable.
+
+- **Fisher information**: the information a measurement provides about an unknown parameter is `I(θ) = E[(∂ log p(x|θ)/∂θ)²]`. For T1 mapping, an IR acquisition at `TI ≈ T1·ln(2)` is the maximally informative single measurement — the RL agent should learn to do this.
+- **Bayesian experimental design (BED)**: choose the next experiment to maximise expected information gain. The RL agent is implicitly doing this; stating it explicitly is the novelty claim for Ch4/A2.
+- **Connection to MRF** (Jordan et al. 2021): MRF maximises distinguishability of the signal manifold. The E3 dictionary-discriminability reward is this. Framing: "the agent learns to approximate the Fisher-optimal acquisition schedule" ties E2 and E3 together.
+
+**Read**: skim the Jordan et al. 2021 intro for how they connect Fisher information to MRF sequence design.
+
+---
+
+### Curriculum learning (for scaling E2 → E3)
+
+Not in Spinning Up. If the E2 agent doesn't converge on the full task:
+1. Start training with no noise (`σ=0`), add noise after the policy stabilises
+2. Start with 1 sphere, expand to 14 once the single-sphere task is solved
+3. SB3 supports mid-training env parameter changes via callbacks
+
+Not required for E2 but know it exists before concluding the task is "too hard".
