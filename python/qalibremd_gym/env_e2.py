@@ -8,13 +8,16 @@ Action space : Box(5), continuous, normalised to [-1, 1] by the env wrapper.
                  alpha   [5, 180]      deg  (excitation flip angle)
                  slice_z [-60, 60]     mm   (future use)
 
-Observation  : float32 Box of length Nfe*Npe + n_spheres + 3
+Observation  : float32 Box of length Nfe*Npe + 2*n_spheres + 3
                  = flattened magnitude image (normalised to [0,1])
                  + log10(running T1 estimate) per sphere (0 = no estimate)
+                 + log10(σ_T1 / T1_est) per sphere, clamped [-3, 0]
+                   (0 = fully uncertain / no estimate yet)
                  + (time_fraction, block_fraction, 1.0)
 
-Reward       : -mean_MAPE across 14 spheres per step (0 for first block).
-               Terminal bonus if MAPE < success_tol at episode end.
+Reward       : −aggMAPE across 14 spheres per step (0 for first block),
+               where aggMAPE = α·mean + (1−α)·max (α=mape_alpha; 1.0 = legacy mean).
+               Terminal bonus if aggMAPE < success_tol at episode end.
 """
 
 from __future__ import annotations
@@ -61,6 +64,7 @@ class QalibreMDE2Env(gym.Env):
         translation_sigma_mm: float = 5.0,
         rotation_sigma_rad: float = 0.15,
         reward_mode: str = "neg_mape",       # "neg_mape" | "delta_mape"
+        mape_alpha: float = 1.0,             # α in α·mean + (1−α)·max; 1.0 = mean only
         simplified_action: bool = False,     # drop slice_z, fix α_exc=90°
         project_dir: Optional[str] = None,
     ) -> None:
@@ -86,6 +90,7 @@ class QalibreMDE2Env(gym.Env):
             translation_sigma_mm  = float(translation_sigma_mm),
             rotation_sigma_rad    = float(rotation_sigma_rad),
             reward_mode           = jl.Symbol(reward_mode),
+            mape_alpha            = float(mape_alpha),
         )
 
         obs_dim = int(qmd.e2_obs_dim(self._env))

@@ -113,6 +113,9 @@ def main():
     p.add_argument("--terminal-bonus", type=float, default=0.5,
                    help="Set to 0.0 to disable (E1-style degenerate-policy "
                         "driver — see EXPERT_REPORT §15)")
+    p.add_argument("--mape-alpha", type=float, default=1.0,
+                   help="MAPE aggregation: α·mean + (1−α)·max. "
+                        "1.0 = legacy mean; 0.5 = §16.4 Option A")
     args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -124,6 +127,7 @@ def main():
         reward_mode       = args.reward_mode,
         simplified_action = args.simplified_action,
         terminal_bonus    = args.terminal_bonus,
+        mape_alpha        = args.mape_alpha,
     )
 
     print(f"[E2] Building train env (n_envs={args.n_envs}) …")

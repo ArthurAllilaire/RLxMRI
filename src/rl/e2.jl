@@ -34,6 +34,7 @@ mutable struct E2Env
     rotation_sigma_rad::Float64            # pose rotation σ per axis [rad]
     T1_sample_range::NTuple{2,Float64}     # T1 search range for fitting [s]
     reward_mode::Symbol                    # :neg_mape | :delta_mape
+    mape_alpha::Float64                    # MAPE aggregation: α·mean + (1−α)·max
 
     # ── sphere base info (fixed at construction) ──────────────────────────
     sphere_centres_base::Vector{NTuple{3,Float64}}  # original centres [m]
@@ -50,8 +51,11 @@ mutable struct E2Env
 
     # accumulated per sphere
     block_TIs::Vector{Vector{Float64}}     # TI values used, per sphere
+    block_TRs::Vector{Vector{Float64}}     # TR values used, per sphere (for steady-state fit)
+    block_α_excs::Vector{Vector{Float64}}  # excitation flip angles [rad], per sphere
     block_mags::Vector{Vector{Float64}}    # magnitudes (sin(α_exc)-corrected), per sphere
     T1_est::Vector{Float64}                # running T1 estimate per sphere
+    T1_sigma::Vector{Float64}              # asymptotic σ on T1_est (NaN until ≥2 samples)
 
     # episode progress
     n_blocks::Int
@@ -84,11 +88,14 @@ function E2Env(;
     rotation_sigma_rad::Real       = 0.15,   # ~8.6°
     T1_sample_range::NTuple{2,<:Real} = (0.01, 3.0),
     reward_mode::Symbol            = :neg_mape,
+    mape_alpha::Real               = 1.0,
     rng_seed::Integer              = 0,
 )
     cfg_field ∈ (:T3, :T15) || error("cfg_field must be :T3 or :T15")
     reward_mode ∈ (:neg_mape, :delta_mape) ||
         error("reward_mode must be :neg_mape or :delta_mape")
+    0.0 <= Float64(mape_alpha) <= 1.0 ||
+        error("mape_alpha must be in [0, 1]")
 
     # Base sphere info (no rotation/translation/jitter)
     base_cfg   = PhantomConfig(field = cfg_field, voxel_size_mm = 1.0,
@@ -109,21 +116,25 @@ function E2Env(;
         Float64(translation_sigma_mm), Float64(rotation_sigma_rad),
         Float64.(T1_sample_range),
         reward_mode,
+        Float64(mape_alpha),
         centres, Float64.(T1_base), Float64.(T2_ratio),
         MersenneTwister(rng_seed),
         nothing,                            # phantom (filled at reset)
         zeros(n_spheres), fill((1, 1), n_spheres),
         (0.0, 0.0, 0.0), (0.0, 0.0, 0.0),
-        [Float64[] for _ in 1:n_spheres],
-        [Float64[] for _ in 1:n_spheres],
+        [Float64[] for _ in 1:n_spheres],   # block_TIs
+        [Float64[] for _ in 1:n_spheres],   # block_TRs
+        [Float64[] for _ in 1:n_spheres],   # block_α_excs
+        [Float64[] for _ in 1:n_spheres],   # block_mags
         zeros(n_spheres),
+        fill(NaN, n_spheres),               # T1_sigma
         0, 0.0, false, 0.0,
         zeros(Float32, Npe * Nfe),
     )
 end
 
-"Observation dimension: image (Nfe*Npe) + T1 estimates (n_spheres) + budget (3)."
-e2_obs_dim(env::E2Env) = env.Nfe * env.Npe + env.n_spheres + 3
+"Observation dimension: image (Nfe*Npe) + T1 estimates (n_spheres) + T1 σ-channel (n_spheres) + budget (3)."
+e2_obs_dim(env::E2Env) = env.Nfe * env.Npe + 2 * env.n_spheres + 3
 
 "Action space bounds: [TI_lo, TE_lo, TR_lo, α_deg_lo, slice_z_mm_lo], same for hi."
 e2_action_lo(::E2Env) = Float64[0.010, 0.005, 0.5,   5.0,  -60.0]
@@ -200,12 +211,26 @@ function _e2_observation(env::E2Env)
               Float32(log10(clamp(env.T1_est[i], 1e-4, 10.0)))
               for i in 1:env.n_spheres]
 
-    # 3. Budget state
+    # 3. Per-sphere relative uncertainty in log10 scale.
+    # log10(σ_T1 / T1_est), clamped to [-3, 0]. 0 means "fully uncertain"
+    # (relative σ ≥ 100%) and is the sentinel for "no estimate yet" — that
+    # way the channel encodes a coherent prior at episode start.
+    sig_obs = [_e2_sigma_channel(env.T1_sigma[i], env.T1_est[i])
+               for i in 1:env.n_spheres]
+
+    # 4. Budget state
     t_frac  = Float32(min(1.0, env.time_used_s / env.time_budget_s))
     n_frac  = Float32(env.n_blocks / env.max_blocks)
     bgt     = Float32[t_frac, n_frac, 1.0f0]
 
-    vcat(Float32.(img_norm), Float32.(t1_obs), bgt)
+    vcat(Float32.(img_norm), Float32.(t1_obs), Float32.(sig_obs), bgt)
+end
+
+@inline function _e2_sigma_channel(σ::Float64, T1::Float64)
+    if !isfinite(σ) || !isfinite(T1) || T1 <= 0 || σ <= 0
+        return 0f0                          # fully-uncertain sentinel
+    end
+    Float32(clamp(log10(σ / T1), -3.0, 0.0))
 end
 
 function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
@@ -246,38 +271,52 @@ function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
 end
 
 function _e2_update_t1_estimates!(env::E2Env, image_mag::Matrix{Float32},
-                                   TI::Real, α_exc::Real)
+                                   TI::Real, TR::Real, α_exc::Real)
     # Excitation flip angle scales transverse signal by sin(α_exc) per shot.
     # The fitter uses a single amplitude A across all TIs, so we normalise
     # the recorded magnitude by sin(α_exc) here. Floor at 1e-3 avoids divide-
     # by-zero for near-zero excitation (action lower bound is 5° → sin≈0.087).
+    # Note: cos(α_exc) still matters via the steady-state Mz_pre, so α_exc
+    # is also passed through to the fitter via `α_excs`.
     sin_α = max(abs(sin(Float64(α_exc))), 1e-3)
     for i in 1:env.n_spheres
         ipe, ife = env.sphere_px[i]
         mag_i = Float64(image_mag[ipe, ife]) / sin_α
-        push!(env.block_TIs[i],   Float64(TI))
-        push!(env.block_mags[i],  mag_i)
+        push!(env.block_TIs[i],     Float64(TI))
+        push!(env.block_TRs[i],     Float64(TR))
+        push!(env.block_α_excs[i],  Float64(α_exc))
+        push!(env.block_mags[i],    mag_i)
 
         if length(env.block_TIs[i]) >= 2
-            # α = π for standard 180° inversion prep
+            # θ_inv = π for standard 180° inversion prep
             αs = fill(π, length(env.block_TIs[i]))
             fit = fit_t1_generalized_ir(
                 env.block_TIs[i], αs, env.block_mags[i];
+                TRs    = env.block_TRs[i],
+                α_excs = env.block_α_excs[i],
                 T1_range = env.T1_sample_range, n_grid = 200,
+                noise_sigma = env.noise_sigma_rel,
             )
-            env.T1_est[i] = fit.T1
+            env.T1_est[i]   = fit.T1
+            env.T1_sigma[i] = fit.T1_sigma
         else
             # Neutral prior: geometric mean of sample range
-            env.T1_est[i] = sqrt(env.T1_sample_range[1] * env.T1_sample_range[2])
+            env.T1_est[i]   = sqrt(env.T1_sample_range[1] * env.T1_sample_range[2])
+            env.T1_sigma[i] = NaN
         end
     end
 end
 
 function _e2_mape(env::E2Env)
-    # Mean absolute percentage error across spheres with a valid estimate
+    # Aggregate per-sphere absolute percentage errors as
+    #   α · mean(errs) + (1 − α) · max(errs)
+    # α = 1.0 recovers plain mean MAPE (legacy behaviour).
+    # α < 1.0 mixes in worst-case to penalise the policy for ignoring any
+    # one sphere — addresses the §16.2 mid-T1 gap.
     errs = [abs(env.T1_est[i] - env.T1_true[i]) / env.T1_true[i]
             for i in 1:env.n_spheres]
-    mean(errs)
+    α = env.mape_alpha
+    α * mean(errs) + (1 - α) * maximum(errs)
 end
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -304,8 +343,11 @@ function e2_reset!(env::E2Env; rng_seed::Union{Nothing,Integer} = nothing)
 
     for i in 1:env.n_spheres
         empty!(env.block_TIs[i])
+        empty!(env.block_TRs[i])
+        empty!(env.block_α_excs[i])
         empty!(env.block_mags[i])
-        env.T1_est[i] = NaN
+        env.T1_est[i]   = NaN
+        env.T1_sigma[i] = NaN
     end
     fill!(env.last_image_mag, 0f0)
     env.n_blocks    = 0
@@ -342,7 +384,7 @@ function e2_step!(env::E2Env, action_vec)
 
     # Store image and update T1 estimates
     env.last_image_mag = vec(image_mag)
-    _e2_update_t1_estimates!(env, image_mag, TI, deg2rad(α_exc_deg))
+    _e2_update_t1_estimates!(env, image_mag, TI, TR, deg2rad(α_exc_deg))
 
     # Scan time for this block (Npe shots × TR per shot)
     block_time      = env.Npe * TR

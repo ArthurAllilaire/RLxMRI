@@ -185,7 +185,8 @@ function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
         # 5. TE/2 delay to refocus
         te1_d > 1e-9 && (seq += Delay(te1_d))
 
-        # 6. 180° refocus
+        # 6. 180° refocus 
+        # TODO: leave out ??
         seq += Sequence(_gr0(d_ref), _rf1(d_ref), _adc0)
 
         # 7. TE/2 delay to echo

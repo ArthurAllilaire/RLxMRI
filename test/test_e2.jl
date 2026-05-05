@@ -71,6 +71,89 @@
         @test abs(f_good.T1 - T1_true) <= abs(f_bad.T1 - T1_true) + 1e-9
     end
 
+    @testset "steady_state_mz_at_excite: analytic identities" begin
+        T1 = 0.8
+
+        # TR → ∞ collapses to legacy non-steady-state form
+        for (TI, θ) in [(0.1, π), (0.3, π/2), (0.05, deg2rad(10))]
+            mz_inf  = steady_state_mz_at_excite(T1, TI, Inf, θ, π/2)
+            mz_legacy = 1 - (1 - cos(θ)) * exp(-TI / T1)
+            @test isapprox(mz_inf, mz_legacy; atol = 1e-12)
+        end
+
+        # θ_inv = π, α_exc = π/2 → textbook IR with finite TR:
+        #   1 − 2·exp(−TI/T1) + exp(−TR/T1)
+        for (TI, TR) in [(0.05, 0.5), (0.3, 1.0), (0.1, 0.3), (1.0, 5.0)]
+            mz   = steady_state_mz_at_excite(T1, TI, TR, π, π/2)
+            text = 1 - 2*exp(-TI/T1) + exp(-TR/T1)
+            @test isapprox(mz, text; atol = 1e-12)
+        end
+
+        # Finite-TR correction matters: at TR/T1 = 0.5, magnetisation is
+        # nowhere near the TR=∞ value.
+        @test abs(steady_state_mz_at_excite(T1, 0.1, 0.4, π, π/2) -
+                  steady_state_mz_at_excite(T1, 0.1, Inf, π, π/2)) > 0.3
+    end
+
+    @testset "fit_t1_generalized_ir: TR-aware fit unbiased; TR-blind biased" begin
+        # When TR/T1 is small, the legacy "full recovery" model biases T1.
+        # Generate clean steady-state data, then confirm the new TR-aware
+        # call recovers T1 while the old TR-blind call does not.
+        T1_true = 1.2
+        TIs = [0.05, 0.15, 0.4, 0.9, 1.5]
+        TRs = [0.5,  0.8,  1.2, 1.8, 2.5]    # all comparable to T1
+        αs_inv = fill(π, length(TIs))
+        α_excs = fill(π/2, length(TIs))
+
+        # Magnitudes per textbook IR with finite TR
+        mags = [abs(1 - 2*exp(-ti/T1_true) + exp(-tr/T1_true))
+                for (ti, tr) in zip(TIs, TRs)]
+
+        f_blind = fit_t1_generalized_ir(TIs, αs_inv, mags;
+                                         T1_range = (0.05, 5.0), n_grid = 400)
+        f_aware = fit_t1_generalized_ir(TIs, αs_inv, mags;
+                                         TRs = TRs, α_excs = α_excs,
+                                         T1_range = (0.05, 5.0), n_grid = 400)
+
+        @test isapprox(f_aware.T1, T1_true; rtol = 0.02)
+        @test abs(f_aware.T1 - T1_true) < abs(f_blind.T1 - T1_true)
+    end
+
+    @testset "steady-state IR formula matches KomaMRI simulation" begin
+        # Validate the analytic Mz(TI⁻) against a Bloch simulation. Use
+        # short T2 so transverse magnetisation decays between TRs (≈ perfect
+        # spoiling assumption); θ_inv=π, α_exc=π/2, which reaches steady
+        # state in one TR (cos α_exc = 0 kills the transient term).
+        T1 = 0.5
+        T2 = 0.02                                    # T2 ≪ (TR − TI)
+        amp_T = 100e-6                               # short pulses → analytic ≈ Bloch
+        d180 = rf_duration(π;   amp_T = amp_T)
+        d90  = rf_duration(π/2; amp_T = amp_T)
+        n_rep = 4
+
+        for (TI, TR) in [(0.05, 0.5), (0.2, 1.0), (0.1, 0.3), (0.4, 1.5)]
+            ti_delay = TI - d180/2 - d90/2
+            ti_delay > 0 || continue
+
+            obj = single_spin_phantom(T1 = T1, T2 = T2)
+            seq = Sequence()
+            for _ in 1:n_rep
+                seq += RF(amp_T, d180)
+                seq += Delay(ti_delay)
+                seq += RF(amp_T, d90)
+                seq += ADC(1, 1e-6, 0.0)
+                shot = d180 + ti_delay + d90 + 1e-6
+                seq += Delay(TR - shot)
+            end
+
+            raw = @suppress simulate(obj, seq, Scanner())
+            koma_mag = abs(raw.profiles[end].data[1, 1])
+
+            analytic = abs(steady_state_mz_at_excite(T1, TI, TR, π, π/2))
+            @test isapprox(koma_mag, analytic; rtol = 0.05, atol = 5e-3)
+        end
+    end
+
     @testset "e2_step!: TR lifts to honour TI (no silent TI cap)" begin
         # Regression for the `TI = min(TI, TR*0.9)` bug, which silently
         # capped TI when the agent picked a small TR — locking out the

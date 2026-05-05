@@ -66,7 +66,7 @@ export PhantomConfig, AugmentConfig, SphereDescriptor,
        adaptive_TI_schedule, adaptive_TE_schedule,
        run_e0,
        # generalized IR
-       generalized_ir_signal, fit_t1_generalized_ir,
+       generalized_ir_signal, fit_t1_generalized_ir, steady_state_mz_at_excite,
        # E1 environment
        E1Env, e1_reset!, e1_step!, e1_n_actions, e1_obs_dim, e1_action_table,
        # E2 environment

@@ -670,7 +670,7 @@ E2.1 is a stepping stone, not the final answer. It demonstrates:
 - ❌ **Two TI modes are not enough for 14 spheres.** The reward landscape now has a *continuum* of locally-optimal two-mode policies that each cover ~2 spheres well; the agent is in one of those basins.
 - ❌ **The fitter is overshooting on under-sampled T1 ranges.** When the TI grid contains no informative point near a sphere's true T1, the fit can produce wildly large estimates because the SSE basin is shallow.
 
-### 16.4 Two productive next directions (E2.2 candidates)
+### 16.4 Productive next directions (E2.2 candidates)
 
 **Option A — Reward weighting by sphere difficulty.**
 
@@ -686,9 +686,24 @@ Or use the harmonic mean. This penalises the policy for ignoring any one sphere,
 
 Replace the continuous TI ∈ [0.01, 3.0] s with a discrete log-spaced grid of 16–32 TIs. PPO with a `MultiDiscrete` action space cannot collapse into a continuous local mode the way it does in `Box`. The agent is *forced* to pick from the prescribed set, so it can't ignore the middle of the T1 range. This also matches how a clinical scanner protocol is parameterised.
 
-Recommended: try **A first** (smaller change, tests whether the issue is reward shape vs action geometry). If A still leaves mid-T1 spheres broken, do B.
+**Option C — Per-sphere uncertainty in the observation.**
 
-A 100k smoke with each option, compare diagnostic + MAPE, then pick one for a 200k confirmation. Total compute: ~3 hours.
+The current observation gives the policy only `T1_est[i]` — a point estimate — and no signal about *how confident* the fitter is for each sphere. So the policy has no way to allocate budget toward the spheres whose estimates are least trustworthy; it has to discover allocation purely from the reward gradient. This is exactly the failure pattern in §16.2: spheres 8–13 sit between the two TI modes, the fitter produces wildly off estimates for them, and the policy has no observational reason to revisit those spheres rather than re-confirm spheres 1 or 14.
+
+Augment `_e2_observation` with a `log10(σ_T1[i] / T1_est[i])` channel per sphere (clamped to a sensible range, with a "fully-uncertain" sentinel for `n_blocks < 2`). The σ_T1 comes from the asymptotic covariance of the fit, computed analytically from the model Jacobian at the optimum:
+
+```
+Σ ≈ σ²_resid · (J^T J)^-1,    σ_T1 = sqrt(Σ[T1, T1])
+```
+
+For the generalized-IR model in `fit_t1_generalized_ir`, both partial derivatives (∂model/∂T1, ∂model/∂A) are closed form, and the residual variance is already implicit in the fit's `residual` field. Cost is negligible (a 2×2 matrix inversion per sphere per block). The observation grows by `n_spheres` floats — trivial.
+
+Why this is well-motivated for the report:
+- It is a *structural* change to what the policy can condition on, not just reward shaping. That makes it conceptually cleaner to write up than Option A (which is a hyperparameter on the loss).
+- The natural ablation — train with vs without the σ_T1 channel — directly tests whether the agent uses uncertainty information when it has it. Either outcome is informative.
+- It targets the same failure mode as Option A (the mid-T1 gap) but through observation geometry rather than reward landscape, so the two are complementary, not redundant.
+
+**Plan.** Implement Option A and Option C together (they are independent code paths and address the failure mode from both sides), 100k smoke test, then a 200k confirmation if the diagnostic improves. If the mid-T1 gap survives both, fall back to Option B.
 
 ### 16.5 Files added/changed in this iteration
 
