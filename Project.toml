@@ -1,16 +1,19 @@
 name = "QalibreMDPhantom"
 uuid = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
-authors = ["Arthur"]
 version = "0.1.0"
+authors = ["Arthur"]
 
 [deps]
 DisplayAs = "0b91fe84-8a4c-11e9-3e1d-67c38462b6d6"
+FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 KomaMRI = "6a340f8b-2cdf-4c04-99be-4953d9b66d0a"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
-# PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"                                                                                    
-# OpenSSL_jll = "458c3c95-2e84-50aa-8efc-19380b2a3a95" 
+
+[compat]
+FFTW = "1.10.0"
 
 [extras]
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -18,7 +21,3 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test", "Statistics"]
-
-[compat]
-# PythonCall = "=0.9.31"                                                                                                                 
-# OpenSSL_jll = "~3.0"

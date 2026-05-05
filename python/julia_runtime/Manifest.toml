@@ -1245,7 +1245,7 @@ uuid = "2bec176e-9e8c-4764-a62f-295118d1ec05"
 version = "1.0.1"
 
 [[deps.QalibreMDPhantom]]
-deps = ["DisplayAs", "KomaMRI", "LinearAlgebra", "OpenSSL_jll", "PythonCall", "Random", "Suppressor"]
+deps = ["DisplayAs", "FFTW", "KomaMRI", "LinearAlgebra", "Random", "Statistics", "Suppressor"]
 path = "/home/arthur/y3/icr"
 uuid = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
 version = "0.1.0"

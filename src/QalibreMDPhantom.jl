@@ -16,6 +16,7 @@ using KomaMRI
 using Random
 using LinearAlgebra
 import Suppressor
+import Statistics: mean
 
 # --- materials (pure data) ------------------------------------------------
 include("materials/fiducial.jl")    # defines Relax, FIDUCIAL_PROPS
@@ -40,6 +41,7 @@ include("baselines/e0.jl")
 
 # --- RL experiments -------------------------------------------------------
 include("rl/e1.jl")
+include("rl/e2.jl")
 
 export PhantomConfig, AugmentConfig, SphereDescriptor,
        build_phantom, build_plate, build_sphere, build_background_water,
@@ -53,7 +55,8 @@ export PhantomConfig, AugmentConfig, SphereDescriptor,
        FIDUCIAL_PROPS, BACKGROUND_WATER, Relax,
        PLATE_Z_MM, CONTRAST_RADIUS_M, FIDUCIAL_RADIUS_M, HOUSING_RADIUS_M,
        # sequences
-       rf_duration, ir_sequence, se_sequence, single_spin_phantom,
+       rf_duration, ir_sequence, se_sequence, ir_se_2d_sequence,
+       single_spin_phantom,
        # fitting
        fit_t1_ir, fit_t2_se,
        # E0 baseline
@@ -65,6 +68,9 @@ export PhantomConfig, AugmentConfig, SphereDescriptor,
        # generalized IR
        generalized_ir_signal, fit_t1_generalized_ir,
        # E1 environment
-       E1Env, e1_reset!, e1_step!, e1_n_actions, e1_obs_dim, e1_action_table
+       E1Env, e1_reset!, e1_step!, e1_n_actions, e1_obs_dim, e1_action_table,
+       # E2 environment
+       E2Env, e2_reset!, e2_step!, e2_obs_dim,
+       e2_action_lo, e2_action_hi
 
 end # module

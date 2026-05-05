@@ -418,6 +418,67 @@ examples/
 
 ---
 
+## E2 — full-plate multi-sphere T1 mapping (RL)
+
+See `EXPERT_REPORT.md` and `E2_PLAN.md` for the full design. Quick-start
+training command:
+
+```bash
+cd /home/arthur/y3/icr
+source .venv/bin/activate
+
+PYTHON_JULIAPKG_OFFLINE=yes \
+PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia \
+python python/train_e2.py \
+  --timesteps 200000 \
+  --eval-interval 10000 \
+  --eval-episodes 20 \
+  --out runs/e2/ppo_200k \
+  2>&1 | tee runs/e2/ppo_200k_train.log
+```
+
+At ~24 FPS warm, 200k steps ≈ 2.3 hours of CPU time.
+
+### Keeping the run alive on WSL2
+
+WSL2 pauses with the Windows host. tmux **does not** survive host suspend
+— only terminal disconnects. To keep training through closed-lid / idle:
+
+1. **Disable host sleep** (PowerShell, run as needed):
+
+   ```powershell
+   powercfg /change standby-timeout-ac 0
+   powercfg /change standby-timeout-dc 0
+   # restore later, e.g.: powercfg /change standby-timeout-ac 30
+   ```
+
+   Also: Settings → System → Power → "Plugged in, put device to sleep" →
+   Never. Control Panel → Power Options → "Choose what closing the lid
+   does" → Do nothing (plugged in).
+
+2. **(Optional) tmux** if you'll close the WSL terminal during training:
+
+   ```bash
+   tmux new -s e2train
+   # … run the training command …
+   # detach with Ctrl-b d, reattach with: tmux attach -t e2train
+   ```
+
+   If you keep the terminal open, plain foreground is fine.
+
+### Evaluating a trained policy
+
+```bash
+PYTHON_JULIAPKG_OFFLINE=yes \
+PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia \
+python python/eval_e2.py \
+  --policy  runs/e2/ppo_200k/policy.zip \
+  --vecnorm runs/e2/ppo_200k/vecnorm.pkl \
+  --episodes 50
+```
+
+---
+
 ## Known gaps
 
 * **Exact in-plate sphere coordinates** — not in the manual; v1 uses a

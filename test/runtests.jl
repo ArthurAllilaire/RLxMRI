@@ -12,4 +12,5 @@ using KomaMRI
     include("test_simulation.jl")
     include("test_baseline.jl")
     include("test_e1.jl")
+    include("test_e2.jl")
 end
