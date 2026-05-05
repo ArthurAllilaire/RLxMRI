@@ -127,3 +127,95 @@ python python/diagnose_e2.py --policy runs/e2/optA_100k/policy.zip
 | `Pkg.instantiate` fails on a JLL | First `instantiate` needs network; retry once. |
 | Out of disk on `runs/` | `runs/*/tb/` (tensorboard) is the heaviest; delete it before pushing if you don't need it on the dev box. |
 | `git push` rejected | Another machine pushed first — `git pull --rebase` and try again. |
+
+---
+
+## Manual fallback (skip `setup.sh`)
+
+If `setup.sh` keeps failing and you want to drive each step by hand, run
+these in order from the repo root. They are exactly what the script does,
+just without the conditionals — so you'll see immediately which step is
+the real problem.
+
+### 1. Install juliaup + Julia 1.11
+
+```bash
+curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel 1.11
+export PATH="$HOME/.juliaup/bin:$PATH"        # add to ~/.bashrc as well
+juliaup add 1.11
+```
+
+Resolve the absolute Julia binary path once (avoids juliaup launcher quirks
+in non-interactive shells):
+
+```bash
+JULIA_EXE="$(ls -d $HOME/.juliaup/julia-1.11.*/bin/julia | head -1)"
+echo "$JULIA_EXE"
+$JULIA_EXE --version                          # should print 1.11.x
+```
+
+Verify Pkg loads. If it fails with a `MbedTLS_jll`-style "not installed"
+error, the Julia install is corrupt — see the troubleshooting section
+above for the hard-reinstall recipe.
+
+```bash
+$JULIA_EXE -e 'using Pkg'                     # should print nothing
+```
+
+### 2. Python venv + deps
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip wheel
+pip install -r python/requirements.txt
+```
+
+### 3. Instantiate Julia projects
+
+```bash
+$JULIA_EXE --project=. -e 'using Pkg; Pkg.instantiate()'
+$JULIA_EXE --project=python/julia_runtime -e 'using Pkg; Pkg.instantiate()'
+```
+
+First run takes 5–15 min (KomaMRI precompile). Subsequent runs are seconds.
+
+### 4. Write `.envrc.local`
+
+The training scripts read `PYTHON_JULIAPKG_EXE` to find the Julia 1.11
+binary, and `PYTHON_JULIAPKG_OFFLINE=yes` to skip re-resolving Julia
+packages on every Python launch. `run_e2.sh` sources this file
+automatically.
+
+```bash
+cat > .envrc.local <<EOF
+export PYTHON_JULIAPKG_OFFLINE=yes
+export PYTHON_JULIAPKG_EXE="$JULIA_EXE"
+EOF
+source .envrc.local
+```
+
+### 5. Smoke-test the bridge
+
+```bash
+cd python && python -c "
+from qalibremd_gym.env_e2 import QalibreMDE2Env
+env = QalibreMDE2Env(rng_seed=0, simplified_action=True)
+obs, _ = env.reset(seed=42)
+print('obs_dim =', obs.shape[0], '(expect 159 with default Nfe=16, Npe=8)')
+" && cd ..
+```
+
+If that prints `obs_dim = 159` you're fully set up — proceed to step 3
+("Train") at the top of this file.
+
+### Common manual-step failures
+
+| Symptom | Likely cause + fix |
+|---|---|
+| `Pkg.instantiate()` hangs > 5 min on a JLL | Network timeout. Ctrl-C, retry. JLL artifacts are downloaded one at a time. |
+| `MbedTLS_jll … is required but does not seem to be installed` | Julia install is corrupt. `juliaup remove 1.11 && rm -rf ~/.julia/juliaup/julia-1.11.* ~/.julia/compiled && juliaup add 1.11`. |
+| `ImportError: No module named qalibremd_gym` in step 5 | You forgot to `cd python` first — the package is at `python/qalibremd_gym/`. |
+| `juliacall.JuliaError: package KomaMRI not found` from Python | Step 3b skipped — re-run the `--project=python/julia_runtime` instantiate. |
+| `pip install` fails on `gymnasium[box2d]` or similar | Not needed for E2 — `python/requirements.txt` only pulls the core SB3 + gymnasium + juliacall. If you see this, you're using a different requirements file. |
+| Smoke test hangs ~30 s on first run | Normal — Julia is JIT-precompiling KomaMRI inside the Python process. Subsequent runs are < 2 s. |

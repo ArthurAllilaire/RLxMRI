@@ -1246,7 +1246,7 @@ version = "1.0.1"
 
 [[deps.QalibreMDPhantom]]
 deps = ["DisplayAs", "FFTW", "KomaMRI", "LinearAlgebra", "Random", "Statistics", "Suppressor"]
-path = "/home/arthur/y3/icr"
+path = "../.."
 uuid = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
 version = "0.1.0"
 
