@@ -33,23 +33,39 @@ git remote set-url origin git@github.com:ArthurAllilaire/RLxMRI.git
 
 ## 2. One-shot setup
 
+There are two setup scripts depending on what's already installed:
+
+| Script | Use when |
+|---|---|
+| `setup_full.sh` | Fresh box — installs juliaup + Julia 1.11, then sets everything up |
+| `setup.sh` | juliaup + Julia 1.11 already present; just creates venv + instantiates |
+
+For a fresh remote box, use the full script:
+
 ```bash
-bash setup.sh
+bash setup_full.sh
 ```
 
-This is **idempotent** — safe to re-run. It will:
+Both scripts are **idempotent** — safe to re-run. `setup_full.sh` will:
 
-1. Install `juliaup` and Julia 1.11 (skipped if already present).
-2. Create `.venv/` and `pip install -r python/requirements.txt`.
-3. `Pkg.instantiate()` the main Julia project and the Python-bridge runtime
+1. Install `juliaup` if not already present, then `export PATH` in-process
+   (non-interactive shells don't source `~/.bashrc`, so this is required).
+2. Install Julia 1.11 via `juliaup add 1.11` if not already present.
+3. Create `.venv/` and `pip install -r python/requirements.txt`.
+4. `Pkg.instantiate()` the main Julia project and the Python-bridge runtime
    at `python/julia_runtime/`.
-4. Write `.envrc.local` with the env vars `juliacall` needs:
+5. Write `.envrc.local` with the env vars `juliacall` needs:
    `PYTHON_JULIAPKG_OFFLINE=yes` and `PYTHON_JULIAPKG_EXE=<julia-1.11 path>`.
-5. Smoke-test the Python ↔ Julia bridge by constructing one `E2Env` and
-   running a reset.
+6. Smoke-test the Python ↔ Julia bridge (`obs_dim = 159`).
 
 First run takes ~5–15 min (Julia precompile dominates). Subsequent runs are
 seconds.
+
+> **Why two scripts?** `bash script.sh` runs in a non-interactive child
+> process that never sources `~/.bashrc`. After the juliaup installer writes
+> to `~/.bashrc`, the running script can't see the new PATH — unless you
+> explicitly `export PATH="$HOME/.juliaup/bin:$PATH"` in the script itself.
+> `setup_full.sh` does this; `setup.sh` assumes juliaup is already on PATH.
 
 ## 3. Train
 
@@ -123,7 +139,7 @@ python python/diagnose_e2.py --policy runs/e2/optA_100k/policy.zip
 | Symptom | Fix |
 |---|---|
 | `juliaup: command not found` after install | `source ~/.bashrc`, or `export PATH=$HOME/.juliaup/bin:$PATH` |
-| `juliacall` can't find Julia | `source .envrc.local` (or re-run `setup.sh`) |
+| `juliacall` can't find Julia | `source .envrc.local` (or re-run `setup_full.sh`) |
 | `Pkg.instantiate` fails on a JLL | First `instantiate` needs network; retry once. |
 | Out of disk on `runs/` | `runs/*/tb/` (tensorboard) is the heaviest; delete it before pushing if you don't need it on the dev box. |
 | `git push` rejected | Another machine pushed first — `git pull --rebase` and try again. |
