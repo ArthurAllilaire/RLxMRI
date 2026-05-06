@@ -24,12 +24,15 @@ export PATH="$HOME/.juliaup/bin:$PATH"
 command -v juliaup &>/dev/null || { echo "juliaup install failed." >&2; exit 1; }
 
 # ── 2. Julia 1.11 ─────────────────────────────────────────────────────────────
-if ! ls -d "$HOME"/.juliaup/julia-1.11.*/bin/julia &>/dev/null; then
+# Use find: juliaup layout varies (flat ~/.juliaup/julia-1.11.*/  vs
+# nested ~/.juliaup/julia/julia-1.11.*/), so a hardcoded glob is fragile.
+_find_julia() { find "$HOME/.juliaup" -name julia -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1; }
+if [ -z "$(_find_julia)" ]; then
     echo "[setup] Adding Julia 1.11…"
     juliaup add 1.11
 fi
 
-JULIA_EXE="$(ls -d "$HOME"/.juliaup/julia-1.11.*/bin/julia 2>/dev/null | head -1)"
+JULIA_EXE="$(_find_julia)"
 [ -x "$JULIA_EXE" ] || { echo "Julia 1.11 not found after install." >&2; exit 1; }
 echo "[setup] Julia: $JULIA_EXE"
 
