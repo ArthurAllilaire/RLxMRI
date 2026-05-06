@@ -42,12 +42,15 @@ echo "[setup] Julia: $JULIA_EXE"
 # ── 3. Python venv + deps ─────────────────────────────────────────────────────
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --quiet --upgrade pip wheel
-pip install --quiet -r python/requirements.txt
+pip install --upgrade pip wheel
+pip install -r python/requirements.txt
 
 # ── 4. Julia projects ─────────────────────────────────────────────────────────
-"$JULIA_EXE" --project=. -e 'using Pkg; Pkg.instantiate()'
-"$JULIA_EXE" --project=python/julia_runtime -e 'using Pkg; Pkg.instantiate()'
+# Pkg.resolve() regenerates Manifest.toml for the current Julia version before
+# instantiating — required when the committed manifest was made with a different
+# Julia (e.g. 1.12 manifest on a 1.11 runtime).
+"$JULIA_EXE" --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
+"$JULIA_EXE" --project=python/julia_runtime -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
 
 # ── 5. Env file ───────────────────────────────────────────────────────────────
 cat > .envrc.local <<EOF

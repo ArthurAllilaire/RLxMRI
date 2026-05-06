@@ -21,8 +21,8 @@ echo "Julia: $JULIA_EXE"
 # Python venv + deps
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --quiet --upgrade pip wheel
-pip install --quiet -r python/requirements.txt
+pip install --upgrade pip wheel
+pip install -r python/requirements.txt
 
 # Julia projects
 "$JULIA_EXE" --project=. -e 'using Pkg; Pkg.instantiate()'
