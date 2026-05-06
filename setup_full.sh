@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# Full one-shot setup: installs juliaup + Julia 1.11, creates venv, instantiates
-# Julia projects, writes .envrc.local, and smoke-tests the Python↔Julia bridge.
+# Full one-shot setup: installs juliaup + Julia 1.11 + 1.12, creates venv,
+# instantiates Julia projects, writes .envrc.local, and smoke-tests the
+# Python↔Julia bridge.
+#
+# Julia 1.12 — main project (development, tests)
+# Julia 1.11 — python/julia_runtime (juliacall requires ≤ 1.11)
 #
 # Safe to re-run (idempotent). First run: ~5–15 min (Julia precompile).
 #
@@ -17,27 +21,31 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 # here ourselves after the installer writes to it.
 if ! command -v juliaup &>/dev/null && [ ! -x "$HOME/.juliaup/bin/juliaup" ]; then
     echo "[setup] Installing juliaup…"
-    curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel 1.11
+    curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel 1.12
 fi
-# Always set PATH explicitly — don't rely on ~/.bashrc being sourced
 export PATH="$HOME/.juliaup/bin:$PATH"
 command -v juliaup &>/dev/null || { echo "juliaup install failed." >&2; exit 1; }
 
-# ── 2. Julia 1.11 ─────────────────────────────────────────────────────────────
+# ── 2. Julia versions ─────────────────────────────────────────────────────────
 # juliaup stores Julia in ~/.juliaup/ (newer) or ~/.julia/juliaup/ (older).
-# Search both so the script works regardless of juliaup version.
 _find_julia() {
     find "$HOME/.juliaup" "$HOME/.julia/juliaup" \
-         -name julia -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1
+         -name julia -path "*/julia-${1}*/bin/julia" 2>/dev/null | head -1
 }
-if [ -z "$(_find_julia)" ]; then
-    echo "[setup] Adding Julia 1.11…"
-    juliaup add 1.11
-fi
 
-JULIA_EXE="$(_find_julia)"
-[ -x "$JULIA_EXE" ] || { echo "Julia 1.11 not found after install." >&2; exit 1; }
-echo "[setup] Julia: $JULIA_EXE"
+for VER in 1.11 1.12; do
+    if [ -z "$(_find_julia "$VER")" ]; then
+        echo "[setup] Adding Julia $VER…"
+        juliaup add "$VER"
+    fi
+done
+
+JULIA11="$(_find_julia 1.11)"
+JULIA12="$(_find_julia 1.12)"
+[ -x "$JULIA11" ] || { echo "Julia 1.11 not found after install." >&2; exit 1; }
+[ -x "$JULIA12" ] || { echo "Julia 1.12 not found after install." >&2; exit 1; }
+echo "[setup] Julia 1.11: $JULIA11"
+echo "[setup] Julia 1.12: $JULIA12"
 
 # ── 3. Python venv + deps ─────────────────────────────────────────────────────
 python3 -m venv .venv
@@ -46,16 +54,15 @@ pip install --upgrade pip wheel
 pip install -r python/requirements.txt
 
 # ── 4. Julia projects ─────────────────────────────────────────────────────────
-# Pkg.resolve() regenerates Manifest.toml for the current Julia version before
-# instantiating — required when the committed manifest was made with a different
-# Julia (e.g. 1.12 manifest on a 1.11 runtime).
-"$JULIA_EXE" --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
-"$JULIA_EXE" --project=python/julia_runtime -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
+# Main project: use 1.12 (matches committed Manifest.toml)
+"$JULIA12" --project=. -e 'using Pkg; Pkg.instantiate()'
+# Python bridge runtime: must use 1.11 (juliacall requires ≤ 1.11)
+"$JULIA11" --project=python/julia_runtime -e 'using Pkg; Pkg.instantiate()'
 
 # ── 5. Env file ───────────────────────────────────────────────────────────────
 cat > .envrc.local <<EOF
 export PYTHON_JULIAPKG_OFFLINE=yes
-export PYTHON_JULIAPKG_EXE="$JULIA_EXE"
+export PYTHON_JULIAPKG_EXE="$JULIA11"
 EOF
 
 # ── 6. Smoke-test the bridge ──────────────────────────────────────────────────
@@ -72,3 +79,4 @@ cd ..
 
 echo ""
 echo "Done. source .venv/bin/activate && bash run_e2.sh"
+echo "To run Julia tests: $JULIA12 --project=. test/runtests.jl"
