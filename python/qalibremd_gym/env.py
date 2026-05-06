@@ -9,14 +9,35 @@ for Box observation spaces.
 
 from __future__ import annotations
 
-# juliacall must be imported before torch (transitively pulled in by
-# stable-baselines3) to avoid a segfault on some PyTorch builds.
-# See https://github.com/pytorch/pytorch/issues/78829
-import juliacall  # noqa: F401
-
+import glob
 import os
 from pathlib import Path
 from typing import Any, Optional
+
+# ── juliapkg env vars must be set before importing juliacall ──────────────────
+# juliacall triggers juliapkg on import. If PYTHON_JULIAPKG_PROJECT is not set
+# first, juliapkg creates a fresh env at .venv/julia_env/ with just PythonCall
+# and QalibreMDPhantom is not found. Setting it here ensures our pre-instantiated
+# python/julia_runtime/ project is used regardless of import order.
+#
+# These are set with setdefault so run_e2.sh (which sources .envrc.local first)
+# always wins — module-level code only fills in what's missing.
+_repo_root = Path(__file__).resolve().parents[2]
+_runtime_proj = str(_repo_root / "python" / "julia_runtime")
+os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", _runtime_proj)
+os.environ.setdefault("PYTHON_JULIAPKG_OFFLINE", "yes")
+if "PYTHON_JULIAPKG_EXE" not in os.environ:
+    _j11_candidates = (
+        glob.glob(str(Path.home() / ".julia" / "juliaup" / "julia-1.11*" / "bin" / "julia")) +
+        glob.glob(str(Path.home() / ".juliaup" / "julia-1.11*" / "bin" / "julia"))
+    )
+    if _j11_candidates:
+        os.environ["PYTHON_JULIAPKG_EXE"] = _j11_candidates[0]
+
+# juliacall must also be imported before torch (pulled in by stable-baselines3)
+# to avoid a segfault on some PyTorch builds.
+# See https://github.com/pytorch/pytorch/issues/78829
+import juliacall  # noqa: F401
 
 import numpy as np
 import gymnasium as gym
@@ -42,17 +63,7 @@ def _ensure_julia(project_dir: Optional[str] = None) -> None:
     if _JL is not None:
         return
 
-    repo_root = Path(__file__).resolve().parents[2]
-    runtime_proj = project_dir or str(repo_root / "python" / "julia_runtime")
-
-    # Pick Julia 1.11 from juliaup if installed there.
-    j11 = Path.home() / ".julia" / "juliaup" / "julia-1.11.9+0.x64.linux.gnu" / "bin" / "julia"
-    if j11.exists():
-        os.environ.setdefault("PYTHON_JULIAPKG_EXE", str(j11))
-    os.environ.setdefault("PYTHON_JULIAPKG_OFFLINE", "yes")
-    os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", runtime_proj)
-
-    from juliacall import Main as jl       # imported lazily
+    from juliacall import Main as jl
     jl.seval("using QalibreMDPhantom")
     _JL = jl
     _JL_QMD = jl.QalibreMDPhantom
