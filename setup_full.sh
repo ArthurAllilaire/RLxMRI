@@ -24,9 +24,12 @@ export PATH="$HOME/.juliaup/bin:$PATH"
 command -v juliaup &>/dev/null || { echo "juliaup install failed." >&2; exit 1; }
 
 # ── 2. Julia 1.11 ─────────────────────────────────────────────────────────────
-# Use find: juliaup layout varies (flat ~/.juliaup/julia-1.11.*/  vs
-# nested ~/.juliaup/julia/julia-1.11.*/), so a hardcoded glob is fragile.
-_find_julia() { find "$HOME/.juliaup" -name julia -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1; }
+# juliaup stores Julia in ~/.juliaup/ (newer) or ~/.julia/juliaup/ (older).
+# Search both so the script works regardless of juliaup version.
+_find_julia() {
+    find "$HOME/.juliaup" "$HOME/.julia/juliaup" \
+         -name julia -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1
+}
 if [ -z "$(_find_julia)" ]; then
     echo "[setup] Adding Julia 1.11…"
     juliaup add 1.11

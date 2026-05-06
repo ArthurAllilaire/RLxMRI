@@ -14,7 +14,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-JULIA_EXE="$(find "$HOME/.juliaup" -name julia -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1)"
+JULIA_EXE="$(find "$HOME/.juliaup" "$HOME/.julia/juliaup" -name julia -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1)"
 [ -x "$JULIA_EXE" ] || { echo "Julia 1.11 not found — see prereqs at top of this script." >&2; exit 1; }
 echo "Julia: $JULIA_EXE"
 
