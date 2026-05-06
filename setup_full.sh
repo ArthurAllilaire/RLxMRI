@@ -55,7 +55,7 @@ pip install -r python/requirements.txt
 
 # ── 4. Julia projects ─────────────────────────────────────────────────────────
 # Main project: use 1.12 (matches committed Manifest.toml)
-"$JULIA12" --project=. -e 'using Pkg; Pkg.instantiate()'
+"$JULIA12" --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
 # Python bridge runtime: must use 1.11 (juliacall requires ≤ 1.11)
 "$JULIA11" --project=python/julia_runtime -e 'using Pkg; Pkg.instantiate()'
 

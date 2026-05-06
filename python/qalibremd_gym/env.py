@@ -9,6 +9,11 @@ for Box observation spaces.
 
 from __future__ import annotations
 
+# juliacall must be imported before torch (transitively pulled in by
+# stable-baselines3) to avoid a segfault on some PyTorch builds.
+# See https://github.com/pytorch/pytorch/issues/78829
+import juliacall  # noqa: F401
+
 import os
 from pathlib import Path
 from typing import Any, Optional
