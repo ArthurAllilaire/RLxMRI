@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 *.py[cod]
+.envrc.local
 
 # Training runs (model weights, tensorboard logs, eval history)
 runs/
