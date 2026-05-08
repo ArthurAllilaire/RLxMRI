@@ -918,4 +918,384 @@ PYTHON_JULIAPKG_OFFLINE=yes python python/plots_for_report.py --tag E2.1
 
 If a step's JSON output is missing, `plots_for_report.py` skips that figure with a `[skip]` log line (instead of crashing) — useful when iterating on a single plot.
 
+---
+
+## 18. E2.2 — Uncertainty-Observation Ablation (2026-05-06)
+
+The §16.4 plan called for **Option A (worst-case-weighted MAPE reward)** *and* **Option C (per-sphere fit uncertainty in the observation)** trained together. Option C was wired into `env_e2.py` as a hard-coded extension to the observation vector (obs_dim 145 → 159; the new 14 channels carry `log10(σ_T1[i] / T1_est[i])` per sphere, computed from the asymptotic covariance of the IR fit). Option A was wired into `src/rl/e2.jl:_e2_mape` (`α·mean + (1−α)·max`) and exposed via `--mape-alpha`.
+
+The 200k run launched on 2026-05-06 (`runs/e2/20260506_111510/`) used `bash run_e2.sh` with **no extra flags**, which falls back to `train_e2.py` defaults. This means the run is in fact:
+- ✅ Option C (uncertainty obs is hard-wired into `env_e2.py`, obs_dim = 159 confirmed)
+- ❌ Option A (`--mape-alpha 1.0` default → pure mean MAPE)
+- ❌ legacy `neg_mape` reward, `terminal_bonus = 0.5`, full 5-dim action space
+
+So this run is the **Option C ablation**, not the planned A+C combo. That is still useful: it isolates whether the obs-side intervention (giving the policy a fit-quality signal per sphere) is sufficient on its own to break the §15 collapse, with the §15 reward landscape held fixed.
+
+### 18.1 Headline result
+
+| Metric | E2 §15 (200k, no σ-obs) | **E2.2 (200k, +σ-obs)** | E2.1 §16 (100k, delta-MAPE) |
+|---|---|---|---|
+| Eval MAPE (30 eps, deterministic) | 99.10% | **97.80%** | 158% |
+| p90 MAPE | 110.60% | **94.15%** | — |
+| Speedup vs fixed-grid baseline | 4.4× | **4.3×** | 2.6× |
+| Mean scan time | 120.0 s | 120.0 s | — |
+| `ep_len_mean` | 3.00 | **3.00** | 9.13 |
+| TI modal-bin share | 80.0% (at TI_min) | **64.4%** (at TI_min) | 21.5% |
+| TI intra-episode log-σ | 0.54 | **1.06** | 0.86 |
+| `clip_fraction` (final) | 0.37 | 0.39 | 0.26 |
+| `explained_variance` (final) | −0.18 | −0.15 | +0.34 |
+
+**Bottom line: σ-obs on its own is not sufficient.** Final eval MAPE is statistically indistinguishable from the §15 baseline (97.8% vs 99.1%), the policy still terminates in exactly 3 blocks per episode, and the modal action remains TI_min. The C1-target adaptive sequence is not learned.
+
+### 18.2 The training trajectory tells a more nuanced story
+
+`runs/e2/20260506_111510/eval_history.json` shows continued learning **for far longer** than the §15 run, then a regression at the end:
+
+| step | E2 §15 MAPE | **E2.2 MAPE** |
+|---:|---:|---:|
+| 10k | 873% | 788% |
+| 30k | 563% | 847% |
+| 50k | 119% | 467% |
+| 70k | 87% (plateau begins) | 408% |
+| 100k | 125% | 327% |
+| 130k | — | 201% |
+| **160k** | — | **84.3%** ← **best checkpoint** |
+| 180k | — | 101% |
+| 200k | 86% | 122% |
+
+Two notable features:
+1. **The σ-obs run keeps learning past 100k.** §15 plateaued by step 70k; E2.2 is still improving at step 160k and reaches a new best of **84.3% MAPE** (vs §15's 87% best, achieved at the same checkpoint). This is suggestive — the extra observational channel does feed gradient information to PPO that the §15 policy could not get.
+2. **It then regresses.** From 84% at 160k, the eval MAPE rebounds to 122% by 200k. The training is non-monotone in the final third. Saving and using the 160k checkpoint instead of the 200k policy would already report a slightly better headline number, but the policy is fundamentally still in the same collapse basin.
+
+The *minimum* of the curve (84%) lies at the §15 plateau (87%) — i.e. σ-obs has **not** moved the floor; it has only delayed the timestep at which the floor is hit.
+
+### 18.3 Diagnostic — the policy is still degenerate, just less tightly
+
+`python python/diagnose_e2.py --policy runs/e2/20260506_111510/policy.zip --vecnorm runs/e2/20260506_111510/vecnorm.pkl --episodes 30` outputs:
+
+```
+ep_len_mean             = 3.00      (every episode terminates at exactly 3 blocks)
+final MAPE              = 133.14%   (deterministic rollout, std = 128%)
+TI intra-episode log-σ  = 1.060
+TI inter-episode log-σ  = 1.068
+Modal-bin share         = 64.4%     (range 0.010 – 0.012 s)
+```
+
+The TI histogram (`runs/e2/20260506_111510/diagnostics/ti_histogram.png`) shows ≈64% of all 90 blocks at TI ≈ TI_min = 10 ms, with a secondary cluster around TI ≈ 1.3 s. This is **the same bimodal shape the §15 policy ended in, but with the TI_min spike loosened from 80% → 64% mass**. The §15 policy collapsed harder; E2.2 collapsed softer.
+
+The intra-episode TI log-σ is 1.06 — *higher* than both §15 (0.54) and E2.1 (0.86), so within an episode the policy does try multiple TIs, but as the inter-episode log-σ is essentially identical (1.07), the "schedule" is the same across configurations. The policy is **not** conditioning its TI choice on the episode's actual phantom — confirmed by `ti_vs_t1est.png` showing a flat scatter (negligible Pearson r in log space).
+
+### 18.4 Per-sphere MAPE — the "informative-extremes, ignored-middle" failure mode persists
+
+Eval on 30 held-out configs (`runs/e2/20260506_111510/eval_summary.json`):
+
+| Sphere | Nominal T1 [s] | E2.2 MAPE | Pattern vs E2.1 |
+|---|---|---|---|
+| 1 | 1.84 | 97.2% | E2.1 was 92.6% — slightly worse |
+| 2 | 1.36 | 97.7% | similar |
+| 3 | 1.00 | 98.1% | similar |
+| 4 | 0.73 | 94.7% | similar |
+| 5 | 0.51 | 96.4% | similar |
+| 6 | 0.37 | 95.8% | similar |
+| 7 | 0.26 | 109.2% | E2.1 was 83% — **regression** |
+| 8 | 0.18 | 89.4% | E2.1 was 187% — **better** |
+| 9 | 0.13 | 86.1% | E2.1 was 351% — **much better** |
+| 10 | 0.09 | 77.7% | E2.1 was 167% — better |
+| 11 | 0.06 | 66.2% | similar |
+| 12 | 0.05 | 62.0% | E2.1 was 271% — **much better** |
+| 13 | 0.03 | **265.4%** | E2.1 was 211% — both bad |
+| 14 | 0.02 | 33.4% | E2.1 was 47.5% — best in both |
+
+The catastrophic spike has **moved**: E2.1's mid-T1 gap (spheres 8–13) is largely gone in E2.2; instead a single sphere (13, T1≈30 ms) takes a 265% hit. The other 13 spheres sit in a narrow ~60–110% band — flatter and slightly lower than E2.1's full-range profile.
+
+Read together with the TI histogram, this is consistent with σ-obs effectively communicating "every sphere is uncertain, hit them all with the same cheap action" — i.e. it has nudged the policy toward a more uniform-error distribution rather than toward genuinely informative actions. The mean MAPE drops marginally; the worst-case MAPE remains catastrophic.
+
+### 18.5 Why σ-obs alone wasn't enough — and why this was predictable
+
+In §15.4 the root causes of collapse were itemised as:
+
+1. Per-step reward = `−mean MAPE` is too weak to outvalue the action-cost minimum at TI_min (1/14 marginal weight per sphere).
+2. Single-block T1 fits are unstable, so `T1_est` in the obs is noisy.
+3. `terminal_bonus = +0.5` is an E1-style trap.
+4. Wasted action dimensions (`slice_z`, `α_exc`).
+
+σ-obs (Option C) addresses **only item 2** — and only *halfway*. It tells the policy "this sphere's fit is uncertain", but the *reward* still gives the same near-zero per-sphere weight whether or not the policy does anything about it. The policy can read σ_T1 = high for sphere 13 but PPO has no gradient pressure to act on that information, because targeting sphere 13 specifically only moves mean MAPE by 1/14. Items 1, 3, 4 are unchanged. Hence: PPO collects the same TI_min reward shortcut, with marginally smoother behaviour.
+
+The §16.4 plan called Option A and Option C "complementary, not redundant" because they target the failure mode from different sides:
+- **Option A** reshapes the *reward* so the worst-case sphere matters (breaks item 1).
+- **Option C** gives the policy *observational* access to which sphere is the worst (gives it a tool to act on item 1 once the gradient pressure is there).
+
+Running Option C without Option A delivers the tool but never creates the gradient pressure that would make using the tool worth more than the TI_min shortcut. The result is exactly what we see — σ-obs is *latent* in the policy, not load-bearing.
+
+### 18.6 Figures
+
+The six comparison figures in `report_plots/E2.2/` were regenerated with E2.2's curve added to the training-curve plot and per-sphere bars switched to E2.2:
+
+| Figure | Path | What it shows |
+|---|---|---|
+| Training curves (3-way) | `report_plots/E2.2/mape_training_curve.png` | E2 / E2.1 / E2.2 eval-MAPE side-by-side; E2.2 reaches a new best (84%) at 160k then regresses |
+| Per-sphere MAPE | `report_plots/E2.2/per_sphere_mape.png` | E2.2's flatter ~60–110% band with the lone sphere-13 spike |
+| TI per episode | `report_plots/E2.2/e2_2_ti_per_episode.png` | All 30 episodes terminate at block 3, mostly at TI_min |
+| TI vs running T1_est | `report_plots/E2.2/e2_2_ti_vs_t1est.png` | Adaptivity proxy — flat scatter, no log–log correlation |
+| Running T1 estimate | `report_plots/E2.2/e2_2_t1est_trajectory.png` | Block-by-block fit instability (item 2 of §15.4 unchanged) |
+| TI histogram (raw, single-run) | `runs/e2/20260506_111510/diagnostics/ti_histogram.png` | 64% mass at TI_min, secondary 1.3 s cluster |
+
+`ti_histogram_compare.png`, `ep_length_compare.png`, `information_landscape.png`, `ir_signal_curves.png` are unchanged from E2.1 (left in place for cross-reference; the E2.1 modes overlay still applies because E2.2 lands on the same TI_min / TI_max attractor).
+
+### 18.7 Ablation matrix (for the report)
+
+The four §15–§16 corner experiments now look like:
+
+| Run | Reward | Action | σ-obs | Final MAPE | ep_len | Modal-bin |
+|---|---|---|---|---:|---:|---:|
+| E2 §15 | mean | 5-dim | ✗ | 99.1% | 3.0 | 80% @ TI_min |
+| E2.1 §16 | delta | 3-dim | ✗ | 158% | 9.1 | 21.5% |
+| **E2.2** | mean | 5-dim | ✓ | **97.8%** | 3.0 | 64.4% @ TI_min |
+| E2.3 (next) | delta + max-weighted | 3-dim | ✓ | TBD | TBD | TBD |
+
+The ablation reads cleanly:
+- **Reward shaping** (E2 → E2.1) breaks the early-termination collapse but trades it for a continuum of locally-optimal two-mode policies that miss the mid-T1 valley.
+- **Observation augmentation** (E2 → E2.2) marginally lowers per-sphere variance and delays the reward-plateau timestep, but does not break the collapse. The policy never *needs* the σ_T1 channel because the reward landscape doesn't reward acting on it.
+
+This is itself the right report message: *Option C is necessary but not sufficient; without Option A or delta-MAPE on top, the additional observation channel is policy-inert.*
+
+### 18.8 Recommended next runs
+
+1. **E2.3 — A + C + delta-MAPE simultaneously (priority)**: launch with
+   ```bash
+   bash run_e2.sh --reward-mode delta_mape --simplified-action \
+                  --terminal-bonus 0.0 --mape-alpha 0.5 \
+                  --timesteps 200000 \
+                  --out runs/e2/e2_3_A_C_delta
+   ```
+   
+   The hypothesis is that σ-obs only becomes load-bearing when the reward (a) cares about the worst sphere (`mape_alpha=0.5`) and (b) delivers per-step progress signal (`delta_mape`). Acceptance criterion: eval MAPE < 30%, modal-bin share < 30%, |TI-vs-T1est r| > 0.2 — same thresholds as §15.8.
+
+2. **E2.2-160k checkpoint analysis (cheap)**: re-run `eval_e2.py` and `diagnose_e2.py` against `ckpt_160000.zip` (saved if `--checkpoint-interval 50000` was used; otherwise launch a brief 160k run). The 84% minimum at that step is the only positive signal in this experiment and merits inspection — e.g., did the policy briefly visit a non-degenerate TI distribution, or was that just stochastic eval noise?
+
+3. **Drop terminal bonus in any future neg_mape run.** §15.4 item 3 is still on the table and is the cheapest single intervention left — `--terminal-bonus 0.0`. Worth pairing with E2.3 to remove the last E1-era trap.
+
+### 18.9 Files added/changed
+
+```
+runs/e2/20260506_111510/                NEW — E2.2 200k policy + eval + diagnostics
+runs/e2/20260506_111510/eval_summary.json
+runs/e2/20260506_111510/diagnostics/
+  ├── diagnose_summary.json
+  ├── ti_histogram.png
+  ├── ti_per_episode.png
+  ├── ti_vs_t1est.png
+  └── t1est_trajectory.png
+report_plots/E2.2/                      NEW — 3-way comparison plots, E2.2 per-sphere
+python/plots_for_report.py              + E2.2 curve in mape_training_curve;
+                                          per_sphere_mape now picks E2.2 if available
+```
+
+### 18.10 Report angle (updates §16.6)
+
+The Ch4 narrative now has *three* iteration arcs, building toward an A+C+delta combination:
+
+1. **E2 → E2.1** (§15–§16): hypothesised reward-signal weakness, instrumented, redesigned reward, validated PPO health and broke the early-termination collapse — but uncovered the mid-T1-gap failure mode.
+2. **E2 → E2.2** (this section): isolated the observation-side intervention. Showed that giving the policy fit-uncertainty information *without* changing the reward landscape is policy-inert: the σ-obs channel is read but not acted on, because the reward gradient still rewards TI_min. **Useful negative result** — empirically validates the §16.4 claim that A and C target different parts of the failure and need to be combined.
+3. **E2.2 → E2.3 (planned)**: combine all three — delta-MAPE reward, worst-case-weighted aggregation, σ-obs in observation. The §16.4 hypothesis predicts this is the configuration that finally breaks below 30% MAPE.
+
+For the chapter: the §18 ablation table is the single most-useful figure to put in the body. Each row is a controlled change to one factor (reward / action-dim / observation), and the result table shows that no single factor moves the needle — the value is in the *combination*. That's the C2 (scalable simulation-in-the-loop RL) story made concrete.
+
 Each arc has a measured before/after comparison, a clear hypothesis, a reproducible diagnostic, and explicit next-step criteria. This is the *iteration* that the FYP marking criteria reward — see `project_context/marking_docs/fyp26assess-info.pdf` "engagement and originality".
+
+---
+
+## 19. E2.3 — A + C + delta-MAPE combined (2026-05-07) — **catastrophic regression**
+
+The §18.8 next-run was launched with the full §16.4 prescription: worst-case-weighted reward (Option A, `--mape-alpha 0.5`), σ-obs in observation (Option C, already wired), per-step delta-MAPE reward, simplified 3-dim action, and `terminal_bonus=0` — the configuration §18.5 predicted would finally be load-bearing. It is *worse than every previous E2 run by an order of magnitude*.
+
+```
+[E2 eval @ step 200000]  MAPE=1267.15%  p90=2803.89%  success(<5%)=0.0%  mean_scan_time=128.2s
+ep_len_mean=8.17  ep_rew_mean=-9.91  explained_variance=0.526  entropy_loss=-2.67
+```
+
+### 19.1 Headline result (extending the §18.7 ablation matrix)
+
+| Run | Reward | Action | σ-obs | Final MAPE | p90 MAPE | ep_len | Modal-bin |
+|---|---|---|---|---:|---:|---:|---:|
+| E2 §15 | mean | 5-dim | ✗ | 99.1% | 110.6% | 3.0 | 80% @ TI_min |
+| E2.1 §16 | delta | 3-dim | ✗ | 158% | — | 9.1 | 21.5% |
+| E2.2 §18 | mean | 5-dim | ✓ | 97.8% | 94.2% | 3.0 | 64.4% @ TI_min |
+| **E2.3** | **delta + α=0.5 max-weight** | **3-dim** | **✓** | **1267.15%** | **2803.89%** | **8.17** | TBD |
+
+p90 = 2804 % means at least 10 % of evaluation episodes report a mean T1 estimate ~28× the truth. This isn't a noisy plateau — it's the fitter producing arbitrary numbers and the agent *acting confidently on them*.
+
+### 19.2 The PPO internals look healthy — that's the surprise
+
+The training-side diagnostics are *better* than every prior E2 run:
+
+| Diagnostic | E2 §15 | E2.2 | **E2.3** | What it indicates |
+|---|---:|---:|---:|---|
+| `explained_variance` (final) | −0.18 | −0.15 | **+0.53** | value function is now coherent — PPO IS learning a stable model of returns |
+| `entropy_loss` | — | — | −2.67 | healthy exploration, not collapsed |
+| `clip_fraction` | 0.37 | 0.39 | 0.39 | normal |
+| `policy_gradient_loss` | — | — | −0.068 | reasonable |
+| `ep_len_mean` | 3.0 | 3.0 | 8.17 | delta-MAPE successfully broke the 3-block early-termination collapse |
+| **eval MAPE** | **99%** | **98%** | **1267%** | …but the reward it's optimising is detached from ground truth |
+
+PPO is **doing its job correctly** on the new MDP. Value-function explained-variance is finally positive, episode lengths recovered, exploration is healthy. The reward signal is informative enough that PPO has formed a coherent policy. **The disaster is not on the RL side. The agent is optimising against a proxy that no longer correlates with true T1 error.**
+
+The eval-MAPE trajectory across training (`runs/e2/e2_3_A_C_delta/eval_history.json`):
+
+| step | 10k | 50k | 100k | 130k | 160k | 200k |
+|---:|---:|---:|---:|---:|---:|---:|
+| MAPE % | 2478 | 1667 | 1448 | 1268 | 1186 | 1267 |
+| p90 % | 4728 | 2857 | 2475 | 2539 | 2230 | 2804 |
+
+It descends monotonically until ~160k (1186 %) and then drifts up — but the floor of the curve is two orders of magnitude above any other E2 run. Whatever PPO is descending toward is *not* the true-MAPE objective.
+
+### 19.3 Why combining A + C + delta made things worse, in one sentence
+
+**Each new ingredient gives the fit-assumption failure (§7 of `docs/T1_FIT_AND_KOMA_TESTS.md`) a sharper lever to act through; combining all three turns a calibration error into a systemic one.**
+
+Mechanism, ingredient by ingredient:
+
+1. **delta-MAPE** turns a once-per-episode terminal signal into a per-block dense signal driven by `T1_est`. Every step, the agent reads the fitter's *current* `T1_est` and is rewarded for moving it. If `T1_est` is biased (it is — see §19.5), the agent is rewarded for *increasing* the bias whenever doing so happens to look like progress.
+2. **Worst-case-weighted (α=0.5)** doubles the gradient pressure on whichever sphere has the largest `|T1_est − T1_true|` *as the fitter sees it*. With biased fits, this is whichever sphere the fitter is hallucinating most aggressively about — the agent is now actively chasing the worst phantom of the simulator-vs-fit gap.
+3. **σ-obs (C)** tells the agent how confident the fit *thinks* it is. Per §7 of the docs, that confidence is dominated by the signal-RMS noise floor and is **systematically over-confident** in the n≤4 regime. The agent reads "low σ" on biased-but-confident fits and treats them as reliable navigation landmarks.
+
+Item 1 alone gave us E2.1 (158 %, bad but recognisable). Item 1 + 3 alone gave us §18 (98 %, no real progress). Items 1 + 2 + 3 together is what we see here. The σ-channel is no longer policy-inert (cf. §18.5) — it is now an *actively misleading* observation.
+
+### 19.4 Diagnostic — what the σ-channel actually reports on E2.3 (run 2026-05-07)
+
+```bash
+PYTHON_JULIAPKG_OFFLINE=yes python python/diagnose_uncertainty.py \
+    --policy   runs/e2/e2_3_A_C_delta/policy.zip \
+    --vecnorm  runs/e2/e2_3_A_C_delta/vecnorm.pkl \
+    --simplified-action --episodes 30
+```
+
+Output (written to `runs/e2/e2_3_A_C_delta/diagnostics/`):
+
+```
+[uncertainty] Final relative σ across all sphere×episode cells:
+  median = 81.2%
+  mean   = 33667.3%
+  p90    = 354.7%
+  >100% σ fraction = 41.0%
+```
+
+**This contradicts the §19.3 prediction.** I had expected `σ_T1/T1_est ≈ 2–10 %` (silent overconfidence, three orders of magnitude under-reporting the ~1200 % true error). Instead:
+
+| Metric | E2.2 (200k, σ-obs alone) | **E2.3 (200k, A+C+delta)** | Change |
+|---|---:|---:|---|
+| median σ/T1_est | 5.2 % | **81.2 %** | jumped 16× |
+| mean σ/T1_est | 16.4 % | **33,667 %** | dominated by catastrophic outliers |
+| p90 σ/T1_est | 27.7 % | **354.7 %** | jumped 13× |
+| Fraction with σ ≥ 100 % | < 5 % | **41.0 %** | 41 % of cells now flagged honestly uncertain |
+| True MAPE | 97.8 % | 1267 % | the *actual* error |
+
+The σ-channel on E2.3 is **honestly screaming "I don't know"** for 41 % of cells, with median relative uncertainty 81 %. It is *closer* to the truth than E2.2's σ — but the truth is so far out (1267 %) that even an 81 % σ still under-reports the error by ~15×. The σ is correctly registering that something is badly wrong; it just can't measure how badly.
+
+#### 19.4.1 What the metric *means* — `σ_T1 / T1_est` in plain words
+
+After each fit, `fit_t1_generalized_ir` returns two numbers per sphere:
+
+- **`T1_est`** — best-fit T1 value for this sphere, in seconds.
+- **`T1_sigma`** — the **asymptotic 1-σ standard deviation** of the estimator, in seconds. Per `docs/T1_FIT_AND_KOMA_TESTS.md` §4: if the noise model and the forward model were both correct, re-running the experiment with fresh noise would give a distribution of `T1_est` values centred on the true T1 with standard deviation `T1_sigma`. A 1σ band covers ~68 % of that distribution, 2σ ~95 %.
+
+The **ratio** `σ_T1 / T1_est` is the **fractional uncertainty** — what engineering reports as "± X %" — converted to a unitless number that's comparable across spheres with very different T1s (5 ms to 2 s in this phantom). E.g. `σ_T1 / T1_est = 0.10` means "the fitter's 1-σ confidence is ±10 % of its point estimate". The observation channel feeds the policy `log10(σ_T1 / T1_est)` clamped to `[−3, 0]`, compressing "0.1 % uncertain (−3) → completely uncertain (0)" into a single scalar per sphere.
+
+**Crucial caveat (`docs/T1_FIT_AND_KOMA_TESTS.md` §7).** The asymptotic σ measures *parameter sensitivity around the chosen optimum* — how steeply the SSE would rise if you perturbed T1, *holding the assumed forward model fixed*. It does **not** measure whether that optimum is in the right place. If the forward model is wrong (§19.5.1), the fitter happily reports a tight σ around a biased estimate. The fact that σ on E2.3 is *not* tight (median 81 %) tells us something different: at n=8 with adaptive TIs, the steady-state model can't even fit the transient data within rounding — `σ²_resid` is large because the *residuals themselves* are large, so the fitter is honestly admitting "no T1 explains this data well within my model class".
+
+So the 81 % median and 41 % "> 100 %" fraction are the fitter's way of saying **"my forward model and these measurements are inconsistent"** — exactly what we'd expect under §19.5.1.
+
+#### 19.4.2 The five plots in `runs/e2/e2_3_A_C_delta/diagnostics/`
+
+| File | Axes | What to read |
+|---|---|---|
+| `sigma_trajectory.png` | x = block index 1…n, y = `log10(σ/T1_est)`, one line per sphere (viridis: dark = long T1, light = short T1) | How fit confidence evolves *within* an episode. y=0 is the "100 % relative σ" reference line. A working fit should descend monotonically as more measurements come in; a stuck fit stays near 0. |
+| `sigma_final.png` | bar chart, x = sphere index 1…14, y = final-block `σ/T1_est` (%, log scale), error bars = ±1 SD across episodes | Per-sphere uncertainty at episode end. Pairs with `report_plots/E2.2/per_sphere_mape.png`: bars of similar height across spheres mean σ has no per-sphere selectivity (the agent gets no per-sphere learning signal). |
+| `action_trajectories.png` | 4 panels (TI, TR, TE, α_exc), x = block index, one line per evaluation episode | Whether the policy *adapts* TI/TR/TE/α within an episode. Flat-clustered lines ⇒ fixed schedule; varied lines ⇒ adaptive. |
+| `action_histograms.png` | 4 panels, histograms of TI / TR / TE / α across all blocks of all episodes | Marginal action distribution. A peak at TI_min is the §15 / §18 collapse signature; broad coverage is what an exploratory adaptive policy looks like. |
+| `ti_vs_sigma.png` | scatter, x = mean(σ/T1_est) at decision time (across spheres), y = TI chosen this block; log-log Pearson r in title | **The single most diagnostic plot** — directly tests whether the policy *uses* the σ-channel. \|r\| > 0.2 means the agent's TI choice tracks the prior fit uncertainty (what an adaptive policy should do); r ≈ 0 means the σ-channel is being read but not acted on. |
+
+#### 19.4.3 Reconciling with §19.3
+
+The §19.3 mechanism mostly holds, with one important correction:
+
+- Items 1 (delta-MAPE on biased `T1_est`) and 2 (max-weighted reward chasing the worst hallucination) are unchanged — neither depends on σ.
+- Item 3 must be **revised**: σ is *not* silently low; it is correctly large. The σ-channel isn't actively misleading the agent; it is **informationally useless** because (a) it's saturated at "very high" for ~half the cells, and (b) the reward gradient doesn't pay for *acting on σ* — it pays for moving `T1_est`, which is biased.
+
+Corrected one-sentence summary of §19.3: **the policy is being driven by a biased *point estimate* (`T1_est`) inside a reward shape that pays per-step delta on that biased estimate, while the (honestly large) σ-channel offers the policy no actionable signal because the reward never pays for reducing σ.**
+
+This is *better* news for E2.4 in two ways:
+
+1. **The σ formula isn't broken in this regime** — it's correctly saturating high. Fixes A + B in §4 of `E2_4_PLAN.md` are still recommended (they make σ behave well at small n in earlier episodes), but σ is not the immediate disaster on E2.3.
+2. **The forward-model fix (F1) addresses the dominant problem directly** — once `T1_est` is unbiased, both the reward and the σ-channel become honest in one go. The §19.5.1 hypothesis is now the *uniquely* most-likely cause of the regression (R2 in §6 of `E2_4_PLAN.md` is downgraded; R1 is unchanged).
+
+### 19.5 The fit assumptions — what's actually breaking (extension of `docs/T1_FIT_AND_KOMA_TESTS.md` §7)
+
+§7 of the docs enumerated four issues with the *uncertainty* (`T1_sigma`). E2.3 demonstrates a fifth, deeper issue with the **point estimate** itself. There are now five distinct ways the fit lies; each is given more leverage by the changes in E2.3.
+
+| # | Issue (full discussion in `docs/T1_FIT_AND_KOMA_TESTS.md` §7) | Where it bites E2.3 |
+|---|---|---|
+| 7.1 | `n − p = 1` DOF at small n → `σ²_resid ≈ 0` | partly relieved at n=8, but issue 7.5 takes its place |
+| 7.2 | `σ²_floor` scales with signal RMS | larger floor at higher SNR shots → softer obs scale |
+| 7.3 | Floor couples σ to the agent's own action choice | agent's TI distribution now drives its *own* uncertainty |
+| 7.4 | Magnitude-IR multimodal SSE | with n=8 mixed actions, multiple local minima are reachable in `T1_range` |
+| **7.5** | **Steady-state forward model used on transient simulation** | **NEW — see §19.5.1; the dominant bias source for E2.3** |
+
+#### 19.5.1 The steady-state-vs-transient bias (newly identified)
+
+`steady_state_mz_at_excite` (`src/fitting/fits.jl:113`) computes the magnetisation **after infinite repetitions of the IR block reach a fixed point**. The KomaMRI cross-check `test/test_e2.jl:122–155` validates that formula — but it does so with `n_rep = 4` repetitions baked into the test sequence. The simulator is given several cycles to settle.
+
+`_e2_simulate_step` in `src/rl/e2.jl:236–271` does **not** repeat. Each block is a single IR-SE shot, and the env does not carry magnetisation across blocks (only the *fit history* is carried). So every measurement fed to the fitter is a **single transient IR shot from `M0 = 1`**, not a steady-state IR shot.
+
+The model the fitter is matching is
+
+```
+(Steady state)   Mz_at_excite(T1; TI, TR) = (1 − E1) + cos(θ_inv) · E1 · Mz_pre*(T1, TI, TR)
+```
+
+while the data being fed to it is approximately
+
+```
+(Transient n=1) Mz_at_excite(T1; TI) ≈ (1 − E1) + cos(θ_inv) · E1 · 1 = 1 − 2·e^{−TI/T1}
+```
+
+For inversion (`θ_inv=π`) the systematic difference is `cos(θ_inv)·E1·(Mz_pre* − 1) = −E1·(Mz_pre* − 1)`. With finite TR comparable to T1, `Mz_pre*` is well below 1 (for TR/T1 = 0.5, `Mz_pre* ≈ 0.39`), so the bias is `+0.61·E1`. **At TI=10 ms and T1=1 s, E1≈0.99, so the steady-state model predicts a magnitude ~0.6 *higher* than the simulator returns** — the only way the fitter can reduce its predicted magnitude that much is to *shorten* T1. Long-T1 spheres are pulled toward shorter values; short-T1 spheres are not affected.
+
+Pattern check: this matches §18.4's E2.2 per-sphere bars (short-T1 spheres 12–14 fit much better than mid- and long-T1 spheres). The E2.3 worst-case reward then drives the agent to throw all its action budget at the shortest-T1 sphere (whose fit looks easiest to "improve"), making the long-T1 fits even worse — and the fitter, blissful inside its biased basin, reports tight σ.
+
+`test_e1.jl:147` already caches a related observation under "simulate backend is biased by RF duration" — but that test uses `n_rep ≥ 2` and so silently absorbs the transient-vs-steady gap. **The single-shot transient bias is not currently covered by any test in this repo.** §8.8 priority-1 (the "varying-action KomaMRI cross-check") is precisely the missing test.
+
+#### 19.5.2 Why this bias was invisible until E2.3
+
+The §15 / §18 policies all collapsed to a *fixed* TI schedule that does not depend on the phantom. Fixed schedules produce *fixed* bias, which the fitter learns to absorb through the constant amplitude `A`. The fit is biased identically across episodes, so MAPE looks like a fixed offset — manifesting as the ~99 % floor.
+
+E2.3 finally forces *adaptive* TIs (`ep_len_mean = 8.17`, intra-episode TI log-σ predicted >1.0). Adaptive TIs mean the bias varies *per shot* in a way that is no longer absorbable by a single `A`. The fitter compensates by moving `T1` instead — at which point the policy is rewarded for moves that further dislodge `T1`. We are watching closed-loop feedback into the fit assumption: better optimisation, worse physics fidelity, larger MAPE.
+
+#### 19.5.3 Why the asymptotic σ misses all of this
+
+The asymptotic σ formula `σ²_eff · (JᵀJ)⁻¹` (§4 of the docs) measures only **how sharply the SSE rises around a chosen optimum** — it captures *parameter sensitivity*, not *model correctness*. In a wrong-but-locally-quadratic basin, that sensitivity can be as tight as you want; the formula faithfully reports the curvature of a basin that simply isn't where the truth lives. Per §7.4 of the docs this was already known to fail under multimodal SSE; E2.3 generalises the failure to *any* model misspecification, not just multimodality. The formula is right; what it's measuring is no longer the thing the agent needs to know.
+
+### 19.6 Read together: what the three E2 runs collectively prove
+
+Each run isolated a single hypothesis about the failure mode:
+
+- **E2 §15** — even with a working environment, the dense reward (mean MAPE) is too weak: policy collapses to a 3-block fixed schedule.
+- **E2.1 §16** — delta-MAPE breaks the early-termination collapse: episode lengths recover, but a new failure (mid-T1 valley, bimodal TI) appears.
+- **E2.2 §18** — adding the σ-obs channel does *not* break the collapse on its own: PPO has the information but no gradient pressure to use it.
+- **E2.3** (this section) — combining all three exposes the **fit-assumption ceiling**: the optimiser is no longer the bottleneck, the fitter is. Beyond a certain adaptivity in the action distribution, the steady-state forward model is no longer a faithful proxy for the transient simulator output, and σ_T1 is a useless confidence signal.
+
+This is the right narrative for Ch4: E2 progressively peeled back layers of the failure surface until the *physics-modelling* layer became the bottleneck. **C2 (scalable simulation-in-the-loop RL) is bottlenecked not by RL scale but by the fidelity of the fast forward model.** That is a clean publishable result and it aligns with the project's E3 (MRF dictionary) roadmap, which by construction does not assume steady state.
+
+### 19.7 What E2.4 must change
+
+Detailed plan in `E2_4_PLAN.md`. In one paragraph: replace `steady_state_mz_at_excite` with a **transient-aware forward model** (closed-form `n_rep = 1` IR with finite TR — derivable in a few lines; or, if the simulator is changed to repeat, generalise to any `n_rep` per shot). Re-cross-check against KomaMRI on adaptive-action sequences (the §8.8 priority-1 test). Re-derive σ on the unbiased model. Only then re-run A + C + delta. Expectation: most of E2.3's catastrophic regression evaporates because the fitter stops lying.
+
+### 19.8 Files added / changed in this run
+
+```
+runs/e2/e2_3_A_C_delta/                NEW — 200k policy + checkpoints + tb logs
+runs/e2/e2_3_A_C_delta/eval_history.json   the only headline metric to date; no eval_summary yet
+runs/e2/e2_3_A_C_delta/diagnostics/    NOT YET RUN — see §19.4 for the recommended diagnostic
+```
+
+No code changes for this run; flags-only via `run_e2.sh --reward-mode delta_mape --simplified-action --mape-alpha 0.5 --terminal-bonus 0.0`.

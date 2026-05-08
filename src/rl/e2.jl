@@ -7,6 +7,66 @@
 # Gaussian noise, reconstructs a magnitude image, extracts per-sphere ROI
 # signals, and updates running T1 estimates (Levenberg-Marquardt grid search).
 # Reward = −mean MAPE across 14 spheres (dense, per step).
+#
+# ── Physical assumptions and contingencies (see EXPERT_REPORT_E2_4.md §12) ──
+# * Action range TI ∈ [0.01, 3.0] s, TR ∈ [0.5, 5.0] s — set in env_e2.py.
+#   - TI lower bound is well above the physics floor: at amp_T = 20 μT
+#     (default in `ir_se_2d_sequence`), the inversion pulse is d180 ≈ 0.59 ms
+#     and the 90° excitation is d90 ≈ 0.29 ms (rf_duration = α / (2π·γ·B1)
+#     with γ = 42.58 MHz/T). Strict pulse-non-overlap requires TI ≥ ~0.5 ms;
+#     the 10 ms floor adds ~20× cushion for gradient activity, simulator
+#     stability, and clinical relevance. Lower bound does NOT bind for the
+#     shortest phantom T1: T1 = 0.024 s → optimal TI = T1·ln(2) ≈ 0.017 s,
+#     already above the floor. The floor IS binding for hypothetical
+#     T1 < 0.007 s spheres, which we don't have.
+#   - TI upper bound 3.0 s is past optimal for the longest sphere
+#     (T1 = 1.84 s → TI_opt ≈ 1.28 s); higher TIs would be post-saturation
+#     and add no T1 information.
+#   - TR upper bound 5.0 s is "5·T1_max" — gives ≥99 % Mz recovery between
+#     blocks under the legacy steady-state convention. F1+ uses this less
+#     aggressively (cross-shot recovery is now modelled, not assumed).
+#
+# * Noise (line 260): σ_kspace = noise_sigma_rel × RMS(full ksp). This is a
+#   simulation hack to keep noise meaningful across phantom configs — NOT a
+#   physical claim. Real MRI noise is hardware-determined (thermal,
+#   ∝ √(k_B·T·BW·R) / G), absolute, scene-independent. In practice our
+#   model is roughly absolute-noise-like because RMS(ksp) is dominated by
+#   the loudest spheres (long-T1 in the inverted regime), so per-pixel σ
+#   ends up ~constant — but if the phantom composition changed, the per-
+#   sphere effective SNR would shift. Sim-to-real comparisons need to
+#   either (a) replace this with an absolute σ_kspace constant, or (b)
+#   calibrate noise_sigma_rel against a reference scan.
+#
+# * Forward model (`fits.jl::transient_mz_at_excite_npe`, F1+) assumes
+#   perfect transverse spoiling between PE rows. Holds for our test
+#   phantom (T2 = 20 ms ≪ TR − TI typically). Breaks on real-T2 tissue
+#   (T2 ≈ 80–2200 ms) — would need EPG (E2_4_PLAN.md §2.5).
+#
+# * Single-compartment relaxation. One (T1, T2) per voxel. No MT, no
+#   off-resonance distribution, no slice-profile, no B1 inhomogeneity.
+#
+# * Sequential PE ordering. F1+'s "average over Npe shots" assumes uniform
+#   PE encoding (all rows equally weighted). Centric or other orderings
+#   would change the per-shot weighting in the analytic forward model.
+#
+# * One TI per block, shared across all 14 spheres. No per-sphere
+#   targeting — `slice_z` axis exists in the action but is unused.
+#   Structural limitation; addressable only via slice-selective excitation
+#   or a multi-action-per-block MDP (E3+).
+#
+# * abs() in the signal magnitude (no phase-sensitive reconstruction)
+#   creates multimodal SSE in the fit. Two T1 values typically give
+#   equivalent |S| at saturated TIs → LM solver picks a basin by init.
+#   Profile-likelihood σ (E2_5_PLAN.md §3) reports the resulting ambiguity
+#   honestly without changing the point estimate.
+#
+# * Fitter noise floor (line 298) currently uses noise_sigma_rel ×
+#   |first-block magnitude per sphere| — per-sphere relative. Because
+#   the env's effective noise floor is roughly absolute (set by scene
+#   RMS), this UNDER-estimates σ for short-T1 spheres by 5–30×. To be
+#   replaced with profile-likelihood σ (E2_5_PLAN.md §3); using a scene-
+#   level absolute floor would also work but overfits to the env's
+#   specific noise model.
 
 import FFTW: ifft
 
@@ -35,6 +95,17 @@ mutable struct E2Env
     T1_sample_range::NTuple{2,Float64}     # T1 search range for fitting [s]
     reward_mode::Symbol                    # :neg_mape | :delta_mape
     mape_alpha::Float64                    # MAPE aggregation: α·mean + (1−α)·max
+    phase_sensitive::Bool                  # false = magnitude image (clinical default,
+                                            # creates abs() multimodal SSE — see §14 of
+                                            # cr_explainer.md). true = signed real-part
+                                            # reconstruction (sim-only, eliminates abs()
+                                            # ambiguity but assumes a known reference phase
+                                            # that real scanners need a calibration scan
+                                            # for). Default false for back-compat with
+                                            # all V1–V5 runs.
+    sigma_method::Symbol                   # :asymptotic (default, V1–V5 compat) |
+                                            # :profile_likelihood | :bootstrap. Controls
+                                            # how `T1_sigma` is computed in the fitter.
 
     # ── sphere base info (fixed at construction) ──────────────────────────
     sphere_centres_base::Vector{NTuple{3,Float64}}  # original centres [m]
@@ -90,10 +161,14 @@ function E2Env(;
     reward_mode::Symbol            = :neg_mape,
     mape_alpha::Real               = 1.0,
     rng_seed::Integer              = 0,
+    phase_sensitive::Bool          = false,            # cr_explainer.md §14
+    sigma_method::Symbol           = :profile_likelihood,  # E2_5_PLAN.md §3
 )
     cfg_field ∈ (:T3, :T15) || error("cfg_field must be :T3 or :T15")
     reward_mode ∈ (:neg_mape, :delta_mape) ||
         error("reward_mode must be :neg_mape or :delta_mape")
+    sigma_method ∈ (:asymptotic, :profile_likelihood, :bootstrap) ||
+        error("sigma_method must be :asymptotic, :profile_likelihood, or :bootstrap")
     0.0 <= Float64(mape_alpha) <= 1.0 ||
         error("mape_alpha must be in [0, 1]")
 
@@ -117,6 +192,8 @@ function E2Env(;
         Float64.(T1_sample_range),
         reward_mode,
         Float64(mape_alpha),
+        Bool(phase_sensitive),
+        sigma_method,
         centres, Float64.(T1_base), Float64.(T2_ratio),
         MersenneTwister(rng_seed),
         nothing,                            # phantom (filled at reset)
@@ -262,10 +339,28 @@ function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
         ksp .+= σ .* (randn(Float32, Npe, Nfe) .+ im .* randn(Float32, Npe, Nfe))
     end
 
-    # TODO: UNDERSTAND THIS + what the raw output of simulate acc is
-    # Reconstruct magnitude image via 2D IFFT
-    # abs.(ifft(ksp)) gives |m(x,y)| with x=(i_fe-1)*FOV/Nfe, y=(i_pe-1)*FOV/Npe
-    image_mag = Float32.(abs.(ifft(ksp, (1, 2))))
+    # Reconstruct image via 2D IFFT.
+    # - Magnitude (default, env.phase_sensitive = false): clinical convention,
+    #   produces non-negative real image. Throws away phase. Creates the abs()-
+    #   induced multimodal SSE in T1 fitting (cr_explainer.md §14, §15).
+    # - Phase-sensitive (env.phase_sensitive = true): take the real part of
+    #   the IFFT'd complex image. Sim-only — assumes a known reference phase
+    #   (which a real scanner needs a phase-calibration scan for, see
+    #   PSIR — Phase-Sensitive Inversion Recovery). The signed signal model
+    #   `S = A · (1 − 2·exp(−TI/T1))` is monotonic in T1, so the SSE has a
+    #   single basin per sphere, removing the multimodal-SSE failure mode at
+    #   the source.
+    img_complex = ifft(ksp, (1, 2))
+    image_mag = if env.phase_sensitive
+        # The complex image has a baseline phase (FFT shift convention etc.)
+        # we don't model directly. In simulation the IR signal aligns along
+        # one axis (set by the excitation phase 90°), so the relevant signed
+        # quantity is the real part. For non-trivial reference phases, this
+        # would need a phase-correction step.
+        Float32.(real.(img_complex))
+    else
+        Float32.(abs.(img_complex))
+    end
 
     image_mag, ksp
 end
@@ -290,12 +385,24 @@ function _e2_update_t1_estimates!(env::E2Env, image_mag::Matrix{Float32},
         if length(env.block_TIs[i]) >= 2
             # θ_inv = π for standard 180° inversion prep
             αs = fill(π, length(env.block_TIs[i]))
+            # Fix B (`docs/T1_FIT_AND_KOMA_TESTS.md` §7.3): use an *absolute*
+            # noise floor anchored to the first block's magnitude per sphere
+            # so σ_T1 stops coupling to the agent's per-fit data RMS. Any
+            # deterministic per-sphere reference works; first-block magnitude
+            # is the simplest stable choice.
+            abs_noise = env.noise_sigma_rel * abs(env.block_mags[i][1])
+            # F1+ (`E2_4_PLAN.md` §2.2): pass env.Npe so the fitter uses the
+            # finite-Npe transient closed form that matches what
+            # ir_se_2d_sequence actually feeds the simulator.
             fit = fit_t1_generalized_ir(
                 env.block_TIs[i], αs, env.block_mags[i];
                 TRs    = env.block_TRs[i],
                 α_excs = env.block_α_excs[i],
+                Npe    = env.Npe,
                 T1_range = env.T1_sample_range, n_grid = 200,
-                noise_sigma = env.noise_sigma_rel,
+                abs_noise_sigma = abs_noise,
+                sigma_method    = env.sigma_method,
+                signed          = env.phase_sensitive,
             )
             env.T1_est[i]   = fit.T1
             env.T1_sigma[i] = fit.T1_sigma

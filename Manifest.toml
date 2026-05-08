@@ -2,7 +2,7 @@
 
 julia_version = "1.12.1"
 manifest_format = "2.0"
-project_hash = "cc66bad99d77963c0622bd06e83088b8d88f9936"
+project_hash = "99c9e06fdc583a8b42cb87290264a23ebc1dcf22"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1212,7 +1212,7 @@ uuid = "2bec176e-9e8c-4764-a62f-295118d1ec05"
 version = "1.0.1"
 
 [[deps.QalibreMDPhantom]]
-deps = ["DisplayAs", "FFTW", "KomaMRI", "LinearAlgebra", "Random", "Suppressor"]
+deps = ["DisplayAs", "FFTW", "KomaMRI", "LinearAlgebra", "Random", "Statistics", "Suppressor"]
 path = "."
 uuid = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
 version = "0.1.0"

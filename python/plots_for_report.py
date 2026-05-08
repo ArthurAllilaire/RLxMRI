@@ -53,7 +53,10 @@ OUT    = REPO / "report_plots"   # overwritten in main() with the tagged subdir
 
 C_LEGACY = "#7f7f7f"   # E2 (neg_mape) — grey
 C_DELTA  = "#1f77b4"   # E2.1 (delta_mape) — blue
+C_UNC    = "#2ca02c"   # E2.2 (neg_mape + uncertainty obs) — green
 C_TARGET = "#d62728"   # 5% MAPE target — red
+
+E2_2_RUN = "runs/e2/20260506_111510"   # E2.2 (Option C only — uncertainty obs channel)
 
 # Nominal T1 values at 3T, in seconds (from src/materials/t1_array.jl, /1000)
 T1_3T = np.array([
@@ -97,6 +100,7 @@ def _info_density(T1, TI):
 def plot_mape_training_curve():
     legacy = _load_eval_history(REPO / "runs/e2/ppo_200k/eval_history.json")
     delta  = _load_eval_history(REPO / "runs/e2/e2_1_delta_100k/eval_history.json")
+    unc    = _load_eval_history(REPO / E2_2_RUN / "eval_history.json")
     if legacy is None or delta is None:
         print("[skip] mape_training_curve — missing eval_history.json")
         return
@@ -107,11 +111,16 @@ def plot_mape_training_curve():
     D = np.array([(d["step"], d["mape_pct"]) for d in delta])
 
     ax.plot(L[:, 0] / 1000, L[:, 1], "o-", color=C_LEGACY,
-            label="E2 (mean-MAPE reward, 5-dim action)", linewidth=1.6,
+            label="E2 (mean-MAPE, 5-dim action, no σ-obs)", linewidth=1.6,
             markersize=5)
     ax.plot(D[:, 0] / 1000, D[:, 1], "s-", color=C_DELTA,
-            label="E2.1 (delta-MAPE reward, 3-dim action)", linewidth=1.6,
+            label="E2.1 (delta-MAPE, 3-dim action)", linewidth=1.6,
             markersize=5)
+    if unc is not None:
+        U = np.array([(d["step"], d["mape_pct"]) for d in unc])
+        ax.plot(U[:, 0] / 1000, U[:, 1], "^-", color=C_UNC,
+                label="E2.2 (mean-MAPE, 5-dim action, +σ-obs)", linewidth=1.6,
+                markersize=5)
     ax.axhline(5, color=C_TARGET, linestyle="--", linewidth=1.2,
                label="target (5%)")
 
@@ -180,8 +189,14 @@ def plot_ti_histogram_compare():
 # ── plot 3 — per-sphere MAPE bars ────────────────────────────────────────────
 
 def plot_per_sphere_mape():
-    summ = _load_eval_summary(REPO / "runs/e2/e2_1_delta_100k/eval_summary.json")
-    if summ is None or "per_sphere" not in summ:
+    # Pick which run to plot: prefer E2.2 if its eval_summary exists, else E2.1
+    e22 = _load_eval_summary(REPO / E2_2_RUN / "eval_summary.json")
+    e21 = _load_eval_summary(REPO / "runs/e2/e2_1_delta_100k/eval_summary.json")
+    if e22 is not None and "per_sphere" in e22:
+        summ, color, label = e22, C_UNC, "E2.2 (mean-MAPE + σ-obs, 200k)"
+    elif e21 is not None and "per_sphere" in e21:
+        summ, color, label = e21, C_DELTA, "E2.1 (delta-MAPE, 100k)"
+    else:
         print("[skip] per_sphere_mape — missing eval_summary.json")
         return
 
@@ -190,8 +205,8 @@ def plot_per_sphere_mape():
     sphere_idx = np.arange(1, n + 1)
 
     fig, ax = plt.subplots(figsize=(8.0, 4.2))
-    bars = ax.bar(sphere_idx, per_sphere, color=C_DELTA,
-                  edgecolor="black", linewidth=0.5)
+    bars = ax.bar(sphere_idx, per_sphere, color=color,
+                  edgecolor="black", linewidth=0.5, label=label)
 
     ax.set_xticks(sphere_idx)
     # Secondary x-axis: nominal T1 in ms
@@ -204,8 +219,7 @@ def plot_per_sphere_mape():
 
     ax.set_xlabel("Sphere index (1 = longest T1, 14 = shortest)")
     ax.set_ylabel("MAPE [%]")
-    ax.set_title("E2.1 per-sphere MAPE — policy concentrates TIs at the\n"
-                 "extremes, leaving mid-T1 spheres badly fit")
+    ax.set_title(f"Per-sphere MAPE — {label}")
 
     # Highlight the spheres in the middle of the T1 range — these are the
     # ones the policy ignores by clustering at TI extremes.

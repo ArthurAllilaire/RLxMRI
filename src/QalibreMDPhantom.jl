@@ -38,6 +38,7 @@ include("builder.jl")
 include("sequences/blocks.jl")
 include("fitting/fits.jl")
 include("baselines/e0.jl")
+include("baselines/cr_optimal.jl")
 
 # --- RL experiments -------------------------------------------------------
 include("rl/e1.jl")
@@ -65,8 +66,12 @@ export PhantomConfig, AugmentConfig, SphereDescriptor,
        default_TI_schedule, default_TE_schedule,
        adaptive_TI_schedule, adaptive_TE_schedule,
        run_e0,
+       # CR-optimal baseline
+       cr_T1_variance, cr_fleet_objective, cr_optimize, cr_optimize_sweep,
+       block_time_s, schedule_time_s,
        # generalized IR
        generalized_ir_signal, fit_t1_generalized_ir, steady_state_mz_at_excite,
+       transient_mz_at_excite_npe,
        # E1 environment
        E1Env, e1_reset!, e1_step!, e1_n_actions, e1_obs_dim, e1_action_table,
        # E2 environment

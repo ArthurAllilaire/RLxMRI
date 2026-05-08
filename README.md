@@ -439,6 +439,26 @@ python python/train_e2.py \
 
 At ~24 FPS warm, 200k steps ≈ 2.3 hours of CPU time.
 
+### Checkpointing and resuming
+
+By default the script saves a checkpoint every 50k steps (`ckpt_N.zip` +
+`vecnorm_ckpt_N.pkl` alongside the usual `policy.zip`). To resume an
+interrupted run, pass `--resume` — it auto-loads the latest checkpoint and
+trains for the remaining steps:
+
+```bash
+# resume a killed run (same --out and --timesteps as the original command)
+PYTHON_JULIAPKG_OFFLINE=yes \
+PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia \
+python python/train_e2.py \
+  --timesteps 200000 \
+  --out runs/e2/ppo_200k \
+  --resume
+```
+
+`--checkpoint-interval N` changes the save cadence; `--checkpoint-interval 0`
+disables it.
+
 ### Keeping the run alive on WSL2
 
 WSL2 pauses with the Windows host. tmux **does not** survive host suspend

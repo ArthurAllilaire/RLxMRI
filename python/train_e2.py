@@ -34,6 +34,28 @@ def make_env(rank: int, train_seed: int, **env_kwargs):
     return _init
 
 
+class E2CheckpointCallback(BaseCallback):
+    """Save model + VecNormalize stats every save_freq timesteps."""
+
+    def __init__(self, save_freq: int, out_dir: Path, vec_env: VecNormalize,
+                 verbose: int = 0):
+        super().__init__(verbose)
+        self.save_freq = save_freq
+        self.out_dir   = out_dir
+        self.vec_env   = vec_env
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps % self.save_freq == 0:
+            step = self.num_timesteps
+            self.model.save(self.out_dir / f"ckpt_{step}")
+            self.vec_env.save(self.out_dir / f"vecnorm_ckpt_{step}.pkl")
+            meta = {"timesteps_done": step, "wall_time": time.time()}
+            (self.out_dir / "checkpoint_meta.json").write_text(json.dumps(meta))
+            if self.verbose:
+                print(f"[ckpt] Saved checkpoint at step {step}")
+        return True
+
+
 class E2EvalCallback(BaseCallback):
     """Periodically evaluate the policy and log per-sphere MAPE."""
 
@@ -47,7 +69,8 @@ class E2EvalCallback(BaseCallback):
         self.seed_offset      = seed_offset
         self.log_path         = log_path
         self._last_eval       = 0
-        self.history          = []
+        self.history          = (json.loads(log_path.read_text())
+                                 if log_path.exists() else [])
 
     def _on_step(self) -> bool:
         if self.num_timesteps - self._last_eval < self.every_n_steps:
@@ -116,6 +139,21 @@ def main():
     p.add_argument("--mape-alpha", type=float, default=1.0,
                    help="MAPE aggregation: α·mean + (1−α)·max. "
                         "1.0 = legacy mean; 0.5 = §16.4 Option A")
+    p.add_argument("--phase-sensitive", action="store_true",
+                   help="Use signed real-part image reconstruction instead "
+                        "of magnitude (cr_explainer.md §14, EXPERT_REPORT_E2_4 "
+                        "§15). Eliminates abs()-induced multimodal SSE in T1 "
+                        "fitting at the cost of assuming a known reference "
+                        "phase (sim-only by default).")
+    p.add_argument("--sigma-method", type=str, default="bootstrap",
+                   choices=["asymptotic", "profile_likelihood", "bootstrap"],
+                   help="σ_T1 estimation method (E2_5_PLAN.md §3 / §15). "
+                        "bootstrap (default) is best-calibrated on magnitude "
+                        "data; asymptotic reproduces V1–V5 behaviour.")
+    p.add_argument("--checkpoint-interval", type=int, default=50_000,
+                   help="Save a checkpoint every N timesteps (0 = disabled)")
+    p.add_argument("--resume", action="store_true",
+                   help="Resume from latest checkpoint in --out directory")
     args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -128,6 +166,8 @@ def main():
         simplified_action = args.simplified_action,
         terminal_bonus    = args.terminal_bonus,
         mape_alpha        = args.mape_alpha,
+        phase_sensitive   = args.phase_sensitive,
+        sigma_method      = args.sigma_method,
     )
 
     print(f"[E2] Building train env (n_envs={args.n_envs}) …")
@@ -139,30 +179,56 @@ def main():
     print("[E2] Building eval env …")
     eval_env = QalibreMDE2Env(rng_seed=args.eval_seed, **env_kwargs)
 
-    model = PPO(
-        "MlpPolicy", vec_env,
-        n_steps       = 2048,    # longer rollouts → better advantage estimates
-        batch_size    = 64,
-        learning_rate = 1e-4,    # smaller steps → tame clip_fraction (was 0.5 at 3e-4)
-        gamma         = 0.99,
-        gae_lambda    = 0.95,
-        ent_coef      = 0.005,   # let policy concentrate sooner
-        max_grad_norm = 0.5,
-        policy_kwargs = dict(net_arch=[256, 256]),
-        verbose       = 1,
-        tensorboard_log = str(args.out / "tb"),
-    )
+    if args.resume:
+        ckpts = sorted(args.out.glob("ckpt_*.zip"),
+                       key=lambda p: int(p.stem.split("_")[1]))
+        if not ckpts:
+            raise FileNotFoundError(f"No checkpoints found in {args.out}")
+        latest = ckpts[-1]
+        step_done = int(latest.stem.split("_")[1])
+        remaining = args.timesteps - step_done
+        vec_env = VecNormalize.load(
+            args.out / f"vecnorm_ckpt_{step_done}.pkl", vec_env)
+        vec_env.training = True
+        model = PPO.load(latest, env=vec_env,
+                         tensorboard_log=str(args.out / "tb"))
+        print(f"[E2] Resumed from {latest.name} "
+              f"({step_done} steps done, {remaining} remaining)")
+    else:
+        remaining = args.timesteps
+        model = PPO(
+            "MlpPolicy", vec_env,
+            n_steps       = 2048,    # longer rollouts → better advantage estimates
+            batch_size    = 64,
+            learning_rate = 1e-4,    # smaller steps → tame clip_fraction (was 0.5 at 3e-4)
+            gamma         = 0.99,
+            gae_lambda    = 0.95,
+            ent_coef      = 0.005,   # let policy concentrate sooner
+            max_grad_norm = 0.5,
+            policy_kwargs = dict(net_arch=[256, 256]),
+            device        = "cpu",   # MLP policy is faster on CPU; GPU is for KomaMRI sim
+            verbose       = 1,
+            tensorboard_log = str(args.out / "tb"),
+        )
 
-    callback = E2EvalCallback(
-        eval_env      = eval_env,
-        every_n_steps = args.eval_interval,
-        n_eval_episodes = args.eval_episodes,
-        seed_offset   = args.eval_seed,
-        log_path      = args.out / "eval_history.json",
-    )
+    callbacks: list[BaseCallback] = [
+        E2EvalCallback(
+            eval_env        = eval_env,
+            every_n_steps   = args.eval_interval,
+            n_eval_episodes = args.eval_episodes,
+            seed_offset     = args.eval_seed,
+            log_path        = args.out / "eval_history.json",
+        ),
+    ]
+    if args.checkpoint_interval > 0:
+        callbacks.append(E2CheckpointCallback(
+            save_freq = args.checkpoint_interval,
+            out_dir   = args.out,
+            vec_env   = vec_env,
+        ))
 
     t0 = time.time()
-    model.learn(total_timesteps=args.timesteps, callback=callback)
+    model.learn(total_timesteps=remaining, callback=callbacks)
     elapsed = time.time() - t0
     print(f"Training done in {elapsed:.1f}s")
 

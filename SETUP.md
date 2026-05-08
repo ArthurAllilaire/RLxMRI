@@ -91,7 +91,16 @@ bash run_e2.sh --timesteps 100000 \
 ```
 
 Every run drops `policy.zip`, `vecnorm.pkl`, `eval_history.json`, and a
-`tb/` tensorboard log under the `--out` directory.
+`tb/` tensorboard log under the `--out` directory. Checkpoints (`ckpt_N.zip`
++ `vecnorm_ckpt_N.pkl`) are written every 50k steps by default so a killed
+run can be resumed:
+
+```bash
+# resume an interrupted run — same flags as the original, plus --resume
+bash run_e2.sh --timesteps 200000 --out runs/e2/ppo_200k --resume
+```
+
+`--checkpoint-interval N` changes the cadence; `0` disables checkpointing.
 
 ## 4. Commit results back
 

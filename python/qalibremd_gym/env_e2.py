@@ -42,7 +42,42 @@ class QalibreMDE2Env(gym.Env):
 
     metadata = {"render_modes": [], "render_fps": 0}
 
-    # Physical action bounds (full 5-dim space)
+    # Physical action bounds (full 5-dim space): [TI, TE, TR, alpha_deg, slice_z_mm]
+    #
+    # Where these come from (see src/rl/e2.jl header for the full version
+    # and EXPERT_REPORT_E2_4.md §12):
+    #
+    # TI ∈ [0.010, 3.000] s
+    #   Lower bound 10 ms is ~20× above the physics floor: at amp_T = 20 μT
+    #   (default in ir_se_2d_sequence), inversion pulse d180 = π/(2π·γ·B1)
+    #   ≈ 0.59 ms and excitation d90 ≈ 0.29 ms with γ = 42.58 MHz/T. Strict
+    #   pulse-non-overlap requires TI ≥ ~0.5 ms; 10 ms adds margin for
+    #   gradient activity, simulator stability, and clinical relevance.
+    #   Lower bound does not bind for our shortest phantom sphere
+    #   (T1 = 0.024 s, optimal TI = T1·ln(2) ≈ 0.017 s, already above 10 ms).
+    #   Upper bound 3.0 s is past optimal for the longest sphere
+    #   (T1 = 1.84 s, optimal TI ≈ 1.28 s); higher TIs are post-saturation
+    #   and carry no T1 information.
+    #
+    # TE ∈ [0.005, 0.080] s
+    #   Echo time. Short TE preserves signal (T2 decay). Lower bound 5 ms
+    #   is roughly the readout duration; upper bound 80 ms is past where
+    #   T2 = 20 ms phantoms have signal left.
+    #
+    # TR ∈ [0.500, 5.000] s
+    #   Repetition time. Lower bound 500 ms keeps TR > TI for typical
+    #   choices; upper bound 5 s is "5·T1_max" (full Mz recovery under the
+    #   legacy steady-state convention). F1+ models partial recovery, so
+    #   shorter TRs are now genuinely informative.
+    #
+    # alpha_deg ∈ [5, 180]°
+    #   Excitation flip angle. 5° lower bound avoids sin(α) → 0 numerical
+    #   issues; 180° upper bound permits inversion if the agent wants it
+    #   (it usually picks 90°).
+    #
+    # slice_z ∈ [-60, +60] mm
+    #   Slab centre offset. Currently UNUSED in the env (the F1+ forward
+    #   model is non-slice-selective). Reserved for E3 per-sphere targeting.
     _ACT_LO = np.array([0.010, 0.005, 0.500,   5.0, -60.0], dtype=np.float32)
     _ACT_HI = np.array([3.000, 0.080, 5.000, 180.0,  60.0], dtype=np.float32)
 
@@ -64,8 +99,13 @@ class QalibreMDE2Env(gym.Env):
         translation_sigma_mm: float = 5.0,
         rotation_sigma_rad: float = 0.15,
         reward_mode: str = "neg_mape",       # "neg_mape" | "delta_mape"
-        mape_alpha: float = 1.0,             # α in α·mean + (1−α)·max; 1.0 = mean only
+        # α in α·mean + (1−α)·max; 1.0 = mean only
+        mape_alpha: float = 1.0,
         simplified_action: bool = False,     # drop slice_z, fix α_exc=90°
+        # True = signed real() recon (cr_explainer.md §14)
+        phase_sensitive: bool = False,
+        # "asymptotic" | "profile_likelihood" | "bootstrap"
+        sigma_method: str = "bootstrap",
         project_dir: Optional[str] = None,
     ) -> None:
         super().__init__()
@@ -75,22 +115,24 @@ class QalibreMDE2Env(gym.Env):
         qmd = _env_mod._JL_QMD
 
         self._env = qmd.E2Env(
-            rng_seed              = rng_seed,
-            cfg_field             = jl.Symbol(cfg_field),
-            voxel_size_mm         = float(voxel_size_mm),
-            FOV                   = float(FOV),
-            Nfe                   = int(Nfe),
-            Npe                   = int(Npe),
-            max_blocks            = int(max_blocks),
-            time_budget_s         = float(time_budget_s),
-            terminal_bonus        = float(terminal_bonus),
-            success_tol           = float(success_tol),
-            noise_sigma_rel       = float(noise_sigma_rel),
-            T1_sigma_rel          = float(T1_sigma_rel),
-            translation_sigma_mm  = float(translation_sigma_mm),
-            rotation_sigma_rad    = float(rotation_sigma_rad),
-            reward_mode           = jl.Symbol(reward_mode),
-            mape_alpha            = float(mape_alpha),
+            rng_seed=rng_seed,
+            cfg_field=jl.Symbol(cfg_field),
+            voxel_size_mm=float(voxel_size_mm),
+            FOV=float(FOV),
+            Nfe=int(Nfe),
+            Npe=int(Npe),
+            max_blocks=int(max_blocks),
+            time_budget_s=float(time_budget_s),
+            terminal_bonus=float(terminal_bonus),
+            success_tol=float(success_tol),
+            noise_sigma_rel=float(noise_sigma_rel),
+            T1_sigma_rel=float(T1_sigma_rel),
+            translation_sigma_mm=float(translation_sigma_mm),
+            rotation_sigma_rad=float(rotation_sigma_rad),
+            reward_mode=jl.Symbol(reward_mode),
+            mape_alpha=float(mape_alpha),
+            phase_sensitive=bool(phase_sensitive),
+            sigma_method=jl.Symbol(sigma_method),
         )
 
         obs_dim = int(qmd.e2_obs_dim(self._env))
@@ -153,7 +195,7 @@ class QalibreMDE2Env(gym.Env):
             self._env,
             list(phys.astype(float)),
         )
-        obs  = np.asarray(obs, dtype=np.float32)
+        obs = np.asarray(obs, dtype=np.float32)
         info = {}
         for k, v in info_dict.items():
             k_str = str(k)
@@ -179,6 +221,12 @@ class QalibreMDE2Env(gym.Env):
     @property
     def T1_est(self) -> np.ndarray:
         return np.array([float(v) for v in self._env.T1_est])
+
+    @property
+    def T1_sigma(self) -> np.ndarray:
+        """Asymptotic per-sphere σ on T1_est from the IR fit's J^T J inverse.
+        NaN entries mean "fewer than 2 samples" or "fit failed"."""
+        return np.array([float(v) for v in self._env.T1_sigma])
 
     @property
     def n_blocks(self) -> int:
