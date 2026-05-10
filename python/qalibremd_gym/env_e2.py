@@ -106,6 +106,8 @@ class QalibreMDE2Env(gym.Env):
         phase_sensitive: bool = False,
         # "asymptotic" | "profile_likelihood" | "bootstrap"
         sigma_method: str = "bootstrap",
+        subset_size: Optional[int] = None,
+        log_ti_action: bool = False,
         project_dir: Optional[str] = None,
     ) -> None:
         super().__init__()
@@ -114,7 +116,7 @@ class QalibreMDE2Env(gym.Env):
         jl = _env_mod._JL
         qmd = _env_mod._JL_QMD
 
-        self._env = qmd.E2Env(
+        env_kwargs = dict(
             rng_seed=rng_seed,
             cfg_field=jl.Symbol(cfg_field),
             voxel_size_mm=float(voxel_size_mm),
@@ -134,6 +136,9 @@ class QalibreMDE2Env(gym.Env):
             phase_sensitive=bool(phase_sensitive),
             sigma_method=jl.Symbol(sigma_method),
         )
+        if subset_size is not None:
+            env_kwargs["subset_size"] = int(subset_size)
+        self._env = qmd.E2Env(**env_kwargs)
 
         obs_dim = int(qmd.e2_obs_dim(self._env))
 
@@ -142,6 +147,7 @@ class QalibreMDE2Env(gym.Env):
         # 90° and slice_z at 0 — both were either coordinated-but-wasted (α
         # interacted with the fitter) or completely unused (slice_z).
         self._simplified_action = bool(simplified_action)
+        self._log_ti_action = bool(log_ti_action)
         n_act = 3 if self._simplified_action else 5
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(n_act,), dtype=np.float32
@@ -155,19 +161,29 @@ class QalibreMDE2Env(gym.Env):
 
     # ── physical ↔ normalised action conversion ──────────────────────────
 
+    def _map_ti(self, u01: float, lo: float, hi: float) -> float:
+        """Map u01 ∈ [0, 1] to a TI in [lo, hi]. Log-spaced if enabled, so the
+        agent's action density is constant per decade — short-T1 spheres need
+        TIs in the lowest 1.5 % of the linear range, see EXPERT_REPORT_TRAC §9.2."""
+        if self._log_ti_action:
+            return float(lo) * (float(hi) / float(lo)) ** float(u01)
+        return float(lo) + float(u01) * (float(hi) - float(lo))
+
     def _denorm_action(self, action: np.ndarray) -> np.ndarray:
         """Map agent output in [-1, 1] to a physical 5-vector for Julia."""
         a = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
+        u = (a + 1.0) / 2.0  # [0, 1]
         if self._simplified_action:
-            # Lift 3-dim agent output → 5-dim env action: α_exc=90°, slice_z=0
             full = np.zeros(5, dtype=np.float32)
-            lo3 = self._ACT_LO[[0, 1, 2]]
-            hi3 = self._ACT_HI[[0, 1, 2]]
-            full[[0, 1, 2]] = lo3 + (a + 1.0) / 2.0 * (hi3 - lo3)
+            full[0] = self._map_ti(u[0], self._ACT_LO[0], self._ACT_HI[0])
+            full[1] = self._ACT_LO[1] + u[1] * (self._ACT_HI[1] - self._ACT_LO[1])
+            full[2] = self._ACT_LO[2] + u[2] * (self._ACT_HI[2] - self._ACT_LO[2])
             full[3] = 90.0
             full[4] = 0.0
             return full
-        return self._ACT_LO + (a + 1.0) / 2.0 * (self._ACT_HI - self._ACT_LO)
+        full = self._ACT_LO + u * (self._ACT_HI - self._ACT_LO)
+        full[0] = self._map_ti(u[0], self._ACT_LO[0], self._ACT_HI[0])
+        return full.astype(np.float32)
 
     # ── Gymnasium API ──────────────────────────────────────────────────────
 
@@ -186,6 +202,8 @@ class QalibreMDE2Env(gym.Env):
         obs = np.asarray(obs, dtype=np.float32)
         info = {
             "T1_true": np.array([float(v) for v in self._env.T1_true]),
+            "sphere_indices": np.array([int(v) for v in self._env.sphere_indices],
+                                       dtype=np.int64),
         }
         return obs, info
 

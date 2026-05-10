@@ -707,4 +707,30 @@
         @test info["TR"] >= (TI_req + TE_req) / 0.90 - 1e-9
     end
 
+    @testset "E2 random subset reset keeps fixed obs shape and active sphere identities" begin
+        env = E2Env(; subset_size = 5, Nfe = 8, Npe = 4,
+                     max_blocks = 2, time_budget_s = 600.0)
+
+        obs1 = e2_reset!(env; rng_seed = 123)
+        idx1 = copy(env.sphere_indices)
+        T1_1 = copy(env.T1_base)
+
+        @test env.n_spheres == 5
+        @test length(obs1) == 8 * 4 + 2 * 5 + 3
+        @test length(idx1) == 5
+        @test issorted(idx1)
+        @test length(unique(idx1)) == 5
+        @test all(1 .<= idx1 .<= 14)
+        @test T1_1 == env.T1_base_pool[idx1]
+
+        obs2 = e2_reset!(env; rng_seed = 123)
+        @test env.sphere_indices == idx1
+        @test env.T1_base == T1_1
+        @test length(obs2) == length(obs1)
+
+        obs3 = e2_reset!(env; rng_seed = 124)
+        @test length(obs3) == length(obs1)
+        @test length(env.T1_true) == 5
+    end
+
 end

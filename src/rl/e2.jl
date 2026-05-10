@@ -83,7 +83,8 @@ mutable struct E2Env
     FOV::Float64                           # image field of view [m]
     Nfe::Int                               # frequency-encode samples
     Npe::Int                               # phase-encode steps
-    n_spheres::Int                         # 14 for the T1 plate
+    n_spheres::Int                         # active spheres per episode
+    subset_size::Union{Nothing,Int}        # nothing = all spheres; k = random k-subset
     max_blocks::Int
     time_budget_s::Float64
     terminal_bonus::Float64
@@ -107,10 +108,16 @@ mutable struct E2Env
                                             # :profile_likelihood | :bootstrap. Controls
                                             # how `T1_sigma` is computed in the fitter.
 
-    # ── sphere base info (fixed at construction) ──────────────────────────
-    sphere_centres_base::Vector{NTuple{3,Float64}}  # original centres [m]
-    T1_base::Vector{Float64}               # nominal T1 at cfg_field [s]
-    T2_ratio::Vector{Float64}              # T2/T1 ratio per sphere
+    # ── sphere pool info (fixed at construction) ──────────────────────────
+    sphere_centres_pool::Vector{NTuple{3,Float64}}  # all original centres [m]
+    T1_base_pool::Vector{Float64}          # nominal pool T1 at cfg_field [s]
+    T2_ratio_pool::Vector{Float64}         # T2/T1 ratio per pool sphere
+
+    # ── active sphere info (changes at reset when subset_size is set) ─────
+    sphere_indices::Vector{Int}            # 1-based indices into the 14-sphere pool
+    sphere_centres_base::Vector{NTuple{3,Float64}}
+    T1_base::Vector{Float64}
+    T2_ratio::Vector{Float64}
 
     # ── episode state ────────────────────────────────────────────────────────
     rng::MersenneTwister
@@ -163,6 +170,7 @@ function E2Env(;
     rng_seed::Integer              = 0,
     phase_sensitive::Bool          = false,            # cr_explainer.md §14
     sigma_method::Symbol           = :profile_likelihood,  # E2_5_PLAN.md §3
+    subset_size::Union{Nothing,Integer} = nothing,
 )
     cfg_field ∈ (:T3, :T15) || error("cfg_field must be :T3 or :T15")
     reward_mode ∈ (:neg_mape, :delta_mape) ||
@@ -177,14 +185,22 @@ function E2Env(;
                                 include_plates = [:T1])
     base_descs = sphere_descriptors(:T1, base_cfg;
                                     rng = MersenneTwister(0))
-    n_spheres  = length(base_descs)
-    centres    = [d.centre for d in base_descs]
-    T1_base    = [d.T1 for d in base_descs]
-    T2_ratio   = T2_OF_T1_ARRAY[cfg_field] ./ T1_ARRAY[cfg_field]
+    n_pool      = length(base_descs)
+    subset_size !== nothing &&
+        (1 <= Int(subset_size) <= n_pool ||
+         error("subset_size must be between 1 and $n_pool, or nothing"))
+    n_spheres  = subset_size === nothing ? n_pool : Int(subset_size)
+    pool_centres = [d.centre for d in base_descs]
+    pool_T1      = [d.T1 for d in base_descs]
+    pool_ratio   = Float64.(T2_OF_T1_ARRAY[cfg_field] ./ T1_ARRAY[cfg_field])
+    active_idx   = collect(1:n_spheres)
+    centres      = pool_centres[active_idx]
+    T1_base      = pool_T1[active_idx]
+    T2_ratio     = pool_ratio[active_idx]
 
     E2Env(
         cfg_field, Float64(voxel_size_mm),
-        Float64(FOV), Nfe, Npe, n_spheres,
+        Float64(FOV), Nfe, Npe, n_spheres, subset_size === nothing ? nothing : n_spheres,
         Int(max_blocks), Float64(time_budget_s),
         Float64(terminal_bonus), Float64(success_tol),
         Float64(noise_sigma_rel), Float64(T1_sigma_rel),
@@ -194,7 +210,8 @@ function E2Env(;
         Float64(mape_alpha),
         Bool(phase_sensitive),
         sigma_method,
-        centres, Float64.(T1_base), Float64.(T2_ratio),
+        pool_centres, Float64.(pool_T1), pool_ratio,
+        active_idx, centres, Float64.(T1_base), T2_ratio,
         MersenneTwister(rng_seed),
         nothing,                            # phantom (filled at reset)
         zeros(n_spheres), fill((1, 1), n_spheres),
@@ -222,6 +239,15 @@ e2_action_hi(::E2Env) = Float64[3.000, 0.080, 5.0, 180.0,   60.0]
 function _e2_build_episode_phantom(env::E2Env, rng_seed::Int)
     rng_ep = MersenneTwister(rng_seed)
 
+    if env.subset_size === nothing
+        env.sphere_indices = collect(eachindex(env.T1_base_pool))
+    else
+        env.sphere_indices = sort(randperm(rng_ep, length(env.T1_base_pool))[1:env.subset_size])
+    end
+    env.sphere_centres_base = env.sphere_centres_pool[env.sphere_indices]
+    env.T1_base             = env.T1_base_pool[env.sphere_indices]
+    env.T2_ratio            = env.T2_ratio_pool[env.sphere_indices]
+
     # Per-sphere T1 jitter (log-normal, centred on nominal values)
     T1_ep = [env.T1_base[i] * exp(env.T1_sigma_rel * randn(rng_ep))
              for i in 1:env.n_spheres]
@@ -229,16 +255,18 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int)
     # Per-sphere T2 (preserve T2/T1 ratio)
     T2_ep = T1_ep .* env.T2_ratio
 
-    # Build custom sphere map: override T1 and T2 per sphere
+    # Build a custom active-sphere list: subset_size episodes contain only the
+    # selected T1 spheres, while the default path keeps the full 14-sphere plate.
     base_cfg  = PhantomConfig(field = env.cfg_field, voxel_size_mm = 1.0,
                                include_plates = [:T1])
     base_descs = sphere_descriptors(:T1, base_cfg; rng = MersenneTwister(0))
-    cmap = Dict{Symbol,Any}()
-    for (i, d) in enumerate(base_descs)
-        cmap[d.label] = SphereDescriptor(
+    active_descs = SphereDescriptor[]
+    for (i, pool_i) in enumerate(env.sphere_indices)
+        d = base_descs[pool_i]
+        push!(active_descs, SphereDescriptor(
             d.centre, d.radius, d.ρ,
             T1_ep[i], T2_ep[i], T2_ep[i], d.delta_w, d.label,
-        )
+        ))
     end
 
     # Episode rotation and translation (domain randomisation)
@@ -249,17 +277,16 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int)
     ty = env.translation_sigma_mm * randn(rng_ep)
     tz = env.translation_sigma_mm * randn(rng_ep)
 
-    cfg = PhantomConfig(
-        field                = env.cfg_field,
-        voxel_size_mm        = env.voxel_size_mm,
-        include_plates       = [:T1],
-        rotation             = (rx, ry, rz),
-        translation_mm       = (tx, ty, tz),
-        augment              = AugmentConfig(B0_sigma_Hz = 5.0),
-        custom_sphere_map    = cmap,
-        rng_seed             = rng_seed,
-    )
-    phantom = build_phantom(cfg)
+    delta_x = env.voxel_size_mm * 1e-3
+    parts = Phantom[]
+    for d in active_descs
+        p = build_sphere(d, delta_x)
+        length(p.x) > 0 && push!(parts, p)
+    end
+    phantom = isempty(parts) ? _empty_phantom("e2_subset") : reduce(+, parts)
+    phantom.name = "e2_subset"
+    phantom = apply_transform!(phantom, (rx, ry, rz), (tx, ty, tz) .* 1e-3)
+    phantom = apply_per_spin_noise!(phantom, AugmentConfig(B0_sigma_Hz = 5.0), rng_ep)
 
     # Compute transformed sphere centres for pixel mapping
     R = rotation_matrix(rx, ry, rz)
@@ -524,6 +551,7 @@ function e2_step!(env::E2Env, action_vec)
         "mape"        => mape,
         "T1_true"     => copy(env.T1_true),
         "T1_est"      => copy(env.T1_est),
+        "sphere_indices" => copy(env.sphere_indices),
         "n_blocks"    => env.n_blocks,
         "time_s"      => env.time_used_s,
         "block_time"  => block_time,

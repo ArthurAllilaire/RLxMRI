@@ -61,16 +61,20 @@ class E2EvalCallback(BaseCallback):
 
     def __init__(self, eval_env: QalibreMDE2Env, every_n_steps: int,
                  n_eval_episodes: int, seed_offset: int,
-                 log_path: Path, verbose: int = 1):
+                 log_path: Path, best_dir: Path | None = None,
+                 verbose: int = 1):
         super().__init__(verbose)
         self.eval_env         = eval_env
         self.every_n_steps    = every_n_steps
         self.n_eval_episodes  = n_eval_episodes
         self.seed_offset      = seed_offset
         self.log_path         = log_path
+        self.best_dir         = best_dir
         self._last_eval       = 0
         self.history          = (json.loads(log_path.read_text())
                                  if log_path.exists() else [])
+        self.best_mape        = min((h["mape_pct"] for h in self.history),
+                                    default=float("inf"))
 
     def _on_step(self) -> bool:
         if self.num_timesteps - self._last_eval < self.every_n_steps:
@@ -111,6 +115,26 @@ class E2EvalCallback(BaseCallback):
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("w") as f:
             json.dump(self.history, f, indent=2)
+
+        # Save best-eval policy/vecnorm so resumed/long runs don't lose the
+        # best checkpoint to overtraining drift (see EXPERT_REPORT_TRAC §10.2).
+        if self.best_dir is not None and mape_mean < self.best_mape:
+            self.best_mape = mape_mean
+            self.best_dir.mkdir(parents=True, exist_ok=True)
+            self.model.save(str(self.best_dir / "best_policy"))
+            vec_norm = self.model.get_vec_normalize_env()
+            if vec_norm is not None:
+                vec_norm.save(str(self.best_dir / "best_vecnorm.pkl"))
+            with (self.best_dir / "best_meta.json").open("w") as f:
+                json.dump({
+                    "step": self.num_timesteps,
+                    "mape_pct": mape_mean,
+                    "p90_pct": mape_p90,
+                    "mean_time_s": mean_time,
+                }, f, indent=2)
+            if self.verbose:
+                print(f"[E2 eval]  → new best MAPE {mape_mean:.2f}% saved to "
+                      f"{self.best_dir}")
         return True
 
 
@@ -126,10 +150,18 @@ def main():
     p.add_argument("--field",          type=str,   default="T3",
                    choices=["T3", "T15"])
     p.add_argument("--max-blocks",     type=int,   default=15)
+    p.add_argument("--time-budget",    type=float, default=120.0,
+                   help="Episode scan-time budget in seconds.")
+    p.add_argument("--subset-size",    type=int,   default=None,
+                   help="Draw this many T1 spheres without replacement per "
+                        "episode. Omit for the full 14-sphere plate.")
     p.add_argument("--noise",          type=float, default=0.05)
     p.add_argument("--reward-mode",    type=str,   default="neg_mape",
                    choices=["neg_mape", "delta_mape"],
                    help="neg_mape (legacy) | delta_mape (per-step progress)")
+    p.add_argument("--log-ti-action", action="store_true",
+                   help="Log-spaced TI action mapping (constant density per "
+                        "decade). See EXPERT_REPORT_TRAC §9.2.")
     p.add_argument("--simplified-action", action="store_true",
                    help="3-dim action [TI, TE, TR]; fixes α_exc=90° and "
                         "drops the unused slice_z dim")
@@ -161,9 +193,12 @@ def main():
     env_kwargs = dict(
         cfg_field         = args.field,
         max_blocks        = args.max_blocks,
+        time_budget_s     = args.time_budget,
+        subset_size       = args.subset_size,
         noise_sigma_rel   = args.noise,
         reward_mode       = args.reward_mode,
         simplified_action = args.simplified_action,
+        log_ti_action     = args.log_ti_action,
         terminal_bonus    = args.terminal_bonus,
         mape_alpha        = args.mape_alpha,
         phase_sensitive   = args.phase_sensitive,
@@ -187,6 +222,12 @@ def main():
         latest = ckpts[-1]
         step_done = int(latest.stem.split("_")[1])
         remaining = args.timesteps - step_done
+        if remaining <= 0:
+            raise ValueError(
+                f"--timesteps={args.timesteps} is not above latest checkpoint "
+                f"{latest.name} ({step_done} steps). Increase --timesteps or "
+                "start a fresh output directory."
+            )
         vec_env = VecNormalize.load(
             args.out / f"vecnorm_ckpt_{step_done}.pkl", vec_env)
         vec_env.training = True
@@ -218,6 +259,7 @@ def main():
             n_eval_episodes = args.eval_episodes,
             seed_offset     = args.eval_seed,
             log_path        = args.out / "eval_history.json",
+            best_dir        = args.out / "best",
         ),
     ]
     if args.checkpoint_interval > 0:
@@ -228,7 +270,11 @@ def main():
         ))
 
     t0 = time.time()
-    model.learn(total_timesteps=remaining, callback=callbacks)
+    model.learn(
+        total_timesteps=remaining,
+        callback=callbacks,
+        reset_num_timesteps=not args.resume,
+    )
     elapsed = time.time() - t0
     print(f"Training done in {elapsed:.1f}s")
 

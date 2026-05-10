@@ -109,9 +109,12 @@ def _cr_optimal_factory(TIs, TRs):
     return _sched
 
 
-def evaluate(name: str, sched_fn, n_episodes: int, seed_offset: int) -> dict:
-    env = QalibreMDE2Env(rng_seed=seed_offset)
+def evaluate(name: str, sched_fn, n_episodes: int, seed_offset: int,
+             **env_kwargs) -> dict:
+    env = QalibreMDE2Env(rng_seed=seed_offset, **env_kwargs)
     mapes, per_sphere, times, ep_lens = [], [], [], []
+    pool_errs = {i: [] for i in range(1, 15)}
+    subset_indices = []
 
     for ep in range(n_episodes):
         obs, _ = env.reset(seed=seed_offset + ep)
@@ -121,12 +124,21 @@ def evaluate(name: str, sched_fn, n_episodes: int, seed_offset: int) -> dict:
             obs, _r, done, _trunc, info = env.step(_phys_to_norm(env, phys))
             step += 1
         mapes.append(float(info.get("mape", np.nan)))
-        per_sphere.append(np.abs(env.T1_est - env.T1_true) / env.T1_true)
+        errs = np.abs(env.T1_est - env.T1_true) / env.T1_true
+        per_sphere.append(errs)
+        idxs = np.asarray(info.get("sphere_indices", []), dtype=np.int64)
+        if idxs.size == errs.size:
+            subset_indices.append(idxs.tolist())
+            for idx, err in zip(idxs, errs):
+                pool_errs[int(idx)].append(float(err))
         times.append(env.time_used_s)
         ep_lens.append(step)
 
-    arr = np.array(per_sphere)
-    return {
+    max_slots = max(len(x) for x in per_sphere)
+    arr = np.full((len(per_sphere), max_slots), np.nan)
+    for i, errs in enumerate(per_sphere):
+        arr[i, :len(errs)] = errs
+    result = {
         "schedule":           name,
         "n_episodes":         n_episodes,
         "mape_pct":           float(np.nanmean(mapes)) * 100,
@@ -137,6 +149,105 @@ def evaluate(name: str, sched_fn, n_episodes: int, seed_offset: int) -> dict:
         "mean_ep_len":        float(np.mean(ep_lens)),
         "per_sphere_mape_pct": (np.nanmean(arr, axis=0) * 100).tolist(),
         "per_sphere_p90_pct":  (np.nanpercentile(arr, 90, axis=0) * 100).tolist(),
+        "subset_indices":     subset_indices,
+    }
+    pool_mean = []
+    pool_p90 = []
+    pool_n = []
+    for i in range(1, 15):
+        vals = np.asarray(pool_errs[i], dtype=np.float64)
+        pool_n.append(int(vals.size))
+        pool_mean.append(float(np.nanmean(vals)) * 100 if vals.size else None)
+        pool_p90.append(float(np.nanpercentile(vals, 90)) * 100 if vals.size else None)
+    result["per_pool_sphere_mape_pct"] = pool_mean
+    result["per_pool_sphere_p90_pct"] = pool_p90
+    result["per_pool_sphere_n"] = pool_n
+    return result
+
+
+def evaluate_cr_oracle(n_episodes: int, seed_offset: int,
+                       cr_budget: float, cr_block_grid: list[int],
+                       cr_starts: int, cr_refine: int,
+                       **env_kwargs) -> dict:
+    """Evaluate Formulation B: solve a CR-optimal schedule for each subset.
+
+    This is an oracle lower bound for non-adaptive fixed schedules because it
+    sees the episode's sphere subset before choosing the schedule.
+    """
+    env = QalibreMDE2Env(rng_seed=seed_offset, **env_kwargs)
+    cache: dict[tuple[int, ...], tuple[list[float], list[float], int, float]] = {}
+
+    def _solve_for_current_subset(info):
+        idxs = tuple(int(i) for i in info["sphere_indices"])
+        if idxs not in cache:
+            # Oracle sees the subset identity, not the episode's jittered T1.
+            T1s = [float(t) for t in env._env.T1_base]
+            cache[idxs] = make_cr_optimal_schedule(
+                T1s,
+                budget_s=cr_budget,
+                n_block_grid=tuple(cr_block_grid),
+                n_starts=cr_starts,
+                n_refine=cr_refine,
+            )
+        return cache[idxs]
+
+    mapes, per_sphere, times, ep_lens, subset_indices = [], [], [], [], []
+    pool_errs = {i: [] for i in range(1, 15)}
+    schedules = {}
+
+    for ep in range(n_episodes):
+        obs, reset_info = env.reset(seed=seed_offset + ep)
+        TIs, TRs, n_blocks, L = _solve_for_current_subset(reset_info)
+        sched_fn = _cr_optimal_factory(TIs, TRs)
+        idxs = tuple(int(i) for i in reset_info["sphere_indices"])
+        schedules[str(idxs)] = {"TIs": TIs, "TRs": TRs,
+                                "n_blocks": n_blocks, "L": L}
+
+        done, step, info = False, 0, {}
+        while not done:
+            phys = sched_fn(step)
+            obs, _r, done, _trunc, info = env.step(_phys_to_norm(env, phys))
+            step += 1
+
+        errs = np.abs(env.T1_est - env.T1_true) / env.T1_true
+        mapes.append(float(info.get("mape", np.nan)))
+        per_sphere.append(errs)
+        subset_indices.append(list(idxs))
+        for idx, err in zip(idxs, errs):
+            pool_errs[int(idx)].append(float(err))
+        times.append(env.time_used_s)
+        ep_lens.append(step)
+
+    max_slots = max(len(x) for x in per_sphere)
+    arr = np.full((len(per_sphere), max_slots), np.nan)
+    for i, errs in enumerate(per_sphere):
+        arr[i, :len(errs)] = errs
+
+    pool_mean, pool_p90, pool_n = [], [], []
+    for i in range(1, 15):
+        vals = np.asarray(pool_errs[i], dtype=np.float64)
+        pool_n.append(int(vals.size))
+        pool_mean.append(float(np.nanmean(vals)) * 100 if vals.size else None)
+        pool_p90.append(float(np.nanpercentile(vals, 90)) * 100 if vals.size else None)
+
+    return {
+        "schedule": "cr_oracle",
+        "formulation": "oracle_per_subset",
+        "n_episodes": n_episodes,
+        "n_unique_subsets_solved": len(cache),
+        "mape_pct": float(np.nanmean(mapes)) * 100,
+        "mape_p90_pct": float(np.nanpercentile(mapes, 90)) * 100,
+        "success_5pct": float(np.mean([m < 0.05 for m in mapes
+                                        if not np.isnan(m)])),
+        "mean_scan_time_s": float(np.mean(times)),
+        "mean_ep_len": float(np.mean(ep_lens)),
+        "per_sphere_mape_pct": (np.nanmean(arr, axis=0) * 100).tolist(),
+        "per_sphere_p90_pct": (np.nanpercentile(arr, 90, axis=0) * 100).tolist(),
+        "per_pool_sphere_mape_pct": pool_mean,
+        "per_pool_sphere_p90_pct": pool_p90,
+        "per_pool_sphere_n": pool_n,
+        "subset_indices": subset_indices,
+        "schedules_by_subset": schedules,
     }
 
 
@@ -145,25 +256,56 @@ def main():
     p.add_argument("--episodes", type=int, default=30)
     p.add_argument("--seed",     type=int, default=500_000)
     p.add_argument("--out",      type=Path, default=Path("runs/e2/baselines"))
+    p.add_argument("--field",    type=str, default="T3", choices=["T3", "T15"])
+    p.add_argument("--max-blocks", type=int, default=15)
+    p.add_argument("--time-budget", type=float, default=120.0)
+    p.add_argument("--subset-size", type=int, default=None,
+                   help="Evaluate schedules on random k-sphere subsets.")
+    p.add_argument("--noise", type=float, default=0.05)
+    p.add_argument("--phase-sensitive", action="store_true")
+    p.add_argument("--sigma-method", type=str, default="bootstrap",
+                   choices=["asymptotic", "profile_likelihood", "bootstrap"])
     p.add_argument("--cr-optimal", action="store_true",
                    help="Also solve and run the CR-optimal fixed schedule on "
                         "the 14-sphere T3 fleet at the env's default budget.")
-    p.add_argument("--cr-budget", type=float, default=120.0,
+    p.add_argument("--cr-oracle", action="store_true",
+                   help="Also run oracle CR-optimal Formulation B: solve one "
+                        "fixed schedule per sampled subset. Use with "
+                        "--subset-size for the E2-tractability lower bound.")
+    p.add_argument("--cr-budget", type=float, default=None,
                    help="Scan-time budget for the CR-optimal solve [s].")
+    p.add_argument("--cr-block-grid", type=int, nargs="+",
+                   default=[4, 6, 8, 10, 14, 18],
+                   help="n_blocks values swept by the CR optimiser.")
+    p.add_argument("--cr-starts", type=int, default=1000)
+    p.add_argument("--cr-refine", type=int, default=10)
     args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
 
     schedules = dict(SCHEDULES)
+    env_kwargs = dict(
+        cfg_field=args.field,
+        max_blocks=args.max_blocks,
+        time_budget_s=args.time_budget,
+        subset_size=args.subset_size,
+        noise_sigma_rel=args.noise,
+        phase_sensitive=args.phase_sensitive,
+        sigma_method=args.sigma_method,
+    )
+    cr_budget = args.time_budget if args.cr_budget is None else args.cr_budget
 
     if args.cr_optimal:
         # T3 14-sphere fleet — should match T1_ARRAY[:T3] in src/materials/t1_array.jl
         T1s_T3 = [1.838, 1.398, 0.998, 0.726, 0.509, 0.367, 0.259, 0.185,
                   0.131, 0.091, 0.064, 0.046, 0.033, 0.023]
         print(f"\n[baseline_e2] Solving CR-optimal schedule "
-              f"(fleet=14 spheres, budget={args.cr_budget}s) …")
+              f"(expected random-subset fleet=14 spheres, budget={cr_budget}s) …")
         TIs, TRs, n_blocks, L = make_cr_optimal_schedule(
-            T1s_T3, budget_s=args.cr_budget)
+            T1s_T3, budget_s=cr_budget,
+            n_block_grid=tuple(args.cr_block_grid),
+            n_starts=args.cr_starts,
+            n_refine=args.cr_refine)
         print(f"  best n_blocks = {n_blocks}, L = {L:.4f}")
         print(f"  TIs (sorted)  = {sorted(round(t, 4) for t in TIs)}")
         print(f"  TRs (sorted)  = {sorted(round(t, 4) for t in TRs)}")
@@ -171,22 +313,51 @@ def main():
         # Persist the CR-opt schedule for reproducibility
         with (args.out / "cr_optimal_schedule.json").open("w") as f:
             json.dump({"TIs": TIs, "TRs": TRs, "n_blocks": n_blocks, "L": L,
-                       "T1s": T1s_T3, "budget_s": args.cr_budget}, f, indent=2)
+                       "T1s": T1s_T3, "budget_s": cr_budget,
+                       "formulation": "expected_loss_all_14_pool",
+                       "subset_size_eval": args.subset_size,
+                       "n_block_grid": args.cr_block_grid}, f, indent=2)
+
+    if args.cr_oracle and args.subset_size is None:
+        raise ValueError("--cr-oracle is intended for --subset-size k evaluations")
 
     results = {}
     for name, fn in schedules.items():
         print(f"\n[baseline_e2] Evaluating '{name}' on {args.episodes} eps "
               f"(seeds {args.seed}…{args.seed + args.episodes - 1})")
-        r = evaluate(name, fn, args.episodes, args.seed)
+        r = evaluate(name, fn, args.episodes, args.seed, **env_kwargs)
         results[name] = r
         print(f"  MAPE       = {r['mape_pct']:.2f}%")
         print(f"  p90 MAPE   = {r['mape_p90_pct']:.2f}%")
         print(f"  Success<5% = {r['success_5pct']:.1%}")
         print(f"  Mean time  = {r['mean_scan_time_s']:.1f}s "
               f"({r['mean_ep_len']:.1f} blocks)")
-        print(f"  Per-sphere MAPE [%] (long-T1 → short-T1):")
+        label = "active slot" if args.subset_size else "sphere"
+        print(f"  Per-{label} MAPE [%] (long-T1 → short-T1 within active episode):")
         for i, v in enumerate(r['per_sphere_mape_pct']):
-            print(f"    sphere {i:2d}: {v:7.1f}%")
+            print(f"    {label} {i:2d}: {v:7.1f}%")
+        if args.subset_size:
+            print(f"  Per-pool-sphere MAPE [%] (original 1-based T1_ARRAY index):")
+            for i, (v, n) in enumerate(zip(r["per_pool_sphere_mape_pct"],
+                                           r["per_pool_sphere_n"]), start=1):
+                if v is not None:
+                    print(f"    pool {i:2d}: {v:7.1f}%  (n={n})")
+
+    if args.cr_oracle:
+        print(f"\n[baseline_e2] Evaluating oracle CR-optimal on "
+              f"{args.episodes} sampled subsets")
+        r = evaluate_cr_oracle(
+            args.episodes, args.seed, cr_budget, args.cr_block_grid,
+            args.cr_starts, args.cr_refine, **env_kwargs)
+        results["cr_oracle"] = r
+        print(f"  MAPE       = {r['mape_pct']:.2f}%")
+        print(f"  p90 MAPE   = {r['mape_p90_pct']:.2f}%")
+        print(f"  Success<5% = {r['success_5pct']:.1%}")
+        print(f"  Mean time  = {r['mean_scan_time_s']:.1f}s "
+              f"({r['mean_ep_len']:.1f} blocks)")
+        print(f"  Unique subsets solved = {r['n_unique_subsets_solved']}")
+        with (args.out / "cr_oracle_schedules.json").open("w") as f:
+            json.dump(r["schedules_by_subset"], f, indent=2)
 
     out_path = args.out / "baseline_summary.json"
     with out_path.open("w") as f:

@@ -123,15 +123,32 @@ def main():
     p.add_argument("--seed",     type=int,  default=500_000)
     p.add_argument("--field",    type=str,  default="T3",
                    choices=["T3", "T15"])
+    p.add_argument("--max-blocks", type=int, default=15)
+    p.add_argument("--time-budget", type=float, default=120.0)
+    p.add_argument("--subset-size", type=int, default=None,
+                   help="Evaluate on random k-sphere subsets instead of the "
+                        "full 14-sphere plate.")
+    p.add_argument("--phase-sensitive", action="store_true")
+    p.add_argument("--sigma-method", type=str, default="bootstrap",
+                   choices=["asymptotic", "profile_likelihood", "bootstrap"])
     p.add_argument("--noise-sweep", action="store_true",
                    help="Sweep noise levels σ ∈ {0, 0.02, 0.05, 0.10, 0.20}")
     p.add_argument("--simplified-action", action="store_true",
                    help="Required if the policy was trained with "
                         "--simplified-action (3-dim action space)")
+    p.add_argument("--log-ti-action", action="store_true",
+                   help="Required if the policy was trained with "
+                        "--log-ti-action (log-spaced TI mapping).")
     args = p.parse_args()
 
     env_kwargs = dict(cfg_field=args.field,
-                       simplified_action=args.simplified_action)
+                       max_blocks=args.max_blocks,
+                       time_budget_s=args.time_budget,
+                       subset_size=args.subset_size,
+                       phase_sensitive=args.phase_sensitive,
+                       sigma_method=args.sigma_method,
+                       simplified_action=args.simplified_action,
+                       log_ti_action=args.log_ti_action)
 
     print("=" * 60)
     print(f"E2 Evaluation — policy: {args.policy}")
@@ -165,7 +182,7 @@ def main():
     # physical [TI, TE, TR, α, slice_z] vector by construction.
     print(f"\nEvaluating fixed-TI grid baseline on same configs …")
     base_kwargs = {k: v for k, v in env_kwargs.items()
-                   if k != "simplified_action"}
+                   if k not in ("simplified_action", "log_ti_action")}
     env_base = QalibreMDE2Env(rng_seed=args.seed, **base_kwargs)
     base = evaluate_fixed_grid(env_base, args.episodes, args.seed)
     print(f"  MAPE        = {base['mape_pct']:.2f}%")

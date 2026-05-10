@@ -64,16 +64,42 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
             "alpha_deg":     [],
             "mape":          [],
             "T1_est_mean":   [],
-            "T1_est_at_decision": [],   # mean estimate the policy could see
+            "T1_est_at_decision":      [],   # mean (kept for back-compat)
+            "T1_est_min_at_decision":  [],   # min finite per-sphere T1_est
+            "T1_est_max_at_decision":  [],   # max finite per-sphere T1_est
+            "T1_est_unc_at_decision":  [],   # T1_est of most-uncertain sphere
+            "T1_est_per_sphere_at_decision": [],   # full vector per block
+            "T1_sigma_at_decision":    [],   # full sigma vector per block
             "T1_true":       np.asarray(raw_env.T1_true, dtype=np.float64),
+            "sphere_indices": np.asarray([], dtype=np.int64),
         }
         done = False
         while not done:
-            # mean of running T1_est that the policy *sees* at decision time
+            # Per-sphere running T1_est the policy *sees* at decision time
             t1_est_now = np.asarray(raw_env.T1_est, dtype=np.float64)
+            try:
+                t1_sig_now = np.asarray(raw_env._env.T1_sigma, dtype=np.float64)
+            except Exception:
+                t1_sig_now = np.full_like(t1_est_now, np.nan)
+            finite = np.isfinite(t1_est_now) & (t1_est_now > 0)
             ep_record["T1_est_at_decision"].append(
-                float(np.nanmean(t1_est_now)) if np.any(np.isfinite(t1_est_now)) else np.nan
+                float(np.nanmean(t1_est_now)) if finite.any() else np.nan
             )
+            ep_record["T1_est_min_at_decision"].append(
+                float(np.min(t1_est_now[finite])) if finite.any() else np.nan
+            )
+            ep_record["T1_est_max_at_decision"].append(
+                float(np.max(t1_est_now[finite])) if finite.any() else np.nan
+            )
+            # Most-uncertain sphere's T1_est (highest finite sigma)
+            sig_finite = np.isfinite(t1_sig_now) & finite
+            if sig_finite.any():
+                idx_unc = int(np.argmax(np.where(sig_finite, t1_sig_now, -np.inf)))
+                ep_record["T1_est_unc_at_decision"].append(float(t1_est_now[idx_unc]))
+            else:
+                ep_record["T1_est_unc_at_decision"].append(np.nan)
+            ep_record["T1_est_per_sphere_at_decision"].append(t1_est_now.copy())
+            ep_record["T1_sigma_at_decision"].append(t1_sig_now.copy())
             action, _ = model.predict(_norm(obs), deterministic=True)
             obs, _r, done, _trunc, info = raw_env.step(action)
             ep_record["TI"].append(float(info.get("TI", np.nan)))
@@ -84,6 +110,10 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
             t1_est_post = np.asarray(info.get("T1_est",
                                               raw_env.T1_est), dtype=np.float64)
             ep_record["T1_est_mean"].append(float(np.nanmean(t1_est_post)))
+        ep_record["sphere_indices"] = np.asarray(
+            info.get("sphere_indices", []), dtype=np.int64)
+        ep_record["T1_true"] = np.asarray(
+            info.get("T1_true", raw_env.T1_true), dtype=np.float64)
         episodes.append(ep_record)
 
     return episodes
@@ -140,39 +170,57 @@ def plot_t1est_trajectory(episodes, out_path):
     plt.close(fig)
 
 
+def _pearson_log(xs, ys):
+    xs = np.asarray(xs, dtype=np.float64)
+    ys = np.asarray(ys, dtype=np.float64)
+    mask = np.isfinite(xs) & np.isfinite(ys) & (xs > 0) & (ys > 0)
+    if mask.sum() < 2:
+        return None, 0
+    lx = np.log(xs[mask]); ly = np.log(ys[mask])
+    return float(np.corrcoef(lx, ly)[0, 1]), int(mask.sum())
+
+
 def plot_ti_vs_t1est(episodes, out_path):
-    """If the policy is genuinely adaptive, TI choice should covary with the
-    running T1_est at decision time. A flat scatter rules out adaptivity."""
-    xs, ys = [], []
-    for ep in episodes:
-        n = len(ep["TI"])
-        for i in range(n):
-            t1_at_decision = ep["T1_est_at_decision"][i]
-            if not np.isfinite(t1_at_decision) or t1_at_decision <= 0:
-                continue
-            xs.append(t1_at_decision)
-            ys.append(ep["TI"][i])
-    xs = np.asarray(xs); ys = np.asarray(ys)
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.scatter(xs, ys, alpha=0.5, s=20)
-    ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlabel("Running mean(T1_est) at decision time [s]")
-    ax.set_ylabel("TI chosen this block [s]")
-    if len(xs) > 1:
-        # Pearson correlation in log space — proxy for adaptivity
-        lx = np.log(xs); ly = np.log(ys)
-        lx = lx[np.isfinite(lx) & np.isfinite(ly)]
-        ly = ly[np.isfinite(lx) & np.isfinite(ly)]
-        if len(lx) > 1:
-            r = float(np.corrcoef(lx, ly)[0, 1])
-            ax.set_title(f"TI vs T1_est at decision (log–log Pearson r = {r:+.3f})\n"
-                         "|r| ≈ 0 → policy is non-adaptive")
-        else:
-            ax.set_title("TI vs T1_est at decision")
-    ax.grid(True, which="both", alpha=0.3)
+    """Scatter TI vs running per-sphere T1_est summaries at decision time.
+
+    The mean(T1_est) summary collapses heterogeneous subsets and was the
+    diagnostic gap in §9.2 of EXPERT_REPORT_TRAC.md. We now also plot:
+      - TI vs min(T1_est)  — does the policy reach for short TIs when a
+        short-T1 sphere is present?
+      - TI vs T1_est of the most-uncertain sphere — does the policy target
+        the sphere it knows least about?
+    """
+    summaries = {}
+    for key, label in [
+        ("T1_est_at_decision",     "mean(T1_est) [s]"),
+        ("T1_est_min_at_decision", "min(T1_est) [s]"),
+        ("T1_est_unc_at_decision", "T1_est of most-uncertain sphere [s]"),
+    ]:
+        xs, ys = [], []
+        for ep in episodes:
+            for i, ti in enumerate(ep["TI"]):
+                xs.append(ep[key][i])
+                ys.append(ti)
+        r, n = _pearson_log(xs, ys)
+        summaries[key] = {"pearson_log_r": r, "n": n, "label": label,
+                          "xs": xs, "ys": ys}
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), sharey=True)
+    for ax, (key, info) in zip(axes, summaries.items()):
+        ax.scatter(info["xs"], info["ys"], alpha=0.45, s=18)
+        ax.set_xscale("log"); ax.set_yscale("log")
+        ax.set_xlabel(info["label"])
+        r = info["pearson_log_r"]
+        ax.set_title(f"r = {r:+.3f}" if r is not None else "insufficient data")
+        ax.grid(True, which="both", alpha=0.3)
+    axes[0].set_ylabel("TI chosen this block [s]")
+    fig.suptitle("TI vs running T1_est at decision time "
+                 "(log–log Pearson r per panel)")
     fig.tight_layout()
     fig.savefig(out_path, dpi=130)
     plt.close(fig)
+    return {k: {"pearson_log_r": v["pearson_log_r"], "n": v["n"]}
+            for k, v in summaries.items()}
 
 
 def write_summary(episodes, out_path):
@@ -213,6 +261,76 @@ def write_summary(episodes, out_path):
     return summary
 
 
+def _subset_bucket(ep):
+    t1 = np.asarray(ep.get("T1_true", []), dtype=np.float64)
+    if t1.size == 0 or not np.all(np.isfinite(t1)):
+        return "unknown"
+    mn, mx = float(np.min(t1)), float(np.max(t1))
+    if mx >= 0.5 and mn >= 0.1:
+        return "all_long"
+    if mx < 0.2 and mn < 0.05:
+        return "all_short"
+    return "mixed"
+
+
+def _ks_2sample(x, y):
+    """Two-sample Kolmogorov-Smirnov statistic with asymptotic p-value.
+
+    Avoids a scipy dependency for this lightweight diagnostic.
+    """
+    x = np.sort(np.asarray(x, dtype=np.float64))
+    y = np.sort(np.asarray(y, dtype=np.float64))
+    x = x[np.isfinite(x)]
+    y = y[np.isfinite(y)]
+    n, m = x.size, y.size
+    if n == 0 or m == 0:
+        return {"D": None, "p": None, "n_x": int(n), "n_y": int(m)}
+    data = np.concatenate([x, y])
+    cdf_x = np.searchsorted(x, data, side="right") / n
+    cdf_y = np.searchsorted(y, data, side="right") / m
+    d = float(np.max(np.abs(cdf_x - cdf_y)))
+    en = np.sqrt(n * m / (n + m))
+    z = (en + 0.12 + 0.11 / max(en, 1e-12)) * d
+    p = 2.0 * sum(((-1) ** (k - 1)) * np.exp(-2.0 * k * k * z * z)
+                  for k in range(1, 101))
+    return {"D": d, "p": float(np.clip(p, 0.0, 1.0)), "n_x": int(n), "n_y": int(m)}
+
+
+def plot_subset_bucket_histograms(episodes, out_path):
+    buckets = {"all_long": [], "all_short": [], "mixed": []}
+    for ep in episodes:
+        b = _subset_bucket(ep)
+        if b in buckets:
+            buckets[b].extend(ep["TI"])
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    bins = np.logspace(np.log10(0.01), np.log10(3.0), 30)
+    for name, vals in buckets.items():
+        vals = np.asarray(vals, dtype=np.float64)
+        vals = vals[np.isfinite(vals) & (vals > 0)]
+        if vals.size:
+            ax.hist(vals, bins=bins, histtype="step", linewidth=2,
+                    label=f"{name} (N={vals.size})")
+    ax.set_xscale("log")
+    ax.set_xlabel("TI [s] (log scale)")
+    ax.set_ylabel("Count across blocks")
+    ax.set_title("TI distributions by episode T1-subset bucket")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=130)
+    plt.close(fig)
+
+    return {
+        "bucket_counts_episodes": {
+            name: int(sum(_subset_bucket(ep) == name for ep in episodes))
+            for name in buckets
+        },
+        "bucket_counts_blocks": {name: int(len(vals)) for name, vals in buckets.items()},
+        "ks_all_long_vs_all_short": _ks_2sample(buckets["all_long"], buckets["all_short"]),
+    }
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--policy",   type=Path, required=True)
@@ -226,6 +344,16 @@ def main():
     p.add_argument("--simplified-action", action="store_true",
                    help="Required if the policy was trained with "
                         "--simplified-action (3-dim action space)")
+    p.add_argument("--log-ti-action", action="store_true",
+                   help="Required if the policy was trained with "
+                        "--log-ti-action.")
+    p.add_argument("--max-blocks", type=int, default=15)
+    p.add_argument("--time-budget", type=float, default=120.0)
+    p.add_argument("--subset-size", type=int, default=None,
+                   help="Diagnose policy on random k-sphere subsets.")
+    p.add_argument("--phase-sensitive", action="store_true")
+    p.add_argument("--sigma-method", type=str, default="bootstrap",
+                   choices=["asymptotic", "profile_likelihood", "bootstrap"])
     args = p.parse_args()
 
     out_dir = args.out or (args.policy.parent / "diagnostics")
@@ -234,14 +362,28 @@ def main():
     print(f"[diagnose] Collecting {args.episodes} rollouts from {args.policy} …")
     eps = collect(args.policy, args.vecnorm, args.episodes, args.seed,
                    cfg_field=args.field,
-                   simplified_action=args.simplified_action)
+                   max_blocks=args.max_blocks,
+                   time_budget_s=args.time_budget,
+                   subset_size=args.subset_size,
+                   phase_sensitive=args.phase_sensitive,
+                   sigma_method=args.sigma_method,
+                   simplified_action=args.simplified_action,
+                   log_ti_action=args.log_ti_action)
 
     print("[diagnose] Plotting …")
     plot_ti_per_episode  (eps, out_dir / "ti_per_episode.png")
     plot_ti_histogram    (eps, out_dir / "ti_histogram.png")
     plot_t1est_trajectory(eps, out_dir / "t1est_trajectory.png")
-    plot_ti_vs_t1est     (eps, out_dir / "ti_vs_t1est.png")
+    ti_vs_t1est_summary = plot_ti_vs_t1est(eps, out_dir / "ti_vs_t1est.png")
     summary = write_summary(eps, out_dir / "diagnose_summary.json")
+    summary["ti_vs_t1est_correlations"] = ti_vs_t1est_summary
+    bucket_summary = None
+    if args.subset_size:
+        bucket_summary = plot_subset_bucket_histograms(
+            eps, out_dir / "ti_histogram_by_subset_bucket.png")
+        summary["subset_bucket_diagnostic"] = bucket_summary
+        with (out_dir / "diagnose_summary.json").open("w") as f:
+            json.dump(summary, f, indent=2)
 
     print(f"[diagnose] Done. Plots and summary in {out_dir}")
     print(f"  ep_len_mean             = {summary['ep_len_mean']:.2f}")
@@ -251,6 +393,18 @@ def main():
     print(f"  Modal-bin share         = {summary['ti_modal_bin_share']:.1%}  "
           f"(range {summary['ti_modal_bin_range_s'][0]:.3f}-"
           f"{summary['ti_modal_bin_range_s'][1]:.3f}s)")
+    for key, info in ti_vs_t1est_summary.items():
+        r = info["pearson_log_r"]
+        rstr = f"{r:+.3f}" if r is not None else "n/a"
+        print(f"  log–log Pearson r ({key}) = {rstr}  (N={info['n']})")
+    if bucket_summary is not None:
+        ks = bucket_summary["ks_all_long_vs_all_short"]
+        print(f"  Subset buckets          = {bucket_summary['bucket_counts_episodes']}")
+        if ks["p"] is not None:
+            print(f"  KS all_long vs all_short = D={ks['D']:.3f}, p={ks['p']:.3g} "
+                  f"(N={ks['n_x']}/{ks['n_y']})")
+        else:
+            print("  KS all_long vs all_short = insufficient bucket samples")
     print()
     if summary["ti_log10_intra_episode_std"] < 0.05:
         print("  → DEGENERATE: policy picks essentially the same TI every block.")
