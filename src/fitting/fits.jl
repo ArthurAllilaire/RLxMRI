@@ -246,7 +246,9 @@ function fit_t1_generalized_ir(TIs::AbstractVector{<:Real},
                                sigma_method::Symbol = :asymptotic,
                                n_bootstrap::Int = 100,
                                bootstrap_seed::Int = 0,
-                               signed::Bool = false)
+                               signed::Bool = false,
+                               T1_oracle::Union{Nothing,Real} = nothing,
+                               oracle_band::Real = 2.0)
     n = length(TIs)
     n == length(αs) == length(mags) ||
         error("TIs, αs, mags must be same length")
@@ -281,8 +283,21 @@ function fit_t1_generalized_ir(TIs::AbstractVector{<:Real},
         return out
     end
 
-    T1_candidates = exp.(range(log(T1_range[1]), log(T1_range[2]);
-                               length = n_grid))
+    # D2 oracle-init: narrow the grid to a tight log-band around the truth.
+    # Test for "is the LM stuck in the wrong basin?" — if MAPE collapses with
+    # a truth-anchored grid, multimodal SSE / wrong-basin convergence is the
+    # bottleneck, not information content. Diagnostic only — never deploy.
+    grid_lo, grid_hi = if T1_oracle === nothing
+        (Float64(T1_range[1]), Float64(T1_range[2]))
+    else
+        T1o = Float64(T1_oracle)
+        T1o > 0 || error("T1_oracle must be positive")
+        b = Float64(oracle_band)
+        b > 1 || error("oracle_band must be > 1 (e.g. 2.0 for ±1 octave)")
+        (max(T1o / b, Float64(T1_range[1])),
+         min(T1o * b, Float64(T1_range[2])))
+    end
+    T1_candidates = exp.(range(log(grid_lo), log(grid_hi); length = n_grid))
 
     # Cache forward predictions per grid point — reused for the LM scan, the
     # asymptotic Jacobian, and (if requested) the bootstrap σ. Each entry is

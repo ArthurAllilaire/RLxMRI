@@ -85,6 +85,8 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
         return vec_norm.normalize_obs(np.expand_dims(o, 0))[0]
 
     mapes, per_sphere, ti_choices, times = [], [], [], []
+    # D2 readout: per-pool-index MAPE so we can see which T1 values fail.
+    pool_apes: dict[int, list[float]] = {}
 
     for ep in range(n_episodes):
         obs, _ = raw_env.reset(seed=seed_offset + ep)
@@ -99,17 +101,26 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
         mapes.append(float(info.get("mape", np.nan)))
         t1_est  = np.asarray(info.get("T1_est",  raw_env.T1_est),  dtype=np.float64)
         t1_true = np.asarray(info.get("T1_true", raw_env.T1_true), dtype=np.float64)
-        per_sphere.append(np.abs(t1_est - t1_true) / t1_true)
+        sphere_idx = np.asarray(info.get("sphere_indices",
+                                         np.arange(1, len(t1_true) + 1)),
+                                dtype=np.int64)
+        ape = np.abs(t1_est - t1_true) / t1_true
+        per_sphere.append(ape)
+        for pi, a in zip(sphere_idx, ape):
+            pool_apes.setdefault(int(pi), []).append(float(a))
         ti_choices.extend(ep_tis)
         times.append(float(info.get("time_s", raw_env.time_used_s)))
 
     per_sphere_arr = np.nanmean(np.array(per_sphere), axis=0)
+    per_pool = {pi: (float(np.nanmean(v)) * 100, len(v))
+                for pi, v in sorted(pool_apes.items())}
 
     return {
         "mape_pct":           float(np.nanmean(mapes)) * 100,
         "mape_p90_pct":       float(np.nanpercentile(mapes, 90)) * 100,
         "success_5pct":       float(np.mean([m < 0.05 for m in mapes])),
         "per_sphere_mape_pct": per_sphere_arr * 100,
+        "per_pool_mape_pct":  per_pool,
         "mean_scan_time_s":   float(np.mean(times)),
         "ti_choices_s":       ti_choices,
     }
@@ -139,6 +150,18 @@ def main():
     p.add_argument("--log-ti-action", action="store_true",
                    help="Required if the policy was trained with "
                         "--log-ti-action (log-spaced TI mapping).")
+    p.add_argument("--oracle-fit", action="store_true",
+                   help="D2 diagnostic: narrow the fitter's T1 grid to a "
+                        "log-band of ±oracle-band around T1_true per sphere. "
+                        "Tests whether multimodal-SSE wrong-basin convergence "
+                        "is the bottleneck. Cheats — never use for reported "
+                        "results.")
+    p.add_argument("--oracle-band", type=float, default=2.0,
+                   help="Oracle grid half-width (multiplicative). 2.0 = ±1 octave.")
+    p.add_argument("--fitter-n-grid", type=int, default=200,
+                   help="n_grid for fit_t1_generalized_ir. §17.10 control: "
+                        "use 2000 to separate grid coarseness from genuine "
+                        "multimodal SSE under the baseline fitter.")
     args = p.parse_args()
 
     env_kwargs = dict(cfg_field=args.field,
@@ -148,7 +171,10 @@ def main():
                        phase_sensitive=args.phase_sensitive,
                        sigma_method=args.sigma_method,
                        simplified_action=args.simplified_action,
-                       log_ti_action=args.log_ti_action)
+                       log_ti_action=args.log_ti_action,
+                       oracle_fit=args.oracle_fit,
+                       oracle_band=args.oracle_band,
+                       fitter_n_grid=args.fitter_n_grid)
 
     print("=" * 60)
     print(f"E2 Evaluation — policy: {args.policy}")
@@ -164,9 +190,15 @@ def main():
     print(f"  Mean time   = {res['mean_scan_time_s']:.1f}s")
 
     ps = res["per_sphere_mape_pct"]
-    print(f"\n  Per-sphere MAPE [%]:")
+    print(f"\n  Per-active-slot MAPE [%]:")
     for i, v in enumerate(ps):
-        print(f"    Sphere {i+1:2d}: {v:.2f}%")
+        print(f"    Slot {i+1:2d}: {v:.2f}%")
+
+    pp = res.get("per_pool_mape_pct", {})
+    if pp:
+        print(f"\n  Per-pool-index MAPE [%] (T1_ARRAY index 1..14):")
+        for pi, (mape_v, n_obs) in pp.items():
+            print(f"    Pool {pi:2d}: {mape_v:7.2f}%   (n_eps = {n_obs})")
 
     tis = [t for t in res["ti_choices_s"] if not np.isnan(t)]
     if tis:
@@ -210,13 +242,19 @@ def main():
     summary = {
         "policy":        str(args.policy),
         "episodes":      args.episodes,
+        "oracle_fit":    bool(args.oracle_fit),
+        "oracle_band":   float(args.oracle_band),
         "agent_mape_pct":    res["mape_pct"],
+        "agent_mape_p90_pct": res["mape_p90_pct"],
         "baseline_mape_pct": base["mape_pct"],
         "per_sphere":    res["per_sphere_mape_pct"].tolist(),
+        "per_pool":      {str(k): list(v)
+                           for k, v in res.get("per_pool_mape_pct", {}).items()},
     }
-    with (out_dir / "eval_summary.json").open("w") as f:
+    out_name = "eval_summary_oracle.json" if args.oracle_fit else "eval_summary.json"
+    with (out_dir / out_name).open("w") as f:
         json.dump(summary, f, indent=2)
-    print(f"\nSummary saved to {out_dir / 'eval_summary.json'}")
+    print(f"\nSummary saved to {out_dir / out_name}")
 
 
 if __name__ == "__main__":

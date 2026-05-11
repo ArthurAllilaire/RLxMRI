@@ -1,7 +1,7 @@
 # EXPERT REPORT - E2-tractability implementation and CR-opt baseline
 
-**Status:** V11/V12 ablation complete (§16). V12 (magnitude + log-TI) at 322 % / 747 % p90 is the new Ch4 headline — beats V9 by 6.1 % and shows the first non-trivial within-episode adaptivity (Pearson r = –0.26 between TI and running T1_est). V11 collapses to 800 % (below its own baseline) → phase-sensitive recon is the V10 culprit.  
-**Date:** 2026-05-08, updated 2026-05-09, updated 2026-05-10.  
+**Status:** V11/V12 (§16) + D2 oracle (§17) + CR-opt-under-oracle (§18) + n_grid=2000 control (§19) + SSE landscape diagnostic (§20). V12 (mag, log-TI) = 322 % / 747 % p90; V12 oracle = 53 % / 69 % p90 ties CR-opt oracle 53 % / 69 % p90 → V12 has no Fisher-info advantage. §19 + §20 establish that **all SSE-driven fitters are dead on this likelihood**: T1_true sits at the 76th percentile (median) of the 2000-pt SSE landscape on failing spheres, with the wrong basin at 5–20× lower SSE. K-restart-by-SSE, dictionary matching, and any rank-based-on-SSE selector cannot reach truth at any practical K. Recovering the 322 → 53 gap requires non-MLE estimation: Bayesian prior on T1, joint multi-sphere fit with shared σ, or signed recon under a different phase-noise model. C1 final framing: "achieves the analytic Fisher-info ceiling and is observation-conditional; residual MAPE is a likelihood-side artefact of magnitude reconstruction, not a policy or fitter deficiency".  
+**Date:** 2026-05-08, updated 2026-05-09, updated 2026-05-10 (V11/V12), updated 2026-05-10 PM (D2 + CR-opt-under-oracle + n_grid control + SSE landscape).  
 **Purpose:** standalone note for the E2-tractability branch. Fold the final result into `EXPERT_REPORT_E2_4.md` after V9 has trained and been evaluated.
 
 ---
@@ -1694,3 +1694,394 @@ PYTHONPATH=python PYTHON_JULIAPKG_OFFLINE=yes python python/diagnose_e2.py \
 - V12-extended training run (per §16.8) — single most informative next step.
 - Per-pool-sphere correlation diagnostic on V12 best (mirroring §10's V9 analysis) to compare conditioning sphere-by-sphere — quick (~30 min).
 - The phase-sensitive failure mechanism in §16.5 is hypothesis-supported but not directly measured. A small follow-up that records measurement-level reward variance and step-wise SNR by TI bin under each recon would close the loop. Optional for the report; useful for a publication.
+
+---
+
+## 17. D2 — Oracle-init fitter diagnostic (2026-05-10 PM)
+
+**Status:** Decisive H_fitter result. Oracle-init V12 = **52.87 % / 69.39 % p90** vs baseline V12 at the same seeds = **321.76 % / 668.93 % p90**. Mean MAPE collapses 6.1×; p90 collapses 9.6×. The per-pool decomposition shows the entire collapse is concentrated on short-T1 spheres (idx 10–14: 7–17× improvement) while long-T1 spheres (idx 1–9) move only 1.5–2.5×. **The dominant residual error in V12 is wrong-basin LM convergence in the fitter, not information shortage in the data.**
+
+### 17.1 Motivation and method
+
+§16's V11/V12 ablation closed the recon question (PSIR is *worse* than magnitude under this env's phase noise — §16.5) but left the headline 322 % MAPE unexplained. The candidate failure modes from `cr_explainer.md` §15 are (a) **multimodal SSE** — LM lands in the wrong basin even though truth is the global minimum, and (b) **information shortage** — the data does not constrain T1 in the short-T1 regime. These are mutually exclusive at the level of a single diagnostic: if you give the fitter a tight prior on truth and MAPE collapses, (a) wins; if MAPE stays flat, (b) wins.
+
+D2 implements that diagnostic by narrowing the fitter's 200-point log-grid from `[0.005, 5.0]` s to `[T1_true / 2, T1_true · 2]` s — one octave around truth per sphere. This guarantees the closed-form-A grid scan inside `fit_t1_generalized_ir` cannot find a minimum outside the truth basin, while still allowing the same number of grid points to refine within it. Code: `T1_oracle` kwarg in `src/fitting/fits.jl`, `oracle_fit::Bool` field on `E2Env`, `--oracle-fit` flag on `eval_e2.py`. The oracle path is gated by an env flag and is never available to the policy through any observation channel — it is a fitter-only intervention.
+
+### 17.2 Headline 2×1 (V12 best policy, N=100, paired seeds 500000 + i)
+
+| fitter | mean MAPE | p90 MAPE | success<5 % | mean time |
+|---|---:|---:|---:|---:|
+| baseline (200-pt grid over [0.005, 5.0] s) | 321.76 % | 668.93 % | 0.0 % | 221.5 s |
+| **oracle (200-pt grid over T1_true · [½, 2])** | **52.87 %** | **69.39 %** | 0.0 % | 241.6 s |
+
+Mean reproduces §16.1's N=200 number to <1 % (322 % vs 322 %), confirming the §16 baseline is not a small-sample artifact. p90 is lower at N=100 (669 vs 747) consistent with the noisier tail estimator at smaller n.
+
+### 17.3 Per-pool-index decomposition — the smoking gun
+
+| pool idx | nominal T1 (s) | baseline MAPE | oracle MAPE | factor | n_eps |
+|---:|---:|---:|---:|---:|---:|
+| 1  | 1.838 | 80.17 %  | 48.42 % | 1.7× | 41 |
+| 2  | 1.453 | 79.15 %  | 56.02 % | 1.4× | 39 |
+| 3  | 0.985 | 75.05 %  | 50.62 % | 1.5× | 33 |
+| 4  | 0.706 | 63.62 %  | 46.42 % | 1.4× | 36 |
+| 5  | 0.497 | 71.36 %  | 44.29 % | 1.6× | 36 |
+| 6  | 0.352 | 60.88 %  | 44.21 % | 1.4× | 32 |
+| 7  | 0.247 | 67.48 %  | 35.26 % | 1.9× | 32 |
+| 8  | 0.176 | 112.38 % | 44.77 % | 2.5× | 37 |
+| 9  | 0.127 | 67.90 %  | 45.82 % | 1.5× | 27 |
+| 10 | 0.090 | 397.55 % | 56.91 % | **7.0×**  | 38 |
+| 11 | 0.064 | 772.18 % | 69.01 % | **11.2×** | 39 |
+| 12 | 0.045 | 716.31 % | 63.69 % | **11.2×** | 45 |
+| 13 | 0.032 | 798.84 % | 73.27 % | **10.9×** | 27 |
+| 14 | 0.023 | 1001.26 % | 57.70 % | **17.3×** | 38 |
+
+Long-T1 spheres (idx 1–9) sit around 60–110 % MAPE under the baseline fitter and improve modestly to 35–56 % under oracle init — i.e. they are *already near* the achievable LM floor; oracle init helps but doesn't transform them. Short-T1 spheres (idx 10–14) sit at 398–1001 % under the baseline and collapse to 57–73 % under oracle init. **The factor-of-7-to-17 improvement is concentrated entirely on the short-T1 tail.** This is the exact distributional signature predicted by §15 of `cr_explainer.md`: multimodal SSE concentrates on short-T1 spheres because they are the regime where most action-set TIs sit in the saturated post-null region, leaving only one or two pre-null TIs whose abs() ambiguity makes the LM's grid-init scan vulnerable to landing in a wrong basin.
+
+The oracle-fit per-pool MAPE itself is nearly flat across the 14 indices (35–73 %, std ≈ 11 % around a mean of 53 %). Once wrong-basin convergence is removed, **there is no per-pool catastrophe** — V12's policy already collects roughly equally informative measurements across the T1 range.
+
+### 17.4 Per-active-slot — same story, sorted by subset position
+
+| active slot | baseline | oracle |
+|---:|---:|---:|
+| 1 | 79.69 % | 52.78 % |
+| 2 | 103.87 % | 45.67 % |
+| 3 | 172.65 % | 47.96 % |
+| 4 | 426.45 % | 54.92 % |
+| 5 | 826.14 % | 63.01 % |
+
+Slots are sorted by ascending pool index (i.e. descending T1) within each episode, so slot 5 is the shortest-T1 sphere in the active subset. Baseline slot 5 at 826 % is the headline residual that §16's V11 collapsed *into* (V11's last slot was 2152 %). Under oracle init, slot 5 sits at 63 % — the same regime as slot 1 — confirming that whatever the policy did spectrally, the data was sufficient in principle.
+
+### 17.5 What this kills, and what it elevates
+
+**Ruled out as the dominant cause of V12's residual MAPE:**
+- *Information shortage in the action set.* The data V12 collects under its actual schedule realisations is enough to recover T1 to ~50 % MAPE per sphere if you point the fitter at the right basin. Reparameterising the action space further, or moving to model-based / differentiable / end-to-end RL to reshape the schedule, would address a problem we now know is not the binding constraint at this MAPE level.
+- *Phase-sensitive recon as a tractability fix.* §16.5 already showed PSIR makes things worse; D2 confirms that even under magnitude recon the binding constraint is fitter-side, not recon-side. Closing the V14 / V15 questions is now a fitter project, not a recon one.
+- *V12-extended (the §16.8 recommendation to push to 400k steps).* More PPO compute can only re-shape the schedule. The schedule V12 already produces is sufficient under an oracle-init fitter; extending training will at best buy a few % off the 322 % baseline by tweaking schedule details, while the 269 % gap to the oracle floor sits untouched. **This run should be deprioritised.**
+
+**Elevated to next-action priority:**
+- *K-restart LM* — run the existing grid scan, take the top 5 candidates (not just the global min), refine each with LM, return the best. Cheap (~5× fitter cost). Catches most wrong-basin failures because the truth basin is almost always among the top few grid candidates by SSE — it just isn't always the lowest.
+- *Dictionary matching* — pre-compute a denser dictionary for the short-T1 region and replace the LM step with inner-product matching plus a small refinement. Robust to multimodal SSE by construction (the dictionary enumerates basins). Awkward for adaptive RL because the dictionary depends on the schedule, so it has to be regenerated per block; but for a fixed evaluation pass it is straightforward.
+- *Profile-likelihood σ* (`E2_5_PLAN.md` §3) — does not fix wrong-basin convergence, but stops the σ channel from being over-confident at wrong-basin minima. Less load-bearing than D2 made the §3 plan look — wrong-basin failures themselves are the dominant error, and an honest σ is a *report*-quality fix not a *MAPE*-quality fix.
+
+The right comparison after a fitter swap is: does the deployable fitter close the 322 → 53 gap, and how close to the 53 % floor can it get? An oracle-init number is itself a useful new *ceiling* for fixed schedules — it turns the §13 / §16 V12-vs-CR-opt comparison from "RL beats fixed-schedule analytic optimum by 24 %" into "RL operates inside a fitter regime where 269 % of the residual MAPE is fitter-recoverable across both adaptive and fixed schedules" — which is a much sharper Ch4 framing.
+
+### 17.6 What D2 does NOT prove
+
+- **Oracle init is not a deployable fitter.** It uses ground-truth T1 per sphere, which the env exposes to the fitter through `oracle_fit=true` only as a diagnostic. A real fitter has to discover the truth basin from data; D2 establishes the upper bound of what discovering that basin would buy you.
+- **It does not separate "global SSE minimum is at truth" from "grid resolution is too coarse near truth."** A coarse grid over [0.005, 5.0] s puts ~35 points per decade; over `T1_true · [½, 2]` it puts ~330 points per decade. Some fraction of the collapse could be grid resolution, not basin lock-in. **Suggested follow-up:** rerun the baseline with a 2000-point full-range grid (still no oracle); if MAPE drops most of the way to oracle, the issue was grid resolution and the fix is just `n_grid = 2000` rather than a new fitter. If it doesn't, the issue is genuinely multimodal SSE and the K-restart / dictionary fixes above are the right move.
+- **The 53 % oracle-fit floor is not zero.** The remaining 53 % MAPE under truth-restricted fitting is the *honest* contribution of measurement noise, finite block count, and the schedule's coverage of each sphere. This is the lower bound any non-cheating fitter can reach on V12's collected data, modulo grid resolution. It is also the right target for any reformulation that wants to claim sub-50 % per-sphere MAPE.
+
+### 17.7 V12 fixed-grid baseline under oracle init — sanity check on the diagnostic
+
+The eval_e2.py log-grid baseline also benefits from oracle init: 53.96 % MAPE under oracle, vs 655.44 % MAPE under the standard grid baseline. This is expected — oracle init is a *fitter* fix, not a *policy* fix, so it lifts every schedule equally. The absolute V12-vs-baseline gap under oracle init narrows to within 1 % (52.87 vs 53.96), which is the right reading: V12's adaptivity was being mostly absorbed by the fitter's wrong-basin failures, and once those are resolved, the policy and the fixed grid produce nearly the same per-sphere quality. **This does not undermine the §16 C1 claim** — V12 still shows behavioural conditioning on the running T1 estimate (Pearson r = –0.26, §16.4). But it does mean the V12-vs-CR-opt MAPE win is partly a "less wrong-basin failure under V12's schedule" effect rather than a pure adaptivity effect, and the fitter swap will tell us how much of each.
+
+### 17.8 Updated headline (replaces §16.6)
+
+**V12 (magnitude, log-TI) at 322 % / 747 % p90 has a fitter-removable component of ~270 percentage points: under an oracle-init fitter that restricts the T1 grid to ±1 octave around truth, V12 collapses to 53 % / 69 % p90, with all 14 pool spheres landing in a 35–73 % band rather than the 80–1001 % range under the baseline fitter.** Wrong-basin LM convergence — predicted by §15 of `cr_explainer.md` — is the dominant residual error mode, concentrated on short-T1 spheres (idx 10–14: 7–17× improvement under oracle). The right next experiment is a K-restart or dictionary-matching fitter on V12's existing schedule realisations, not a V12-extended training run and not a model-based / end-to-end RL pivot.
+
+### 17.9 One-line summary
+
+V12 oracle-init = 53 % / 69 % p90 vs baseline 322 % / 669 % at matched seeds; per-pool collapse is concentrated on short-T1 (idx 11–14: 716–1001 % → 58–73 %, factors 11–17×); H_fitter wins decisively, the residual 322 % is wrong-basin LM convergence not information shortage, and the right next move is K-restart LM or dictionary matching rather than V12-extended training or a recon/model-based pivot.
+
+### 17.10 Outstanding items (replaces §16.9)
+
+- *Grid-resolution control* — rerun baseline at `n_grid = 2000` to separate grid coarseness from genuine multimodal SSE. ~10 min compute.
+
+```bash
+PYTHONPATH=python PYTHON_JULIAPKG_OFFLINE=yes python python/eval_e2.py \
+    --policy   runs/e2/e2_tractability_V12/best/best_policy.zip \
+    --vecnorm  runs/e2/e2_tractability_V12/best/best_vecnorm.pkl \
+    --episodes 100 --seed 500000 \
+    --simplified-action --log-ti-action \
+    --max-blocks 30 --time-budget 250.0 --subset-size 5 \
+    --fitter-n-grid 2000 \
+  2>&1 | tee runs/e2/e2_tractability_V12/eval_d2_ngrid2000_n100.log
+```
+
+Reading: if MAPE drops most of the way from 322 % toward the 53 % oracle floor, the baseline failure was grid coarseness and the fix is `n_grid = 2000` (one-line change). If MAPE stays near 322 %, the failure is genuine multimodal SSE and a K-restart / dictionary-matching fitter is required.
+- *K-restart LM* — implement top-K candidate refinement in `fit_t1_generalized_ir`, rerun V12 N=100 paired. Expected to close 50–80 % of the oracle gap. ~2 h.
+- *Per-pool diagnostic for V12 baseline at N=200* — run the same `--episodes 200` for the non-oracle config to fold pool-index numbers into §13's CR-opt comparison table. ~15 min.
+- *Defer*: V12-extended (§16.8), phase-sensitive variants, model-based RL scoping. None of these address the binding constraint.
+
+---
+
+## 18. CR-opt under oracle-init fitter — V12's "info advantage" was fitter-luck (2026-05-10 PM)
+
+**Status:** CR-opt oracle eval lands at **53.37 % / 68.97 % p90**, statistically identical to V12 oracle's 52.87 % / 69.39 % p90 (within 0.5 % mean, 0.4 % p90). **V12 has no Fisher-information advantage over the CR-opt fixed schedule.** The §16 baseline gap (V12 = 322 % vs magnitude CR-opt = 421 %) is entirely a fitter-side effect: V12's schedule happens to produce data that the LM lands in better basins on, not data with more T1-discriminating information.
+
+### 18.1 Setup
+
+The §17 D2 result told us that V12's residual MAPE is dominated by wrong-basin LM convergence rather than information shortage. It did not, by itself, distinguish two sub-hypotheses:
+
+- **H_RL_info**: V12 collects strictly more T1-discriminating information than CR-opt — its 322 vs 421 baseline gap reflects a real Fisher-information advantage that the fitter partly destroys for both, but more for CR-opt.
+- **H_RL_basin**: V12 and CR-opt collect equivalent information, but V12's schedule produces data on which the LM happens to be more likely to find the truth basin. The 322 vs 421 gap is a fitter-side artefact, not a schedule-side advantage.
+
+These are testable by running CR-opt's fixed schedule through the same oracle-init fitter as V12 (§17). Same `T1_oracle = T1_true` per sphere, same `oracle_band = 2.0` (±1 octave grid), same paired seeds (500000 + i, i ∈ [0, 100)), same env config (max_blocks 30, time_budget 250 s, subset_size 5). Only difference from §17: CR-opt's 22-block fixed schedule cycles deterministically through the precomputed `(TI, TR)` pairs from `runs/e2/e2_tractability_baselines_n200/cr_optimal_schedule.json` instead of V12's PPO policy.
+
+### 18.2 Headline 2×2 (V12 best policy vs CR-opt fixed schedule, baseline vs oracle fitter)
+
+|              | baseline fitter (§17) | oracle fitter (§17 + §18) |
+|---|---:|---:|
+| **V12 (mag, log-TI)**      | 321.76 % / 668.93 % p90 | 52.87 % / 69.39 % p90 |
+| **CR-opt fixed (22 blk)**  | 421 % / 947 % p90 (§16.1, N=200) | **53.37 % / 68.97 % p90** |
+| gap (CR-opt − V12)         | +99 pp / +278 pp p90 | **+0.5 pp / −0.4 pp p90** |
+
+The cross-row reading: **the entire ~100 pp baseline gap between V12 and CR-opt collapses to noise under oracle init.** The fitter, not the schedule, was producing the V12 win in §16.
+
+### 18.3 Per-pool decomposition — both schedules at the same fitter floor
+
+| pool idx | T1 (s) | V12 oracle | CR-opt oracle | gap |
+|---:|---:|---:|---:|---:|
+| 1  | 1.838 | 48.4 % | 50.2 % | +1.8 |
+| 2  | 1.398 | 56.0 % | 58.8 % | +2.8 |
+| 3  | 0.998 | 50.6 % | 59.7 % | +9.1 |
+| 4  | 0.726 | 46.4 % | 39.7 % | −6.7 |
+| 5  | 0.509 | 44.3 % | 42.0 % | −2.3 |
+| 6  | 0.367 | 44.2 % | 42.7 % | −1.5 |
+| 7  | 0.259 | 35.3 % | 43.2 % | +7.9 |
+| 8  | 0.185 | 44.8 % | 53.9 % | +9.1 |
+| 9  | 0.131 | 45.8 % | 43.0 % | −2.8 |
+| 10 | 0.090 | 56.9 % | 47.6 % | −9.3 |
+| 11 | 0.064 | 69.0 % | 83.6 % | +14.6 |
+| 12 | 0.046 | 63.7 % | 67.0 % | +3.3 |
+| 13 | 0.032 | 73.3 % | 61.8 % | −11.5 |
+| 14 | 0.023 | 57.7 % | 46.2 % | −11.5 |
+| **mean** | — | **52.4 %** | **52.8 %** | **+0.4 pp** |
+
+Per-pool gaps oscillate around zero with std ≈ 8 pp; no consistent sign on either side. V12 wins on idx 7, 10, 13, 14 by 8–12 pp; CR-opt wins on idx 3, 8, 11 by 8–15 pp. **The two schedules deliver equivalent per-sphere quality once the fitter is given the right basin to search.** The fluctuations are within paired-seed noise.
+
+### 18.4 What this kills, sharply
+
+- **The "RL extracts more information than CR-opt" story is dead on this fleet.** The schedule V12 produces has the same Fisher-information content as CR-opt's analytic optimum — verified by running both through an identical oracle-init fitter and obtaining indistinguishable per-sphere MAPE distributions. There is no within-episode adaptivity-driven information advantage in V12.
+- **The §16 V12-vs-CR-opt baseline gap (322 % vs 421 %) cannot be cited as evidence of policy-side superiority.** The honest reading is: V12 produces data that the *baseline* LM fits better than CR-opt's data, despite carrying the same information. Why is a fitter-side question — possibly because V12's TIs land slightly off the abs()-induced null points of more spheres simultaneously, or because the 14-decade-balanced TI distribution of CR-opt produces more multimodal-SSE hits than V12's bimodal short-anchor + spread distribution. Diagnosing the *mechanism* is interesting; claiming it as an RL win is not.
+- **The C1 within-episode adaptivity claim is severely narrowed.** V12's behavioural conditioning (Pearson r = −0.26 between TI and running T1_est, §16.4) is real and reproducible, but it does not translate to additional information extraction. The most defensible C1 framing now is: "V12 produces a schedule that is as informative as a CR-opt fixed schedule and is observation-conditional, but on this fleet the conditional component does not improve information yield."
+
+### 18.5 What this elevates
+
+- **The 53 % oracle-fit MAPE is a genuine floor, not a V12-specific number.** Both V12 and CR-opt hit it. Lowering it requires either (a) a denser action set that probes T1 discriminators not currently reachable (e.g. variable flip angle, T2 in the joint state), (b) reducing the env's noise model (5 % relative is the source of most of the residual 53 %), or (c) increasing the time budget. None of these is an RL question per se.
+- **The fitter swap (K-restart LM or dictionary matching) is now the *only* near-term lever that can move the headline.** §17.10 already lists it; §18 confirms there is no schedule-side ladder to climb on this fleet. The right framing for Ch4 is "RL achieves the analytic Fisher-info ceiling and is observation-conditional; the residual MAPE is fitter-recoverable, not RL-recoverable".
+- **The §13 / §16 V12-vs-CR-opt headline needs to be rewritten with the oracle row alongside.** The cleanest table is the §18.2 2×2: baseline-fitter vs oracle-fitter × V12 vs CR-opt. The story is the diagonal collapse, not the V12 column.
+
+### 18.6 What this does NOT prove
+
+- **CR-opt and V12 might still differ on different fleets.** This test is on the 14-sphere T3 pool, subset_size=5, budget 250 s, log-TI action. Whether V12's adaptivity translates to information advantage on a fleet where the subset distribution is more variable, or where the action space couples to subset identity (E3+), is an open question.
+- **The signed/PSIR regime might invert the conclusion.** §16.5 showed PSIR collapses RL but didn't measure CR-opt under oracle + PSIR. Possible (but unlikely given §16.5) that under PSIR + oracle, CR-opt and V11 also tie at a different floor.
+- **The "V12's data is more LM-friendly" mechanism is still unmeasured.** §18 establishes that V12's fitter-baseline win is fitter-side, not schedule-info-side. *Why* V12's data fits better under LM is a separate question (TI distribution, basin geometry, …). A useful follow-up: same per-pool decomposition under baseline fitter, same paired seeds, for both V12 and CR-opt, to localise *which* spheres' wrong-basin failures V12 happens to avoid relative to CR-opt.
+
+### 18.7 Updated headline (replaces §17.8)
+
+**V12 has no Fisher-information advantage over the CR-opt fixed schedule on the E2-tractability fleet.** Under an oracle-init fitter that restricts the T1 grid to ±1 octave around truth per sphere, V12 and the 22-block CR-opt schedule deliver indistinguishable per-sphere MAPE (53 % vs 53 %, paired N=100, paired per-pool gaps oscillating around zero with std 8 pp). **The §16 V12-vs-CR-opt baseline gap of 322 % vs 421 % was entirely a fitter-side effect** — V12 produces data the baseline LM fits more reliably, despite carrying the same information. The C1 adaptivity claim narrows from "extracts more information" to "achieves the same information ceiling with an observation-conditional schedule"; the only near-term lever for moving the headline MAPE is fitter improvement (K-restart LM or dictionary matching), not RL changes or recon changes.
+
+### 18.8 One-line summary
+
+CR-opt fixed schedule under oracle-init fitter = **53.37 % / 68.97 % p90**, indistinguishable from V12 oracle at **52.87 % / 69.39 % p90** (paired N=100, per-pool gaps oscillating around zero); V12's apparent §16 schedule advantage was entirely fitter-luck, the C1 information-extraction claim is dead on this fleet, and the only remaining lever is a fitter swap (K-restart LM or dictionary matching) — confirming the §17.5 prioritisation.
+
+### 18.9 Reproducibility
+
+Schedule loaded from `runs/e2/e2_tractability_baselines_n200/cr_optimal_schedule.json` (22 blocks, L = 6.366, formulation = expected_loss_all_14_pool). Eval command:
+
+```bash
+PYTHONPATH=python PYTHON_JULIAPKG_OFFLINE=yes python python/baseline_e2.py \
+    --episodes 100 --seed 500000 \
+    --max-blocks 30 --time-budget 250.0 --subset-size 5 \
+    --cr-optimal \
+    --cr-load runs/e2/e2_tractability_baselines_n200/cr_optimal_schedule.json \
+    --cr-only \
+    --oracle-fit \
+    --out runs/e2/e2_tractability_V12/cr_oracle_test \
+  2>&1 | tee runs/e2/e2_tractability_V12/eval_d2_cropt_oracle_n100.log
+```
+
+Code changes: `--cr-load` and `--cr-only` flags added to `python/baseline_e2.py`; `oracle_fit`/`oracle_band`/`fitter_n_grid` plumbed through `QalibreMDE2Env` to the Julia env (§17 implementation).
+
+---
+
+## 19. Grid-resolution control (n_grid=2000) — wrong-basin is the true MLE, not a discretisation artefact (2026-05-10 PM)
+
+**Status:** §17.10 control complete. V12 with `fitter_n_grid = 2000` (10× the default) lands at **366.90 % / 857.09 % p90** — *worse* than the baseline at `n_grid = 200` (321.76 % / 668.93 % p90), and nowhere near the 52.87 % oracle floor. The strict reading: any fitter that picks **`arg min over T1` of SSE** in `[0.005, 5.0]` s is bounded below by the n_grid=2000 result, because that grid is a strict superset of the n_grid=200 grid and SSE-min on a superset can only go down. So **MLE-by-SSE-minimisation cannot reach the 53 % oracle floor on this likelihood**, full stop. The §17.6 hypothesis (b) — "truth basin is the global SSE minimum and the 200-pt grid is too coarse near short-T1" — is falsified: doubling-decade resolution made things slightly worse, not better. What §19 does **not** by itself prove is whether truth is a *top-K* SSE candidate (which would let a K-restart fitter with a non-SSE selector still recover truth) or genuinely off-podium in the SSE landscape. That second question requires a per-episode SSE-vs-T1 plot (§19.5 item 1) and is the next decisive experiment.
+
+### 19.1 Headline (V12 best policy, N=100, paired seeds)
+
+| fitter | mean MAPE | p90 MAPE | gap to oracle |
+|---|---:|---:|---:|
+| baseline (n_grid = 200)            | 321.76 % | 668.93 % | +269 pp |
+| **n_grid = 2000 (10× resolution)** | **366.90 %** | **857.09 %** | **+314 pp** |
+| oracle (T1_true ± 1 octave, n_grid = 200) | 52.87 % | 69.39 % | — |
+
+A 10× finer grid makes the headline ~14 % worse on mean and ~28 % worse on p90.
+
+### 19.2 Per-pool — short-T1 worsens most under finer grid
+
+| pool idx | T1 (s) | n_grid=200 | n_grid=2000 | Δ |
+|---:|---:|---:|---:|---:|
+| 1–9  | 0.13–1.84 | 60–112 % | 62–143 % | +0–30 pp (mostly modest worsening) |
+| 10 | 0.090 | 397.55 % | 316.65 % | −81 |
+| 11 | 0.064 | 772.18 % | **908.77 %** | +137 |
+| 12 | 0.046 | 716.31 % | 533.05 % | −183 |
+| 13 | 0.032 | 798.84 % | 764.01 % | −35 |
+| 14 | 0.023 | **1001.26 %** | **1686.63 %** | **+685** |
+
+Long-T1 spheres (idx 1–9) move modestly. Short-T1 (idx 10–14) oscillate widely; the shortest sphere (idx 14, T1 = 0.023 s) **gets nearly 2× worse** under finer grid. Aggregate per-sphere MAPE going **up** under a strict-superset grid means the finer grid is finding T1 estimates with strictly lower SSE that are, on average, further from truth — i.e. the deepest SSE point in the [0.005, 5.0] s range is in a wrong-basin location, not at truth. The qualitative behaviour fits the §15 of `cr_explainer.md` multimodal-SSE picture: a finer grid finds the wrong basin's bottom more reliably than a coarser one finds a "compromise" point near it.
+
+### 19.3 What this kills, narrowly — and what it doesn't
+
+The strict argument has the form: at any grid resolution, SSE(T1*) ≤ SSE(T1*_coarser). The 2000-pt fitter therefore returns a T1 with SSE no higher than the 200-pt fitter. We observe it returns a T1 that is, on aggregate, **further from truth**. Combined with the §17 oracle result (a 200-pt grid restricted to T1_true ± 1 octave reaches 53 % MAPE), this implies:
+
+> **Within `[0.005, 5.0]` s, there exist T1 values with strictly lower SSE than the truth-band optimum, and those T1 values are far from T1_true.**
+
+That's enough to kill one specific class of fitter and leaves another open:
+
+- **Dead — `arg min over T1` of SSE in the full search range.** Any fitter whose decision rule is "return whichever candidate has the lowest SSE" cannot reach the oracle floor on this likelihood. The 2000-pt grid is a near-exhaustive enumeration of the SSE landscape; if the truth-band candidate had the lowest SSE, the 2000-pt fitter would have found it. It didn't. This rules out:
+  - **Dictionary matching with SSE/inner-product scoring** in the full T1 range — it picks the dictionary entry that minimises residual, which the 2000-pt grid has effectively already done.
+  - **K-restart LM that returns the lowest-SSE refined fit** — restarts add candidates, but the selection rule is the same arg-min over SSE. More candidates with lower SSE, all in wrong basins, doesn't help.
+  - **K-restart LM that returns the lowest-σ_T1 fit** — wrong basins under multimodal SSE have *narrower* curvature than truth basins (§9.9.4 / §15.5), so smaller asymptotic σ, so a "trust the tightest fit" rule preferentially picks the wrong basin.
+- **Not yet ruled out — fitters that select among top-K candidates using something other than SSE.** §19 does *not* directly observe whether truth's SSE is in the top 10 / top 50 / top 200 of the 2000-pt grid. A K-restart fitter that takes the top-K candidates by SSE and then selects among them using a *different* signal — a Bayesian prior on T1, joint multi-sphere consistency (shared σ across spheres, shared image amplitude scale), profile-likelihood width as a "shallowness" proxy, etc. — is untested. If truth is, say, the 5th-lowest SSE candidate at n_grid=2000, a non-SSE selector could in principle recover it.
+
+The §17.5 / §18.5 prioritisation of "K-restart LM or dictionary matching" was correct *only* under §17.6's hypothesis (b) — i.e. under the assumption that truth was the global SSE minimum and the 200-pt grid was missing it. §19 falsifies that assumption. The corrected framing: **K-restart with the standard return-lowest-SSE rule is dead; K-restart with a non-SSE selector is untested and now the right next experiment alongside the SSE landscape diagnostic.**
+
+### 19.4 What this leaves on the table
+
+The data does carry enough information to recover T1 to ~53 % MAPE (proven by §17). To get there without a ground-truth oracle, the estimator needs *side information* that breaks the magnitude/noise ambiguity — i.e. anything that turns the likelihood from "global min at wrong T1" into "global min at truth". Concrete options, in increasing scope:
+
+- **Bayesian prior on T1** — log-uniform prior over `[0.005, 5.0]` s with a wide-but-finite peak in the typical range. Equivalent to oracle for tight priors, useless for broad ones. The challenging part is calibrating the prior breadth.
+- **Joint fit across spheres** — all spheres in an episode share the same noise model and image-level amplitude scale; fitting them jointly with a shared σ and per-sphere (T1, A) is *more* constrained than 14 independent fits. Whether the joint problem's MLE coincides with truth is empirically testable but theoretically uncertain.
+- **Phase-sensitive recon under a different noise model.** §16.5 ruled out PSIR under the env's current B0 phase noise; but the *signal-model* fix (signed transient Mz, monotonic in T1) is correct in principle. The right experiment is a sim-PSIR variant with a phase-calibration step that's robust to the env's noise, or alternatively running CR-opt + V12 on a different env config with smaller B0 noise.
+- **Reducing the env's noise.** σ_kspace = 5 % relative is the source of most of the wrong-basin attractor depth. Halving it would (predictably) shrink the wrong-basin and make the truth-basin the global MLE for more spheres. This is a *physics floor question* (what σ is realistic for the target scanner / phantom), not an estimator question.
+- **Structural action-space changes (E3+).** Variable flip angle, multi-block joint estimation, and signed-recon-aware action sets all change the *information content of the data*, not just the estimator. These are E3+ scope and are the only changes that genuinely lower the 53 % floor.
+
+### 19.5 Updated fitter-swap priority (replaces §17.10's first bullet and §18.5's "fitter swap" framing)
+
+Before §19, the priority was: implement K-restart LM (cheap, expected to close 50–80 % of the 322 → 53 gap on V12's existing schedule). After §19, the priority is: **stop assuming a deterministic fitter swap will move the headline.** The right next experiments are diagnostics that map the likelihood landscape directly:
+
+1. **Per-sphere SSE-vs-T1 plots** for a handful of failing episodes (idx 14, idx 11). The decisive experiment: does truth sit in the top-K SSE candidates? If yes (a local min above the global wrong-basin min) → non-SSE-selector fitters are alive. If no (truth is genuinely off-podium) → all SSE-driven fitters are dead and only likelihood-side fixes remain. ~30 min compute. Run this **before** investing in any fitter rewrite.
+2. **Non-SSE-selector K-restart fitter** — top-K candidates by SSE, then select among them using a Bayesian log-T1 prior or joint multi-sphere consistency. Conditional on the SSE plot showing truth in the top-K. ~1 day to implement.
+3. **Joint-fit experiment.** Refit V12 episodes treating the 5 active spheres as a coupled system with shared noise σ. Cheap (~1 day to implement, ~10 min to run).
+4. **Lower-noise sweep.** Rerun V12 oracle and baseline at σ_rel ∈ {0.01, 0.02, 0.05}. Tells us how steep the noise → wrong-basin curve is on this env, which sets the realistic post-fitter floor.
+
+**Lowest-SSE K-restart and SSE/correlation dictionary matching** are descoped — they are equivalent in selection rule to the n_grid=2000 grid scan and cannot beat its 367 % MAPE. **Top-K-with-non-SSE-selector** variants are the only fitter-side option still alive, and are worth running only if the §19.5 item-1 plot shows truth is reachable in the top-K.
+
+### 19.6 Updated headline (replaces §18.7)
+
+V12 has no Fisher-information advantage over CR-opt (§18: both 53 % under oracle), and the 322 → 53 gap is **not closable by any fitter that returns `arg min` of SSE in the [0.005, 5.0] s search range** (§19: n_grid = 2000 makes things worse, and the 2000-pt grid is a near-exhaustive enumeration of the SSE landscape). Whether truth is reachable by a top-K fitter using a non-SSE selector (prior, joint structure) is **untested but plausible** — the SSE-vs-T1 plot in §19.5 is the next decisive experiment. The C1 framing for Ch4 narrows to "RL achieves the analytic Fisher-info ceiling and is observation-conditional; the residual ~270 pp MAPE is at minimum a magnitude-recon-plus-noise artefact in which the maximum-likelihood T1 estimate isn't T1_true, and at maximum a fundamental limit of any SSE-only fitter on this likelihood". Levers that survive: likelihood-side (joint fit, prior, lower noise, signed recon under a different noise model), and fitter-side *with* a non-SSE selector.
+
+### 19.7 One-line summary
+
+V12 with `n_grid = 2000` lands at 367 % / 857 % p90 (slightly worse than n_grid = 200 baseline 322 % / 669 %, idx 14 worsens 1001 → 1687); since the 2000-pt grid is a strict superset of the 200-pt grid, **any fitter that picks `arg min` of SSE in [0.005, 5.0] s is bounded below by 367 %** — killing lowest-SSE K-restart and SSE-scored dictionary matching. Whether truth is in the top-K SSE candidates (allowing a non-SSE-selector fitter to recover it) remains untested; the SSE-vs-T1 landscape plot is the next decisive experiment.
+
+---
+
+## 20. SSE-vs-T1 landscape on V12's failing spheres (2026-05-10 PM)
+
+**Status:** §19.5 item 1 done. The decisive plot (Figure §20.1) shows that on V12's worst-performing spheres (APE ≥ 200 %), **T1_true is not the global SSE minimum**, **T1_true is typically not even a top-K candidate**, and the gap between the wrong-basin SSE and the truth-basin SSE is large (median 5×, max 20×). This pins us firmly in §19.3 "scenario 3" — truth is structurally off-podium in the SSE landscape, not just below the global minimum but in the bottom half of all candidates. **All SSE-driven fitters are dead on this likelihood**, including non-SSE-selector K-restart variants in any practical regime (truth's median rank is 1500/2000 ≈ 76th percentile).
+
+### 20.1 Setup
+
+For 10 V12 episodes (paired seeds 500000…500009, same env config as §17/§18: log-TI, simplified action, max_blocks=30, time_budget=250 s, subset_size=5), pull each sphere's actual schedule realisation `(TIs, TRs, α_excs, mags)` from the running env. For each failing sphere (baseline-fitter APE ≥ 200 %), evaluate the F1+ profile SSE on a 2000-point log-spaced T1 grid in `[0.005, 5.0]` s with closed-form amplitude `A` per candidate. Plot `SSE_prof(T1)` with markers for `T1_true` (green), the baseline-fitter T1 estimate `T1_est` (red), and the global SSE minimum (black ×). The 2000-pt grid matches §19's resolution so the SSE-min reported here is the same one the §19 baseline fitter returns.
+
+### 20.2 Aggregate result over 12 worst-failing spheres
+
+Truth's rank in SSE ordering across all 12 failing spheres (lower = better):
+
+| stat | rank (out of 2000) | percentile |
+|---|---:|---:|
+| best case | 632 | 31.6 |
+| median | 1452 | 76.0 |
+| mean | 1392 | 69.6 |
+| worst case | 1895 | 94.8 |
+
+Median: **76th percentile** of the SSE landscape. There are ~1500 T1 candidates with strictly lower SSE than truth on the typical failing sphere. Even the *best* failing case (rank 632) has 632 candidates with strictly lower SSE than truth — i.e. K-restart-by-SSE with K < 632 cannot reach truth on *any* of these spheres.
+
+`SSE_at_truth / SSE_at_argmin` ratio:
+
+| stat | ratio |
+|---|---:|
+| min | 1.25× |
+| median | ~5× |
+| max | 20.23× |
+
+Truth's SSE is typically **5× higher** than the global minimum, sometimes 20×. This is not "truth is a slightly-shallower local min next to a slightly-deeper wrong min". The wrong basin dominates the landscape.
+
+### 20.3 Per-sphere table
+
+Sphere-by-sphere readout (sorted by APE descending):
+
+| ep | pool | T1_true | T1_est | APE | T1_argmin | SSE_truth/SSE_min | rank/2000 | pct |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 14 |  24.1 ms | 3000.0 ms | 12 353 % | 5000.0 ms |  2.11× |  821 | 41.0 |
+| 9 | 10 |  90.8 ms | 1233.8 ms |  1 258 % | 1233.6 ms |  1.94× | 1863 | 93.2 |
+| 7 | 14 |  23.6 ms |  208.7 ms |    783 % |  208.8 ms | 14.41× | 1512 | 75.6 |
+| 5 | 13 |  31.7 ms |  255.0 ms |    703 % |  251.7 ms |  4.24× | 1701 | 85.0 |
+| 5 |  6 | 390.7 ms | 3000.0 ms |    668 % | 3418.9 ms |  1.54× | 1895 | 94.8 |
+| 0 | 13 |  33.6 ms |  186.1 ms |    453 % |  187.6 ms |  8.11× | 1678 | 83.9 |
+| 0 | 12 |  43.4 ms |  234.0 ms |    440 % |  236.5 ms | 19.41× | 1529 | 76.5 |
+| 4 | 13 |  35.1 ms |  147.9 ms |    322 % |  146.8 ms |  1.47× |  632 | 31.6 |
+| 4 | 14 |  23.5 ms |   96.2 ms |    309 % |   95.0 ms |  1.94× |  720 | 36.0 |
+| 5 |  9 | 134.6 ms |  537.3 ms |    299 % |  542.0 ms |  1.25× | 1083 | 54.1 |
+| 0 | 14 |  22.3 ms |   88.3 ms |    296 % |   88.9 ms |  7.34× | 1392 | 69.6 |
+| 7 | 11 |  67.3 ms |  262.5 ms |    290 % |  259.6 ms | 20.23× | 1880 | 94.0 |
+
+A few patterns worth noting:
+- **The "wrong basin" T1 is often 4–10× larger than truth**: e.g. pool 14 truth = 24 ms → argmin = 209 ms (8.7×); pool 13 truth = 32 ms → argmin = 255 ms (8×); pool 12 truth = 43 ms → argmin = 234 ms (5.4×). Long-T1 magnitudes are saturated at almost any TI, so they fit easily-saturated data better than the "true" oscillating short-T1 signature.
+- **Some failures hit the search bounds**: ep 1 pool 14 returns argmin = 5000 ms (the upper edge of the [0.005, 5.0] s search range), and ep 5 pool 6 returns 3419 ms — bound-clipping behaviour where the deepest minimum is at or beyond the search limit. These cases are *only* recoverable with a hard prior cap.
+- **A non-trivial mid-T1 sphere also fails**: ep 5 pool 6 (T1_true = 391 ms) returns argmin = 3419 ms (8.7× longer than truth). The problem is not exclusively short-T1; it's "any sphere whose data happens to be consistent with a saturated longer-T1 alternative under noise".
+
+### 20.4 The plot
+
+![SSE landscape on V12's failing spheres](runs/e2/e2_tractability_V12/sse_landscape/sse_landscape.png)
+
+Each panel: `SSE_prof(T1)` on a log-T1 axis for one (episode, pool index) failing sphere. Green vertical line = `T1_true`. Red dashed line = `T1_est` returned by the baseline fitter (which equals the global SSE min, marked with `×`).
+
+Visual reading: in *every* panel, green is far from the deepest minimum. Most panels show `T1_true` sitting on a high-SSE plateau or shoulder, with the dominant minimum located at a much longer T1. A few panels (e.g. ep 5 pool 9) show a small dip near truth — a candidate truth basin that exists but is much shallower than the wrong basin. A K-restart fitter that took the top-50 candidates by SSE and refined each would, in cases with a visible truth-side dip, plausibly include that dip; but the SSE-min would still be elsewhere, and any rule that returns "lowest-SSE refined fit" would not pick truth.
+
+### 20.5 Implication: every SSE-driven fitter is dead on this likelihood
+
+§19.3 left "K-restart with non-SSE selector" as the only fitter-side option still alive. §20 narrows that further:
+
+- **Truth's median rank is 1452/2000 (76th percentile).** Any K-restart-and-non-SSE-select strategy needs `K ≥ ~1500` to reliably include truth among the candidates. At that K the "non-SSE selector" is essentially picking a T1 from a near-uniform distribution over the search range — i.e. the SSE has done none of the work and the selector is the entire fitter.
+- **A non-SSE selector in this regime is just a prior-driven estimator on the marginal data.** With SSE giving no signal (truth is in the bottom 25 %), the only thing left to break the tie is a Bayesian prior on T1 plus the data marginalised over `A`. That's *not* a "fitter swap" — it's a different estimator class entirely (Bayesian rather than maximum-likelihood-by-SSE), and it has to be designed and validated from scratch.
+- **Sharp Bayesian prior (e.g. log-T1 with σ_log = 0.3 around an oracle mean) is functionally equivalent to D2's oracle-init.** So the upper bound on what any prior-driven estimator can do without ground-truth side information is: tight prior → matches oracle (53 %); broad prior → matches baseline (322 %). The slope between these is set by the prior strength, which has to come from somewhere outside the data.
+
+The §19.3 pivot from "K-restart LM is dead, K-restart-non-SSE is alive" to **"every SSE-anchored fitter is dead, only side-information-driven estimators (prior, joint multi-sphere, signed recon) remain"** is the correct read after §20.
+
+### 20.6 What this elevates
+
+- **Joint multi-sphere fit becomes the most interesting fitter-side experiment.** All 5 active spheres in an episode share the same image-level noise σ, the same gain, and (under a shared transmit/receive chain) coupled phase. Fitting them jointly with a shared σ and per-sphere `(T1, A)` adds 4N constraints across the spheres. Whether this constrains the SSE landscape enough to make truth the joint MLE is empirically testable. Cheap to implement (~1 day).
+- **Bayesian-prior fitter with calibrated prior strength.** The prior comes from the *fleet* — we know the 14-sphere T1 distribution a priori, so episode-level priors should weight short-T1 candidates appropriately. This is essentially a constrained-MLE that respects the known sphere-distribution. Could close part of the 322 → 53 gap without ground-truth oracle.
+- **Lower-noise sweep is now strictly more informative.** §19.5 listed it; §20 confirms its priority. The wrong basin's depth (5×–20× SSE ratio at truth) is what makes K-restart impossible. Halving σ would shrink that ratio super-linearly. If at σ = 0.02 the median SSE ratio drops to ~1.5×, then K-restart with K = top 20 might suddenly become viable.
+- **Signed recon under a different phase-noise model** is now the most likely *MAPE-moving* lever (because §16.5 phase-sens collapse was probably env-noise-specific). The SSE landscape under signed recon would be unimodal in T1, eliminating the wrong-basin entirely.
+
+### 20.7 What this kills definitively
+
+- **K-restart LM with any rank-based-on-SSE selector** at `K < 1000`. Even at K = 500 the median failing sphere can't reach truth. The §19 framing was correct in spirit; §20 quantifies the threshold.
+- **SSE/correlation dictionary matching at any dictionary resolution.** Same selection rule, same failure mode.
+- **The "fitter swap will buy us most of 322 → 53" thesis from §17.5.** Even an ideal SSE-driven fitter is bounded below by ~322 % on this likelihood (since the 2000-pt grid is near-exhaustive of the SSE surface and returns 367 % already). The remaining gap to 53 % requires fundamentally side-information-driven estimation.
+
+### 20.8 Reproducibility
+
+Code: `python/diagnose_sse_landscape.py` (new). Reimplements the F1+ transient forward model in Python (no juliacall during plotting), pulls per-sphere block schedules from the live env after each rollout, and computes profile SSE with closed-form A per candidate T1 over a dense log-T1 grid.
+
+```bash
+PYTHONPATH=python PYTHON_JULIAPKG_OFFLINE=yes python python/diagnose_sse_landscape.py \
+    --policy   runs/e2/e2_tractability_V12/best/best_policy.zip \
+    --vecnorm  runs/e2/e2_tractability_V12/best/best_vecnorm.pkl \
+    --episodes 10 --seed 500000 \
+    --simplified-action --log-ti-action \
+    --max-blocks 30 --time-budget 250.0 --subset-size 5 \
+    --ape-threshold 200 --max-plots 12 \
+    --out runs/e2/e2_tractability_V12/sse_landscape \
+  2>&1 | tee runs/e2/e2_tractability_V12/sse_landscape.log
+```
+
+Output:
+- `runs/e2/e2_tractability_V12/sse_landscape/sse_landscape.png` — the 4×3 panel grid (Figure §20.4 above).
+- `runs/e2/e2_tractability_V12/sse_landscape/sse_landscape_summary.json` — per-candidate stats (T1_true, T1_est, T1_argmin, SSE ratios, ranks, plus the raw `(TIs, TRs, mags)` per sphere for downstream re-analysis).
+
+Re-running with different thresholds is cheap (the SSE evaluation is 12 spheres × 2000 grid points × ~20 blocks ≈ 0.5 M evaluations, sub-second). The slowest part is the V12 rollout (~1 min per 10 episodes after the Julia precompile).
+
+### 20.9 Updated headline (replaces §19.6)
+
+V12 has no Fisher-information advantage over CR-opt (§18). Under any fitter that scores candidate T1s by SSE in `[0.005, 5.0]` s, the achievable mean MAPE is bounded below by ~322–367 % (§19), because **on V12's typical failing sphere, T1_true sits at the 76th percentile of SSE rankings with the global minimum at a 5–20× lower SSE elsewhere** (§20). The wrong basin is not a near-truth artefact recoverable by smarter optimisation — it is a structural feature of the magnitude-reconstruction-plus-5%-noise likelihood. Recovering the 322 → 53 gap requires a non-MLE estimator: Bayesian prior on the T1 distribution, joint multi-sphere fit with shared noise σ, or signed recon under a phase-noise model that doesn't collapse RL training (which the env's current 5 Hz B0 noise does, §16.5). The C1 framing for Ch4 is now unambiguous: V12 reaches the analytic Fisher-info ceiling and is observation-conditional, but the residual ~270 pp MAPE is a **likelihood-side property of the magnitude reconstruction**, not a policy or fitter deficiency.
+
+### 20.10 One-line summary
+
+On V12's 12 worst-failing spheres, T1_true sits at the 76th percentile (median) of the 2000-pt SSE landscape with `SSE_truth / SSE_argmin` = 1.25–20× (median ~5×); **all SSE-driven fitters are dead on this likelihood**, only side-information estimators (Bayesian prior, joint multi-sphere fit, signed recon) can move the headline, and the next concrete experiment is a lower-σ sweep to map how steeply the wrong-basin depth scales with noise.

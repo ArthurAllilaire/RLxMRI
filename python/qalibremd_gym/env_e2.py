@@ -108,6 +108,13 @@ class QalibreMDE2Env(gym.Env):
         sigma_method: str = "bootstrap",
         subset_size: Optional[int] = None,
         log_ti_action: bool = False,
+        # D2 diagnostic (EXPERT_REPORT_TRAC §17): narrows the fitter's T1
+        # grid to a log-band of ±oracle_band around T1_true per sphere.
+        oracle_fit: bool = False,
+        oracle_band: float = 2.0,
+        # §17.10 control: bump fitter T1 grid resolution to test whether
+        # baseline MAPE is grid-coarseness-limited.
+        fitter_n_grid: int = 200,
         project_dir: Optional[str] = None,
     ) -> None:
         super().__init__()
@@ -135,6 +142,9 @@ class QalibreMDE2Env(gym.Env):
             mape_alpha=float(mape_alpha),
             phase_sensitive=bool(phase_sensitive),
             sigma_method=jl.Symbol(sigma_method),
+            oracle_fit=bool(oracle_fit),
+            oracle_band=float(oracle_band),
+            fitter_n_grid=int(fitter_n_grid),
         )
         if subset_size is not None:
             env_kwargs["subset_size"] = int(subset_size)

@@ -279,11 +279,24 @@ def main():
                    help="n_blocks values swept by the CR optimiser.")
     p.add_argument("--cr-starts", type=int, default=1000)
     p.add_argument("--cr-refine", type=int, default=10)
+    p.add_argument("--cr-load", type=Path, default=None,
+                   help="Load CR-optimal schedule from a JSON (TIs, TRs) "
+                        "instead of re-solving. Skips the multi-start optimiser.")
+    p.add_argument("--cr-only", action="store_true",
+                   help="Skip the default fixed schedules; run only --cr-optimal "
+                        "and/or --cr-oracle.")
+    p.add_argument("--oracle-fit", action="store_true",
+                   help="D2: narrow the fitter T1 grid to ±oracle-band around "
+                        "T1_true per sphere. Diagnostic — never report.")
+    p.add_argument("--oracle-band", type=float, default=2.0)
+    p.add_argument("--fitter-n-grid", type=int, default=200,
+                   help="n_grid for fit_t1_generalized_ir. §17.10 control: "
+                        "use 2000 to test grid coarseness vs multimodal SSE.")
     args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    schedules = dict(SCHEDULES)
+    schedules = {} if args.cr_only else dict(SCHEDULES)
     env_kwargs = dict(
         cfg_field=args.field,
         max_blocks=args.max_blocks,
@@ -292,6 +305,9 @@ def main():
         noise_sigma_rel=args.noise,
         phase_sensitive=args.phase_sensitive,
         sigma_method=args.sigma_method,
+        oracle_fit=args.oracle_fit,
+        oracle_band=args.oracle_band,
+        fitter_n_grid=args.fitter_n_grid,
     )
     cr_budget = args.time_budget if args.cr_budget is None else args.cr_budget
 
@@ -299,13 +315,23 @@ def main():
         # T3 14-sphere fleet — should match T1_ARRAY[:T3] in src/materials/t1_array.jl
         T1s_T3 = [1.838, 1.398, 0.998, 0.726, 0.509, 0.367, 0.259, 0.185,
                   0.131, 0.091, 0.064, 0.046, 0.033, 0.023]
-        print(f"\n[baseline_e2] Solving CR-optimal schedule "
-              f"(expected random-subset fleet=14 spheres, budget={cr_budget}s) …")
-        TIs, TRs, n_blocks, L = make_cr_optimal_schedule(
-            T1s_T3, budget_s=cr_budget,
-            n_block_grid=tuple(args.cr_block_grid),
-            n_starts=args.cr_starts,
-            n_refine=args.cr_refine)
+        if args.cr_load is not None:
+            print(f"\n[baseline_e2] Loading CR-optimal schedule from "
+                  f"{args.cr_load} (skipping optimiser) …")
+            with args.cr_load.open() as f:
+                cr_data = json.load(f)
+            TIs = list(cr_data["TIs"])
+            TRs = list(cr_data["TRs"])
+            n_blocks = int(cr_data["n_blocks"])
+            L = float(cr_data["L"])
+        else:
+            print(f"\n[baseline_e2] Solving CR-optimal schedule "
+                  f"(expected random-subset fleet=14 spheres, budget={cr_budget}s) …")
+            TIs, TRs, n_blocks, L = make_cr_optimal_schedule(
+                T1s_T3, budget_s=cr_budget,
+                n_block_grid=tuple(args.cr_block_grid),
+                n_starts=args.cr_starts,
+                n_refine=args.cr_refine)
         print(f"  best n_blocks = {n_blocks}, L = {L:.4f}")
         print(f"  TIs (sorted)  = {sorted(round(t, 4) for t in TIs)}")
         print(f"  TRs (sorted)  = {sorted(round(t, 4) for t in TRs)}")

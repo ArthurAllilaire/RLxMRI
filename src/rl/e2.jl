@@ -107,6 +107,17 @@ mutable struct E2Env
     sigma_method::Symbol                   # :asymptotic (default, V1–V5 compat) |
                                             # :profile_likelihood | :bootstrap. Controls
                                             # how `T1_sigma` is computed in the fitter.
+    oracle_fit::Bool                       # D2 diagnostic (EXPERT_REPORT_TRAC §17): when
+                                            # true, the fitter's T1 grid is narrowed to a
+                                            # log-band of ±oracle_band around the true T1
+                                            # of each sphere. Tests "is wrong-basin LM
+                                            # convergence the bottleneck?" — never deploy.
+    oracle_band::Float64                   # multiplicative half-width for oracle grid.
+                                            # 2.0 = ±1 octave. Only used if oracle_fit.
+    fitter_n_grid::Int                     # n_grid passed to fit_t1_generalized_ir.
+                                            # Default 200. Higher values test whether
+                                            # baseline MAPE is grid-resolution-limited
+                                            # (§17.10 control).
 
     # ── sphere pool info (fixed at construction) ──────────────────────────
     sphere_centres_pool::Vector{NTuple{3,Float64}}  # all original centres [m]
@@ -171,6 +182,9 @@ function E2Env(;
     phase_sensitive::Bool          = false,            # cr_explainer.md §14
     sigma_method::Symbol           = :profile_likelihood,  # E2_5_PLAN.md §3
     subset_size::Union{Nothing,Integer} = nothing,
+    oracle_fit::Bool               = false,            # D2 diagnostic only
+    oracle_band::Real              = 2.0,
+    fitter_n_grid::Integer         = 200,
 )
     cfg_field ∈ (:T3, :T15) || error("cfg_field must be :T3 or :T15")
     reward_mode ∈ (:neg_mape, :delta_mape) ||
@@ -210,6 +224,9 @@ function E2Env(;
         Float64(mape_alpha),
         Bool(phase_sensitive),
         sigma_method,
+        Bool(oracle_fit),
+        Float64(oracle_band),
+        Int(fitter_n_grid),
         pool_centres, Float64.(pool_T1), pool_ratio,
         active_idx, centres, Float64.(T1_base), T2_ratio,
         MersenneTwister(rng_seed),
@@ -426,10 +443,12 @@ function _e2_update_t1_estimates!(env::E2Env, image_mag::Matrix{Float32},
                 TRs    = env.block_TRs[i],
                 α_excs = env.block_α_excs[i],
                 Npe    = env.Npe,
-                T1_range = env.T1_sample_range, n_grid = 200,
+                T1_range = env.T1_sample_range, n_grid = env.fitter_n_grid,
                 abs_noise_sigma = abs_noise,
                 sigma_method    = env.sigma_method,
                 signed          = env.phase_sensitive,
+                T1_oracle       = env.oracle_fit ? env.T1_true[i] : nothing,
+                oracle_band     = env.oracle_band,
             )
             env.T1_est[i]   = fit.T1
             env.T1_sigma[i] = fit.T1_sigma
