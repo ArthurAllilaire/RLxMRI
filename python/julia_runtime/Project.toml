@@ -1,6 +1,9 @@
 [deps]
+KomaMRI = "6a340f8b-2cdf-4c04-99be-4953d9b66d0a"
+KomaMRIBase = "d0bc0b20-b151-4d03-b2a4-6ca51751cb9c"
 PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 QalibreMDPhantom = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
 
 [compat]
+KomaMRIBase = "0.11.1"
 PythonCall = "0.9.31"

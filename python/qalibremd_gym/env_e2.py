@@ -94,7 +94,13 @@ class QalibreMDE2Env(gym.Env):
         time_budget_s: float = 120.0,
         terminal_bonus: float = 0.5,
         success_tol: float = 0.05,
-        noise_sigma_rel: float = 0.05,
+        noise_sigma_abs: float = 0.005,
+        # If set, override noise_sigma_abs by calibrating once at env
+        # construction: simulate one reference IR-SE block (TI=0.5 s, TR=3.0 s,
+        # α=90°) on a nominal (no-jitter, no-pose) phantom, then set
+        # σ = ksp_rms / target_snr. σ is then fixed for the env's lifetime
+        # (scene-independent, matches the physical hardware-noise model).
+        target_snr: Optional[float] = None,
         T1_sigma_rel: float = 0.05,
         translation_sigma_mm: float = 5.0,
         rotation_sigma_rad: float = 0.15,
@@ -134,7 +140,7 @@ class QalibreMDE2Env(gym.Env):
             time_budget_s=float(time_budget_s),
             terminal_bonus=float(terminal_bonus),
             success_tol=float(success_tol),
-            noise_sigma_rel=float(noise_sigma_rel),
+            noise_sigma_abs=float(noise_sigma_abs),
             T1_sigma_rel=float(T1_sigma_rel),
             translation_sigma_mm=float(translation_sigma_mm),
             rotation_sigma_rad=float(rotation_sigma_rad),
@@ -148,6 +154,8 @@ class QalibreMDE2Env(gym.Env):
         )
         if subset_size is not None:
             env_kwargs["subset_size"] = int(subset_size)
+        if target_snr is not None:
+            env_kwargs["target_snr"] = float(target_snr)
         self._env = qmd.E2Env(**env_kwargs)
 
         obs_dim = int(qmd.e2_obs_dim(self._env))
@@ -202,13 +210,17 @@ class QalibreMDE2Env(gym.Env):
         *,
         seed: Optional[int] = None,
         options: Optional[dict] = None,
+        forced_sphere_indices=None,
     ):
         super().reset(seed=seed)
         qmd = _env_mod._JL_QMD
+        kwargs = {}
         if seed is not None:
-            obs = qmd.e2_reset_b(self._env, rng_seed=int(seed))
-        else:
-            obs = qmd.e2_reset_b(self._env)
+            kwargs["rng_seed"] = int(seed)
+        if forced_sphere_indices is not None:
+            # Julia expects 1-based indices; caller passes 0-based Python indices
+            kwargs["forced_indices"] = [int(i) + 1 for i in forced_sphere_indices]
+        obs = qmd.e2_reset_b(self._env, **kwargs)
         obs = np.asarray(obs, dtype=np.float32)
         info = {
             "T1_true": np.array([float(v) for v in self._env.T1_true]),
