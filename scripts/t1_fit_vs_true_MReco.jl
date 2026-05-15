@@ -385,7 +385,7 @@ println("  " * "─"^58)
 @printf("  %6s   %10s   %10s   %8s   %7.2f\n",
         "MAX", "", "", "", maximum(mapes))
 
-outdir = joinpath(@__DIR__, run_label)
+outdir = joinpath(@__DIR__, "runs", "t1_fit_vs_true", run_label)
 mkpath(outdir)
 csv_path = joinpath(outdir, "t1_fit_vs_true.csv")
 open(csv_path, "w") do io

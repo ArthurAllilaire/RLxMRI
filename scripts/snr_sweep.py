@@ -1,6 +1,6 @@
 """scripts/snr_sweep.py — visualise the noise-sensitivity sweep.
 
-Reads `scripts/snr_sweep/snr_sweep.csv` (produced by `snr_sweep.jl`) and
+Reads `runs/snr_sweep/snr_sweep.csv` (produced by `snr_sweep.jl`) and
 generates the report-ready figure:
 
     Left panel : Fit MAPE (mean / median / max) vs NEMA MS-1 dual-acq SNR
@@ -47,7 +47,7 @@ REPORT-USEFUL FACTS — copy these into the §SNR-methodology subsection
 
 Usage:
     python scripts/snr_sweep.py
-    python scripts/snr_sweep.py --indir scripts/snr_sweep --out scripts/snr_sweep/snr_sweep.png
+    python scripts/snr_sweep.py --indir runs/snr_sweep --out runs/snr_sweep/snr_sweep.png
 """
 
 from __future__ import annotations
@@ -63,6 +63,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
+RUNS_SNR = HERE / "runs" / "snr_sweep"
 
 
 # ─── Data loading ────────────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ def print_text_summary(data: dict[str, np.ndarray]):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--indir", type=Path, default=HERE / "snr_sweep",
+    p.add_argument("--indir", type=Path, default=RUNS_SNR,
                    help="Directory containing snr_sweep.csv")
     p.add_argument("--out",   type=Path, default=None,
                    help="Output plot path (default: <indir>/snr_sweep.png)")

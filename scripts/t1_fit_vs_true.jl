@@ -376,7 +376,7 @@ println("  " * "─"^58)
 @printf("  %6s   %10s   %10s   %8s   %7.2f\n",
         "MAX", "", "", "", maximum(mapes))
 
-outdir = joinpath(@__DIR__, run_label)
+outdir = joinpath(@__DIR__, "runs", "t1_fit_vs_true", run_label)
 mkpath(outdir)
 
 open(joinpath(outdir, "config.json"), "w") do io

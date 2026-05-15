@@ -72,9 +72,9 @@
 # julia --project=. scripts/snr_sweep.jl --budget 160 --npe 32 --nfe 64
 # julia --project=. scripts/snr_sweep.jl --clean-recon  # apply Hamming+ROI
 #
-# Output: scripts/snr_sweep/snr_sweep.csv          (one row per target_snr)
-#         scripts/snr_sweep/per_sphere_mape.csv    (one row per sphere×SNR)
-#         scripts/snr_sweep/run_<target_snr>.json  (full per-run dump)
+# Output: runs/snr_sweep/snr_sweep.csv          (one row per target_snr)
+#         runs/snr_sweep/per_sphere_mape.csv    (one row per sphere×SNR)
+#         runs/snr_sweep/run_<target_snr>.json  (full per-run dump)
 # ═════════════════════════════════════════════════════════════════════════════
 
 using QalibreMDPhantom, KomaMRI, Suppressor
@@ -103,7 +103,7 @@ function parse_args()
     Npe         = 32
     Nfe         = 64
     clean_recon = false
-    outdir      = joinpath(@__DIR__, "snr_sweep")
+    outdir      = joinpath(@__DIR__, "runs", "snr_sweep")
     i = 1
     while i <= length(ARGS)
         if ARGS[i] == "--snrs" && i < length(ARGS)

@@ -1,7 +1,7 @@
 """Plot T1 fitted vs T1 true — scatter + per-sphere MAPE bar chart.
 
 Left panel:  T1_fit vs T1_true scatter (diagonal = perfect), coloured by MAPE.
-             Data from scripts/accurate/t1_fit_vs_true.txt (Julia clean run,
+             Data from runs/t1_fit_vs_true/accurate/t1_fit_vs_true.csv (Julia clean run,
              no noise, no jitter, CR-optimal schedule).
 
 Right panel: Per-sphere MAPE bar chart.  Always shows the Julia clean run.
@@ -33,12 +33,13 @@ import matplotlib.colors as mcolors
 import csv
 
 here = os.path.dirname(os.path.abspath(__file__))
+runs_t1 = os.path.join(here, "runs", "t1_fit_vs_true")
 
 
 # ── Data loaders ─────────────────────────────────────────────────────────────
 
 def load_julia(subdir="accurate"):
-    path = os.path.join(here, subdir, "t1_fit_vs_true.csv")
+    path = os.path.join(runs_t1, subdir, "t1_fit_vs_true.csv")
     labels, T1_true, T1_fit, T1_sigma, mape, cx, cy = [], [], [], [], [], [], []
     with open(path) as f:
         reader = csv.DictReader(f)
@@ -63,7 +64,7 @@ def load_julia(subdir="accurate"):
 
 def load_run_config(subdir):
     """Load config.json from a run subdir; returns {} if absent."""
-    path = os.path.join(here, subdir, "config.json")
+    path = os.path.join(runs_t1, subdir, "config.json")
     if not os.path.exists(path):
         return {}
     with open(path) as f:
@@ -274,7 +275,7 @@ def make_figure(julia, baselines, policy_mape, policy_label, args):
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--subdir",       default="accurate",
-                    help="Subdir under scripts/ containing t1_fit_vs_true.txt")
+                    help="Subdir under runs/t1_fit_vs_true/ containing t1_fit_vs_true.csv")
 parser.add_argument("--baselines",    default=None,
                     help="Path to baseline_summary.json from baseline_e2.py")
 parser.add_argument("--baseline-keys", nargs="*", default=None,
@@ -290,7 +291,7 @@ parser.add_argument("--phase-sensitive", action="store_true",
 parser.add_argument("--clean-recon",   action="store_true",
                     help="Mark plot title as clean recon (Hamming+zero-pad+ROI)")
 parser.add_argument("--out",          default=None,
-                    help="Output path (default: scripts/accurate/t1_fit_vs_true.png)")
+                    help="Output path (default: runs/t1_fit_vs_true/<subdir>/t1_fit_vs_true.png)")
 args = parser.parse_args()
 
 # Auto-populate annotation flags from config.json if present; explicit CLI flags win.
@@ -322,7 +323,7 @@ if args.policy:
 
 fig = make_figure(julia, baselines, policy_mape, args.policy_label, args)
 
-out = args.out or os.path.join(here, args.subdir, "t1_fit_vs_true.png")
+out = args.out or os.path.join(runs_t1, args.subdir, "t1_fit_vs_true.png")
 fig.savefig(out, dpi=130, bbox_inches="tight")
 print(f"Wrote {out}")
 
