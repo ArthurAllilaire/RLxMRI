@@ -155,7 +155,8 @@ def main():
     p.add_argument("--subset-size",    type=int,   default=None,
                    help="Draw this many T1 spheres without replacement per "
                         "episode. Omit for the full 14-sphere plate.")
-    p.add_argument("--noise",          type=float, default=0.05)
+    p.add_argument("--noise",          type=float, default=0.005,
+                   help="Absolute complex-Gaussian σ on k-space (FIX_SIM_PLAN §2).")
     p.add_argument("--reward-mode",    type=str,   default="neg_mape",
                    choices=["neg_mape", "delta_mape"],
                    help="neg_mape (legacy) | delta_mape (per-step progress)")
@@ -195,7 +196,7 @@ def main():
         max_blocks        = args.max_blocks,
         time_budget_s     = args.time_budget,
         subset_size       = args.subset_size,
-        noise_sigma_rel   = args.noise,
+        noise_sigma_abs   = args.noise,
         reward_mode       = args.reward_mode,
         simplified_action = args.simplified_action,
         log_ti_action     = args.log_ti_action,

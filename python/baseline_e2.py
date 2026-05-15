@@ -261,7 +261,8 @@ def main():
     p.add_argument("--time-budget", type=float, default=120.0)
     p.add_argument("--subset-size", type=int, default=None,
                    help="Evaluate schedules on random k-sphere subsets.")
-    p.add_argument("--noise", type=float, default=0.05)
+    p.add_argument("--noise", type=float, default=0.005,
+                   help="Absolute complex-Gaussian σ on k-space (FIX_SIM_PLAN §2).")
     p.add_argument("--phase-sensitive", action="store_true")
     p.add_argument("--sigma-method", type=str, default="bootstrap",
                    choices=["asymptotic", "profile_likelihood", "bootstrap"])
@@ -302,7 +303,7 @@ def main():
         max_blocks=args.max_blocks,
         time_budget_s=args.time_budget,
         subset_size=args.subset_size,
-        noise_sigma_rel=args.noise,
+        noise_sigma_abs=args.noise,
         phase_sensitive=args.phase_sensitive,
         sigma_method=args.sigma_method,
         oracle_fit=args.oracle_fit,

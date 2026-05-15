@@ -2,6 +2,11 @@
 # running-estimate feature of the later RL environments. No external
 # optimiser dependency — T2 is closed-form in log space, T1 is a log-grid
 # search over T1 with closed-form (A, B) at each T1.
+# TODO: look into using PyQMRI for better algos
+# REPO: https://gitlab.tugraz.at/ibi/mrirecon/software/PyQMRI
+# paper: https://joss.theoj.org/papers/10.21105/joss.02727 
+# or matlab version: https://github.com/qMRLab/qMRLab
+
 
 """
     fit_t2_se(TEs, magnitudes) -> (T2, S0, residual)

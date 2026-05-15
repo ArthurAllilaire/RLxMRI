@@ -123,7 +123,11 @@ function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
                             Nfe::Int      = 16,
                             Npe::Int      = 8,
                             amp_T::Real   = 20e-6)
-    γ_rad = 2π * 42.577e6   # proton gyromagnetic ratio [rad/s/T]
+    # KomaMRI convention: k = γ * ∫G dt with γ in Hz/T (no 2π factor — see
+    # `KomaMRIBase.jl:17` const global γ = 42.5774688e6 Hz/T). Previous code
+    # divided by γ_rad = 2π·γ_Hz and produced gradients 2π× too small,
+    # collapsing the effective image FOV. Fixed by using γ_Hz directly.
+    γ_Hz = 42.577e6   # proton gyromagnetic ratio [Hz/T], Koma convention
 
     d_inv = rf_duration(π;     amp_T = amp_T)
     d_exc = rf_duration(α_exc; amp_T = amp_T)
@@ -135,8 +139,8 @@ function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
     kmax_x = Nfe / (2.0 * FOV)
     # Positive prewinder (applied after excitation) sets kx → +kmax_x before refocus.
     # Refocus conjugates → kx_eff = −kmax_x. Positive readout sweeps to +kmax_x.
-    Gx_pre = kmax_x / (γ_rad * dur_pe)
-    Gx_ro  = 2.0 * kmax_x / (γ_rad * dur_adc)
+    Gx_pre = kmax_x / (γ_Hz * dur_pe)
+    Gx_ro  = 2.0 * kmax_x / (γ_Hz * dur_adc)
 
     # Phase-encode steps, centred on zero ky
     Δky      = 1.0 / FOV
@@ -165,7 +169,7 @@ function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
         # Negative prewinder so that after the 180° refocus (which conjugates
         # phase) the readout samples ky = +ky_steps[k]. With no Gy during ADC
         # this gives clean Cartesian sampling at the intended ky line.
-        Gy_k = -ky_steps[k] / (γ_rad * dur_pe)
+        Gy_k = -ky_steps[k] / (γ_Hz * dur_pe)
 
         # 1. 180° inversion
         seq += Sequence(_gr0(d_inv), _rf1(d_inv), _adc0)

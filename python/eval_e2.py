@@ -143,7 +143,7 @@ def main():
     p.add_argument("--sigma-method", type=str, default="bootstrap",
                    choices=["asymptotic", "profile_likelihood", "bootstrap"])
     p.add_argument("--noise-sweep", action="store_true",
-                   help="Sweep noise levels σ ∈ {0, 0.02, 0.05, 0.10, 0.20}")
+                   help="Sweep absolute σ ∈ {0, 0.002, 0.005, 0.01, 0.02}")
     p.add_argument("--simplified-action", action="store_true",
                    help="Required if the policy was trained with "
                         "--simplified-action (3-dim action space)")
@@ -228,8 +228,8 @@ def main():
     if args.noise_sweep:
         print("\nNoise robustness sweep:")
         print(f"  {'σ':>6}  {'Agent MAPE':>12}  {'Baseline MAPE':>14}")
-        for sigma in [0.0, 0.02, 0.05, 0.10, 0.20]:
-            kw = dict(cfg_field=args.field, noise_sigma_rel=sigma)
+        for sigma in [0.0, 0.002, 0.005, 0.01, 0.02]:
+            kw = dict(cfg_field=args.field, noise_sigma_abs=sigma)
             r_s = evaluate_policy(args.policy, args.vecnorm,
                                   args.episodes // 2, args.seed, **kw)
             env_b = QalibreMDE2Env(rng_seed=args.seed, **kw)

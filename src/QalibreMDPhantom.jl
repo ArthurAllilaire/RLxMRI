@@ -16,6 +16,7 @@ using KomaMRI
 using Random
 using LinearAlgebra
 import Suppressor
+import Statistics
 import Statistics: mean
 
 # --- materials (pure data) ------------------------------------------------
@@ -43,6 +44,11 @@ include("baselines/cr_optimal.jl")
 # --- RL experiments -------------------------------------------------------
 include("rl/e1.jl")
 include("rl/e2.jl")
+
+# --- diagnostics ----------------------------------------------------------
+# Included after rl/e2.jl because snr_report uses raw_to_kspace, add_noise!,
+# kspace_to_image, phantom_occupancy — all defined in e2.jl.
+include("diagnostics/snr.jl")
 
 export PhantomConfig, AugmentConfig, SphereDescriptor,
        build_phantom, build_plate, build_sphere, build_background_water,
@@ -76,6 +82,12 @@ export PhantomConfig, AugmentConfig, SphereDescriptor,
        E1Env, e1_reset!, e1_step!, e1_n_actions, e1_obs_dim, e1_action_table,
        # E2 environment
        E2Env, e2_reset!, e2_step!, e2_obs_dim,
-       e2_action_lo, e2_action_hi
+       e2_action_lo, e2_action_hi,
+       e2_image_stats, e2_dual_acq_snr_report,
+       raw_to_kspace, kspace_to_image, phantom_occupancy,
+       add_noise!, add_gaussian_noise!,
+       # SNR diagnostics
+       SNRReport, background_mask, nema_stats, dual_acq_stats,
+       snr_report, print_snr_report, snr_report_to_dict
 
 end # module

@@ -35,10 +35,13 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from qalibremd_gym.env_e2 import QalibreMDE2Env
+from qalibremd_gym import env as _env_mod
 
 
 def collect(policy_path: Path, vecnorm_path: Path | None,
-            n_episodes: int, seed_offset: int, **env_kwargs):
+            n_episodes: int, seed_offset: int,
+            forced_indices_list=None,
+            snr_holder: dict | None = None, **env_kwargs):
     raw_env = QalibreMDE2Env(rng_seed=seed_offset, **env_kwargs)
     vec_norm = None
     if vecnorm_path is not None and vecnorm_path.exists():
@@ -55,8 +58,34 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
         return vec_norm.normalize_obs(np.expand_dims(o, 0))[0]
 
     episodes = []  # list of dicts per episode
+    qmd = _env_mod._JL_QMD
     for ep in range(n_episodes):
-        obs, _ = raw_env.reset(seed=seed_offset + ep)
+        forced = forced_indices_list[ep] if forced_indices_list is not None else None
+        obs, _ = raw_env.reset(seed=seed_offset + ep, forced_sphere_indices=forced)
+
+        # Once per `collect()` run, on the first episode, capture the
+        # NEMA MS-1 dual-acquisition SNR — the trustworthy noise-level
+        # number we cite in the report. Costs 2 extra simulate() calls;
+        # acceptable as a one-time measurement since σ is fixed.
+        if ep == 0 and snr_holder is not None and not snr_holder:
+            rep = qmd.e2_dual_acq_snr_report(raw_env._env)
+            snr_holder.update({
+                "ksp_rms":             float(rep.ksp_rms),
+                "sigma_used":          float(rep.sigma_used),
+                "snr_ksp":             float(rep.snr_ksp),
+                "background_std":      float(rep.background_std),
+                "diff_roi_std":        float(rep.diff_roi_std),
+                "sphere_means":        [float(v) for v in rep.sphere_means],
+                "snr_nema_per_sphere": [float(v) for v in rep.snr_nema_per_sphere],
+                "snr_nema_peak":       float(rep.snr_nema_peak),
+                "snr_dual_per_sphere": [float(v) for v in rep.snr_dual_per_sphere],
+                "snr_dual_peak":       float(rep.snr_dual_peak),
+            })
+            print(f"[diagnose] SNR calibration (NEMA MS-1 dual-acq):")
+            print(f"           σ = {snr_holder['sigma_used']:.4g}   "
+                  f"snr_ksp = {snr_holder['snr_ksp']:.2f}   "
+                  f"snr_nema_peak = {snr_holder['snr_nema_peak']:.2f}   "
+                  f"snr_dual_peak = {snr_holder['snr_dual_peak']:.2f}  ← report figure")
         ep_record = {
             "TI":            [],
             "TE":            [],
@@ -72,6 +101,7 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
             "T1_sigma_at_decision":    [],   # full sigma vector per block
             "T1_true":       np.asarray(raw_env.T1_true, dtype=np.float64),
             "sphere_indices": np.asarray([], dtype=np.int64),
+            "snr_nema_peak":  [],   # per-block single-image NEMA SNR
         }
         done = False
         while not done:
@@ -110,6 +140,13 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
             t1_est_post = np.asarray(info.get("T1_est",
                                               raw_env.T1_est), dtype=np.float64)
             ep_record["T1_est_mean"].append(float(np.nanmean(t1_est_post)))
+            # Cheap per-step NEMA single-image SNR on the reconstructed
+            # image this block just produced. Aggregated into snr_vs_block.png.
+            try:
+                stats = qmd.e2_image_stats(raw_env._env)
+                ep_record["snr_nema_peak"].append(float(stats.snr_peak))
+            except Exception:
+                ep_record["snr_nema_peak"].append(np.nan)
         ep_record["sphere_indices"] = np.asarray(
             info.get("sphere_indices", []), dtype=np.int64)
         ep_record["T1_true"] = np.asarray(
@@ -149,6 +186,34 @@ def plot_ti_histogram(episodes, out_path):
                  f"(N={len(all_ti)} blocks)\n"
                  "Single-bin spike → degenerate policy")
     ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=130)
+    plt.close(fig)
+
+
+def plot_snr_vs_block(episodes, out_path, dual_acq_snr=None):
+    """Per-block NEMA single-image SNR (one line per episode). If the dual-acq
+    reference SNR is supplied, draws it as a horizontal line — that's the
+    figure-of-merit we cite in the report (single-image NEMA is biased high
+    on coarse grids by Gibbs ringing in the "background" region)."""
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for ep in episodes:
+        snrs = np.asarray(ep.get("snr_nema_peak", []), dtype=np.float64)
+        if snrs.size == 0:
+            continue
+        ax.plot(np.arange(1, snrs.size + 1), snrs,
+                marker="o", alpha=0.4, linewidth=1)
+    if dual_acq_snr is not None and np.isfinite(dual_acq_snr):
+        ax.axhline(dual_acq_snr, color="crimson", linestyle="--", linewidth=1.5,
+                   label=f"dual-acq SNR (NEMA MS-1) = {dual_acq_snr:.1f}")
+        ax.legend(loc="best")
+    ax.set_xlabel("Block index within episode")
+    ax.set_ylabel("NEMA single-image SNR (peak sphere)")
+    ax.set_yscale("log")
+    ax.set_title("Per-block image SNR\n"
+                 "(single-image NEMA is biased by structured background;\n"
+                 "the dashed dual-acq line is the trustworthy noise reference)")
+    ax.grid(True, which="both", alpha=0.3)
     fig.tight_layout()
     fig.savefig(out_path, dpi=130)
     plt.close(fig)
@@ -221,6 +286,35 @@ def plot_ti_vs_t1est(episodes, out_path):
     plt.close(fig)
     return {k: {"pearson_log_r": v["pearson_log_r"], "n": v["n"]}
             for k, v in summaries.items()}
+
+
+def save_episodes(episodes, out_path):
+    """Serialise full episode data so plots can be regenerated without Julia."""
+    def _to_json(v):
+        if isinstance(v, np.ndarray):
+            return v.tolist()
+        if isinstance(v, (np.floating, np.integer)):
+            return v.item()
+        return v
+
+    serialised = [
+        {k: _to_json(v) for k, v in ep.items()
+         if k not in ("T1_est_per_sphere_at_decision", "T1_sigma_at_decision")}
+        for ep in episodes
+    ]
+    with open(out_path, "w") as f:
+        json.dump(serialised, f)
+    print(f"[diagnose] Episodes saved to {out_path}")
+
+
+def load_episodes(path):
+    """Load episodes saved by save_episodes(); returns list of dicts."""
+    raw = json.loads(Path(path).read_text())
+    for ep in raw:
+        for k in ("T1_true", "sphere_indices"):
+            if k in ep:
+                ep[k] = np.asarray(ep[k])
+    return raw
 
 
 def write_summary(episodes, out_path):
@@ -305,22 +399,29 @@ def plot_subset_bucket_histograms(episodes, out_path):
 
     fig, ax = plt.subplots(figsize=(8, 5))
     bins = np.logspace(np.log10(0.01), np.log10(3.0), 30)
+    colors = {"all_long": "#1f77b4", "mixed": "#ff7f0e", "all_short": "#2ca02c"}
     for name, vals in buckets.items():
         vals = np.asarray(vals, dtype=np.float64)
         vals = vals[np.isfinite(vals) & (vals > 0)]
         if vals.size:
-            ax.hist(vals, bins=bins, histtype="step", linewidth=2,
-                    label=f"{name} (N={vals.size})")
+            counts, _ = np.histogram(vals, bins=bins)
+            pct = counts / counts.sum() * 100  # normalise to % of blocks in bucket
+            bin_centres = np.sqrt(bins[:-1] * bins[1:])
+            ax.step(bin_centres, pct, where="mid", linewidth=2,
+                    label=f"{name} (n={vals.size} blocks)",
+                    color=colors.get(name))
     ax.set_xscale("log")
     ax.set_xlabel("TI [s] (log scale)")
-    ax.set_ylabel("Count across blocks")
-    ax.set_title("TI distributions by episode T1-subset bucket")
+    ax.set_ylabel("% of blocks in bucket")
+    ax.set_title("TI distributions by episode T1-subset bucket (normalised)")
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     fig.savefig(out_path, dpi=130)
     plt.close(fig)
 
+    bucket_tis = {name: np.asarray(vals, dtype=np.float64).tolist()
+                  for name, vals in buckets.items()}
     return {
         "bucket_counts_episodes": {
             name: int(sum(_subset_bucket(ep) == name for ep in episodes))
@@ -328,7 +429,110 @@ def plot_subset_bucket_histograms(episodes, out_path):
         },
         "bucket_counts_blocks": {name: int(len(vals)) for name, vals in buckets.items()},
         "ks_all_long_vs_all_short": _ks_2sample(buckets["all_long"], buckets["all_short"]),
+        "bucket_tis": bucket_tis,
     }
+
+
+_T1_POOL_3T = np.array([
+    1.838, 1.398, 0.9983, 0.7258, 0.5091, 0.367, 0.2587,
+    0.1847, 0.1308, 0.0909, 0.0642, 0.04628, 0.03265, 0.02295,
+])
+
+
+def _all_subsets_by_bucket():
+    """Return dict bucket→list of 0-based index tuples for all C(14,5)=2002 subsets."""
+    from itertools import combinations
+    buckets = {"all_long": [], "all_short": [], "mixed": []}
+    for idxs in combinations(range(len(_T1_POOL_3T)), 5):
+        t1 = _T1_POOL_3T[list(idxs)]
+        b = _subset_bucket({"T1_true": t1})
+        buckets[b].append(list(idxs))
+    return buckets
+
+
+def collect_stratified(policy_path, vecnorm_path, seed_offset,
+                       target_per_bucket=30, mixed_target=100, **env_kwargs):
+    """Collect episodes with forced sphere subsets to get balanced bucket counts.
+
+    Precomputes all 2002 valid 5-of-14 subsets in Python, classifies them by
+    bucket, then runs `target_per_bucket` episodes per bucket (and `mixed_target`
+    mixed episodes) with the subset injected directly into the env.  T1 jitter
+    and all other randomness still vary with the episode seed.
+    """
+    import random as _random
+    all_buckets = _all_subsets_by_bucket()
+    print(f"[diagnose] Bucket pool sizes: "
+          f"all_long={len(all_buckets['all_long'])}, "
+          f"all_short={len(all_buckets['all_short'])}, "
+          f"mixed={len(all_buckets['mixed'])}")
+
+    targets = {"all_long": target_per_bucket,
+               "all_short": target_per_bucket,
+               "mixed": mixed_target}
+    selected = []  # list of (0-based indices, bucket_label)
+    for bucket, tgt in targets.items():
+        pool = all_buckets[bucket]
+        chosen = _random.sample(pool, min(tgt, len(pool)))
+        selected.extend((idxs, bucket) for idxs in chosen)
+
+    forced_list = [idxs for idxs, _ in selected]
+    bucket_labels = [b for _, b in selected]
+
+    print(f"[diagnose] Running {len(selected)} stratified episodes "
+          f"({target_per_bucket}/{target_per_bucket}/{mixed_target} "
+          f"all_long/all_short/mixed) …")
+    eps = collect(policy_path, vecnorm_path, len(selected), seed_offset,
+                  forced_indices_list=forced_list, **env_kwargs)
+    for ep, label in zip(eps, bucket_labels):
+        ep["bucket"] = label
+    return eps
+
+
+def plot_ti_vs_subset_t1(episodes, out_path):
+    """Scatter: mean(log TI per episode) vs mean(T1_true of subset).
+
+    Tests the continuous version of the adaptivity hypothesis: does the policy
+    choose longer TIs when the active subset has longer T1 values?
+    Returns the log-log Pearson r and n.
+    """
+    xs, ys = [], []
+    for ep in episodes:
+        t1_true = np.asarray(ep.get("T1_true", []), dtype=np.float64)
+        tis = np.asarray(ep["TI"], dtype=np.float64)
+        tis = tis[np.isfinite(tis) & (tis > 0)]
+        t1_true = t1_true[np.isfinite(t1_true) & (t1_true > 0)]
+        if t1_true.size == 0 or tis.size == 0:
+            continue
+        xs.append(float(np.mean(t1_true)))
+        ys.append(float(np.mean(np.log(tis))))
+
+    if len(xs) < 3:
+        print("[diagnose] Not enough data for subset-T1 correlation plot.")
+        return {"pearson_log_r": None, "n": len(xs)}
+
+    log_x = np.log(np.array(xs))
+    y_arr = np.array(ys)
+    r = float(np.corrcoef(log_x, y_arr)[0, 1])
+    n = len(xs)
+
+    # Regression line
+    m, b = np.polyfit(log_x, y_arr, 1)
+    x_line = np.linspace(log_x.min(), log_x.max(), 100)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.scatter(np.exp(log_x), np.exp(y_arr), alpha=0.55, s=25)
+    ax.plot(np.exp(x_line), np.exp(m * x_line + b), color="crimson", linewidth=1.5)
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel("Mean T1_true of active subset [s]")
+    ax.set_ylabel("Geometric mean TI chosen this episode [s]")
+    ax.set_title(f"Subset-T1 vs mean TI (log–log Pearson r = {r:+.3f}, N={n})\n"
+                 "Negative r → policy targets shorter TIs for short-T1 subsets")
+    ax.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=130)
+    plt.close(fig)
+    return {"pearson_log_r": r, "n": n}
 
 
 def main():
@@ -352,36 +556,82 @@ def main():
     p.add_argument("--subset-size", type=int, default=None,
                    help="Diagnose policy on random k-sphere subsets.")
     p.add_argument("--phase-sensitive", action="store_true")
+    p.add_argument("--target-snr", type=float, default=None,
+                   help="Calibrate env noise σ from this NEMA-knob SNR via "
+                        "ksp_rms / target_snr at construction. The actual "
+                        "report figure is the NEMA MS-1 dual-acq SNR printed "
+                        "and saved under summary['snr_calibration'].")
     p.add_argument("--sigma-method", type=str, default="bootstrap",
                    choices=["asymptotic", "profile_likelihood", "bootstrap"])
+    p.add_argument("--from-json", type=Path, default=None, metavar="EPISODES_JSON",
+                   help="Skip Julia rollout; load episodes from a previously saved "
+                        "episodes.json and just regenerate plots.")
+    p.add_argument("--stratified", action="store_true",
+                   help="Use forced-injection stratified collection instead of "
+                        "uniform random subsets. Requires --subset-size.")
+    p.add_argument("--target-per-bucket", type=int, default=30,
+                   help="Episodes per all_long/all_short bucket (--stratified only).")
+    p.add_argument("--mixed-target", type=int, default=100,
+                   help="Episodes for the mixed bucket (--stratified only).")
     args = p.parse_args()
 
     out_dir = args.out or (args.policy.parent / "diagnostics")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"[diagnose] Collecting {args.episodes} rollouts from {args.policy} …")
-    eps = collect(args.policy, args.vecnorm, args.episodes, args.seed,
-                   cfg_field=args.field,
-                   max_blocks=args.max_blocks,
-                   time_budget_s=args.time_budget,
-                   subset_size=args.subset_size,
-                   phase_sensitive=args.phase_sensitive,
-                   sigma_method=args.sigma_method,
-                   simplified_action=args.simplified_action,
-                   log_ti_action=args.log_ti_action)
+    env_kwargs = dict(
+        cfg_field=args.field,
+        max_blocks=args.max_blocks,
+        time_budget_s=args.time_budget,
+        subset_size=args.subset_size,
+        phase_sensitive=args.phase_sensitive,
+        sigma_method=args.sigma_method,
+        simplified_action=args.simplified_action,
+        log_ti_action=args.log_ti_action,
+    )
+    if args.target_snr is not None:
+        env_kwargs["target_snr"] = args.target_snr
+
+    snr_calibration = {}
+    if args.from_json is not None:
+        print(f"[diagnose] Loading episodes from {args.from_json} (skipping Julia) …")
+        eps = load_episodes(args.from_json)
+    elif args.stratified:
+        if not args.subset_size:
+            raise ValueError("--stratified requires --subset-size")
+        eps = collect_stratified(
+            args.policy, args.vecnorm, args.seed,
+            target_per_bucket=args.target_per_bucket,
+            mixed_target=args.mixed_target,
+            snr_holder=snr_calibration,
+            **env_kwargs,
+        )
+        save_episodes(eps, out_dir / "episodes.json")
+    else:
+        print(f"[diagnose] Collecting {args.episodes} rollouts from {args.policy} …")
+        eps = collect(args.policy, args.vecnorm, args.episodes, args.seed,
+                      snr_holder=snr_calibration, **env_kwargs)
+        save_episodes(eps, out_dir / "episodes.json")
 
     print("[diagnose] Plotting …")
     plot_ti_per_episode  (eps, out_dir / "ti_per_episode.png")
     plot_ti_histogram    (eps, out_dir / "ti_histogram.png")
     plot_t1est_trajectory(eps, out_dir / "t1est_trajectory.png")
+    plot_snr_vs_block    (eps, out_dir / "snr_vs_block.png",
+                          dual_acq_snr=snr_calibration.get("snr_dual_peak"))
     ti_vs_t1est_summary = plot_ti_vs_t1est(eps, out_dir / "ti_vs_t1est.png")
     summary = write_summary(eps, out_dir / "diagnose_summary.json")
     summary["ti_vs_t1est_correlations"] = ti_vs_t1est_summary
+    if snr_calibration:
+        summary["snr_calibration"] = snr_calibration
     bucket_summary = None
+    subset_t1_corr = None
     if args.subset_size:
         bucket_summary = plot_subset_bucket_histograms(
             eps, out_dir / "ti_histogram_by_subset_bucket.png")
         summary["subset_bucket_diagnostic"] = bucket_summary
+        subset_t1_corr = plot_ti_vs_subset_t1(
+            eps, out_dir / "ti_vs_subset_t1.png")
+        summary["subset_t1_correlation"] = subset_t1_corr
         with (out_dir / "diagnose_summary.json").open("w") as f:
             json.dump(summary, f, indent=2)
 
@@ -397,6 +647,10 @@ def main():
         r = info["pearson_log_r"]
         rstr = f"{r:+.3f}" if r is not None else "n/a"
         print(f"  log–log Pearson r ({key}) = {rstr}  (N={info['n']})")
+    if subset_t1_corr is not None:
+        r = subset_t1_corr["pearson_log_r"]
+        rstr = f"{r:+.3f}" if r is not None else "n/a"
+        print(f"  Subset-T1 vs mean-TI r  = {rstr}  (N={subset_t1_corr['n']})")
     if bucket_summary is not None:
         ks = bucket_summary["ks_all_long_vs_all_short"]
         print(f"  Subset buckets          = {bucket_summary['bucket_counts_episodes']}")

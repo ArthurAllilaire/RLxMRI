@@ -26,16 +26,14 @@
 #     blocks under the legacy steady-state convention. F1+ uses this less
 #     aggressively (cross-shot recovery is now modelled, not assumed).
 #
-# * Noise (line 260): σ_kspace = noise_sigma_rel × RMS(full ksp). This is a
-#   simulation hack to keep noise meaningful across phantom configs — NOT a
-#   physical claim. Real MRI noise is hardware-determined (thermal,
-#   ∝ √(k_B·T·BW·R) / G), absolute, scene-independent. In practice our
-#   model is roughly absolute-noise-like because RMS(ksp) is dominated by
-#   the loudest spheres (long-T1 in the inverted regime), so per-pixel σ
-#   ends up ~constant — but if the phantom composition changed, the per-
-#   sphere effective SNR would shift. Sim-to-real comparisons need to
-#   either (a) replace this with an absolute σ_kspace constant, or (b)
-#   calibrate noise_sigma_rel against a reference scan.
+# * Noise: absolute complex Gaussian on k-space (FIX_SIM_PLAN §2). Real and
+#   imaginary parts are independently N(0, σ²) with σ = env.noise_sigma_abs,
+#   added via `add_noise!`. This matches the physical model: MRI thermal
+#   noise is hardware-determined (∝ √(k_B·T·BW·R) / G), absolute, and
+#   scene-independent. After `abs()` the residuals are Rician — the
+#   Gaussian likelihood in the fitter is therefore misspecified at low SNR
+#   (the short-T1 regime). Right fix is phase-sensitive recon
+#   (`phase_sensitive=true`); documented as a Ch4 limitation.
 #
 # * Forward model (`fits.jl::transient_mz_at_excite_npe`, F1+) assumes
 #   perfect transverse spoiling between PE rows. Holds for our test
@@ -60,15 +58,85 @@
 #   Profile-likelihood σ (E2_5_PLAN.md §3) reports the resulting ambiguity
 #   honestly without changing the point estimate.
 #
-# * Fitter noise floor (line 298) currently uses noise_sigma_rel ×
-#   |first-block magnitude per sphere| — per-sphere relative. Because
-#   the env's effective noise floor is roughly absolute (set by scene
-#   RMS), this UNDER-estimates σ for short-T1 spheres by 5–30×. To be
-#   replaced with profile-likelihood σ (E2_5_PLAN.md §3); using a scene-
-#   level absolute floor would also work but overfits to the env's
-#   specific noise model.
+# * Fitter noise floor: `abs_noise_sigma = env.noise_sigma_abs` is passed
+#   directly — the same absolute σ the env injects on k-space, propagated
+#   to the fitter for σ_T1 estimation. Profile-likelihood σ is used by
+#   default (E2_5_PLAN §3) which is more robust to misspecification than
+#   the asymptotic J^T J formula.
 
-import FFTW: ifft
+import FFTW: ifft, fftshift, ifftshift
+
+"""
+    add_noise!(ksp, σ; rng = Random.GLOBAL_RNG) → ksp
+
+Add absolute complex Gaussian noise to a k-space matrix in place. Real and
+imaginary parts are independently `N(0, σ²)` (Julia convention for
+`randn(ComplexF32, …)`). This is the physically-correct model (FIX_SIM_PLAN §2):
+MRI thermal noise is hardware-determined and scene-independent, and after
+`abs()` the residuals are Rician — which is what we want at low SNR. No-op
+when `σ ≤ 0`. Use this everywhere noise is added to k-space.
+"""
+function add_noise!(ksp::AbstractMatrix{<:Complex}, σ::Real;
+                    rng::AbstractRNG = Random.GLOBAL_RNG)
+    σ > 0 || return ksp
+    ksp .+= Float32(σ) .* randn(rng, ComplexF32, size(ksp))
+    ksp
+end
+
+"""
+    add_gaussian_noise!(x, σ; rng = Random.GLOBAL_RNG) → x
+
+Add real Gaussian noise in place. Kept as a reference implementation; not used
+anywhere in the codebase (E2 noise is complex via [`add_noise!`](@ref)). Do not
+call from new code unless you specifically want real-only Gaussian noise.
+"""
+function add_gaussian_noise!(x::AbstractArray{<:Real}, σ::Real;
+                             rng::AbstractRNG = Random.GLOBAL_RNG)
+    σ > 0 || return x
+    x .+= Float32(σ) .* randn(rng, Float32, size(x))
+    x
+end
+
+"""
+    raw_to_kspace(raw, Npe, Nfe) → Matrix{ComplexF32}
+
+Extract the Npe×Nfe k-space matrix from KomaMRI raw simulation output.
+"""
+function raw_to_kspace(raw, Npe::Int, Nfe::Int)
+    ksp = zeros(ComplexF32, Npe, Nfe)
+    for k in 1:Npe
+        k <= length(raw.profiles) || continue
+        ksp[k, :] = ComplexF32.(raw.profiles[k].data[:, 1])
+    end
+    ksp
+end
+
+"""
+    kspace_to_image(ksp; phase_sensitive=false) → Matrix{Float32}
+
+2D IFFT reconstruction: ifftshift → ifft → fftshift.
+Returns magnitude image by default; signed real part when `phase_sensitive=true`.
+"""
+function kspace_to_image(ksp::Matrix{ComplexF32}; phase_sensitive::Bool=false)
+    img = fftshift(ifft(ifftshift(ksp, (1, 2)), (1, 2)), (1, 2))
+    phase_sensitive ? Float32.(real.(img)) : Float32.(abs.(img))
+end
+
+"""
+    phantom_occupancy(phantom, Npe, Nfe, FOV) → Matrix{Float64}
+
+Project phantom spin positions onto the image pixel grid and count spins per pixel.
+Same centred-indexing convention as `kspace_to_image`.
+"""
+function phantom_occupancy(phantom, Npe::Int, Nfe::Int, FOV::Real)
+    occ = zeros(Float64, Npe, Nfe)
+    for k in eachindex(phantom.x)
+        ife = mod(round(Int, phantom.x[k] * Nfe / FOV) + Nfe ÷ 2, Nfe) + 1
+        ipe = mod(round(Int, phantom.y[k] * Npe / FOV) + Npe ÷ 2, Npe) + 1
+        occ[ipe, ife] += 1.0
+    end
+    occ
+end
 
 """
     E2Env
@@ -89,7 +157,10 @@ mutable struct E2Env
     time_budget_s::Float64
     terminal_bonus::Float64
     success_tol::Float64                   # MAPE threshold for terminal bonus
-    noise_sigma_rel::Float64               # noise σ as fraction of signal RMS
+    noise_sigma_abs::Float64               # absolute complex-Gaussian σ on k-space
+    target_snr::Float64                    # if > 0, σ was derived at construction from
+                                            # a reference acquisition on a nominal phantom
+                                            # (ksp_rms / target_snr). 0 = σ used as-is.
     T1_sigma_rel::Float64                  # per-sphere T1 jitter (relative)
     translation_sigma_mm::Float64          # pose translation σ per axis [mm]
     rotation_sigma_rad::Float64            # pose rotation σ per axis [rad]
@@ -154,6 +225,11 @@ mutable struct E2Env
 
     # last image (for observation)
     last_image_mag::Vector{Float32}        # flattened [Npe × Nfe] magnitude
+
+    # background pixel mask (cached per episode in e2_reset!) — used by
+    # `e2_image_stats` / `e2_dual_acq_snr_report` for NEMA SNR. nothing until
+    # first reset.
+    background_mask::Union{Nothing,BitMatrix}
 end
 
 """
@@ -171,7 +247,14 @@ function E2Env(;
     time_budget_s::Real            = 120.0,
     terminal_bonus::Real           = 0.5,
     success_tol::Real              = 0.05,
-    noise_sigma_rel::Real          = 0.05,
+    noise_sigma_abs::Real          = 0.005,
+    target_snr::Union{Nothing,Real} = nothing,  # if given, override noise_sigma_abs by
+                                                 # calibrating once at construction off a
+                                                 # reference IR-SE block on a nominal phantom
+                                                 # (σ = ksp_rms / target_snr). Scene-relative
+                                                 # knob; the resulting σ is fixed across
+                                                 # episodes — preserves physical model
+                                                 # (hardware-determined σ, see header §Noise).
     T1_sigma_rel::Real             = 0.05,
     translation_sigma_mm::Real     = 5.0,
     rotation_sigma_rad::Real       = 0.15,   # ~8.6°
@@ -212,12 +295,14 @@ function E2Env(;
     T1_base      = pool_T1[active_idx]
     T2_ratio     = pool_ratio[active_idx]
 
-    E2Env(
+    snr_for_struct = target_snr === nothing ? 0.0 : Float64(target_snr)
+
+    env = E2Env(
         cfg_field, Float64(voxel_size_mm),
         Float64(FOV), Nfe, Npe, n_spheres, subset_size === nothing ? nothing : n_spheres,
         Int(max_blocks), Float64(time_budget_s),
         Float64(terminal_bonus), Float64(success_tol),
-        Float64(noise_sigma_rel), Float64(T1_sigma_rel),
+        Float64(noise_sigma_abs), snr_for_struct, Float64(T1_sigma_rel),
         Float64(translation_sigma_mm), Float64(rotation_sigma_rad),
         Float64.(T1_sample_range),
         reward_mode,
@@ -241,7 +326,88 @@ function E2Env(;
         fill(NaN, n_spheres),               # T1_sigma
         0, 0.0, false, 0.0,
         zeros(Float32, Npe * Nfe),
+        nothing,                            # background_mask (filled at reset)
     )
+
+    # If target_snr was requested, calibrate noise_sigma_abs ONCE here off a
+    # reference acquisition on a nominal phantom (no jitter, no pose). This
+    # gives an interpretable SNR knob for sweeps while keeping σ fixed and
+    # scene-independent during training — matches the physical noise model
+    # documented in §Noise. Reference block: TI=0.5 s, TR=3.0 s, α=90°,
+    # TE=0.020 s — produces signal across most spheres.
+    if target_snr !== nothing && Float64(target_snr) > 0.0
+        _e2_calibrate_snr!(env, Float64(target_snr))
+    end
+
+    env
+end
+
+"""
+    _e2_calibrate_snr!(env, target_snr) → env
+
+Calibrate `env.noise_sigma_abs` so a reference IR-SE acquisition on a nominal
+phantom (no jitter, no pose) has k-space RMS / σ = `target_snr`. Run once at
+construction; the resulting σ stays fixed for all episodes (hardware-determined
+noise model). Reference block parameters are deterministic so the same
+(target_snr, phantom_config) always produces the same σ.
+"""
+function _e2_calibrate_snr!(env::E2Env, target_snr::Real)
+    # Build nominal phantom: same plate config as training, no jitter or pose.
+    base_cfg = PhantomConfig(field = env.cfg_field,
+                              voxel_size_mm = env.voxel_size_mm,
+                              include_plates = [:T1])
+    nominal_phantom = build_phantom(base_cfg)
+
+    # Reference acquisition (matches docstring above).
+    TI_ref, TE_ref, TR_ref = 0.5, 0.020, 3.0
+    α_ref = deg2rad(90.0)
+    seq = Suppressor.@suppress ir_se_2d_sequence(
+        TI_ref, TE_ref, TR_ref;
+        α_exc = α_ref,
+        FOV   = env.FOV,
+        Nfe   = env.Nfe,
+        Npe   = env.Npe,
+    )
+    scanner = Scanner()
+    raw_a = Suppressor.@suppress simulate(nominal_phantom, seq, scanner)
+    ksp_a = raw_to_kspace(raw_a, env.Npe, env.Nfe)
+
+    ksp_rms = sqrt(sum(abs2, ksp_a) / length(ksp_a))
+    σ = ksp_rms / Float64(target_snr)
+    env.noise_sigma_abs = σ
+
+    # Build per-sphere pixel locations on the nominal phantom (no pose
+    # transform), and a background mask, so we can compute NEMA and dual-acq
+    # SNR right here at construction.
+    sphere_px = NTuple{2,Int}[]
+    for c in env.sphere_centres_base
+        cx, cy = c[1], c[2]
+        ife = mod(round(Int, cx * env.Nfe / env.FOV) + env.Nfe ÷ 2, env.Nfe) + 1
+        ipe = mod(round(Int, cy * env.Npe / env.FOV) + env.Npe ÷ 2, env.Npe) + 1
+        push!(sphere_px, (ipe, ife))
+    end
+    bg = background_mask(nominal_phantom, env.Npe, env.Nfe, env.FOV; erosion_px = 1)
+
+    # Inject noise on a *copy* of ksp_a so the calibration figure for
+    # `ksp_rms` stays on the noiseless k-space (clean reference); the
+    # reconstructed image we use for NEMA/dual must include noise.
+    ksp_a_noisy = copy(ksp_a)
+    rng_cal = MersenneTwister(0)
+    add_noise!(ksp_a_noisy, σ; rng = rng_cal)
+    img_a = kspace_to_image(ksp_a_noisy; phase_sensitive = env.phase_sensitive)
+
+    rep = snr_report(nominal_phantom, seq, scanner;
+                     σ = σ,
+                     sphere_px = sphere_px,
+                     bg_mask = bg,
+                     ksp_a = ksp_a_noisy,
+                     img_a = img_a,
+                     rng = rng_cal,
+                     phase_sensitive = env.phase_sensitive,
+                     roi_radius = 0)
+
+    @info "E2Env SNR calibration" target_snr σ ksp_rms snr_ksp=rep.snr_ksp snr_nema_peak=rep.snr_nema_peak snr_dual_peak=rep.snr_dual_peak
+    env
 end
 
 "Observation dimension: image (Nfe*Npe) + T1 estimates (n_spheres) + T1 σ-channel (n_spheres) + budget (3)."
@@ -253,10 +419,12 @@ e2_action_hi(::E2Env) = Float64[3.000, 0.080, 5.0, 180.0,   60.0]
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
 
-function _e2_build_episode_phantom(env::E2Env, rng_seed::Int)
+function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=nothing)
     rng_ep = MersenneTwister(rng_seed)
 
-    if env.subset_size === nothing
+    if forced_indices !== nothing
+        env.sphere_indices = sort(Int.(forced_indices))
+    elseif env.subset_size === nothing
         env.sphere_indices = collect(eachindex(env.T1_base_pool))
     else
         env.sphere_indices = sort(randperm(rng_ep, length(env.T1_base_pool))[1:env.subset_size])
@@ -312,8 +480,11 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int)
     for c in env.sphere_centres_base
         c_trans = R * collect(c) .+ t_m
         cx, cy = c_trans[1], c_trans[2]
-        ife = mod(round(Int, cx * env.Nfe / env.FOV), env.Nfe) + 1
-        ipe = mod(round(Int, cy * env.Npe / env.FOV), env.Npe) + 1
+        # Centred indexing: image centre (FOV origin) maps to pixel
+        # (Npe÷2+1, Nfe÷2+1) after fftshift; offsets are added relative to
+        # that. Matches the recon convention in `_e2_simulate_step`.
+        ife = mod(round(Int, cx * env.Nfe / env.FOV) + env.Nfe ÷ 2, env.Nfe) + 1
+        ipe = mod(round(Int, cy * env.Npe / env.FOV) + env.Npe ÷ 2, env.Npe) + 1
         push!(sphere_px, (ipe, ife))
     end
 
@@ -356,6 +527,16 @@ end
 
 function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
                             α_exc_deg::Real)
+    # KomaMRI multi-shot drift: per-shot signals start diverging from
+    # steady-state physics past ~70 s of total simulated time per
+    # `simulate()` call. See KOMA_BUG_REPRO.md §1.2.5. We warn rather than
+    # error because the cutoff is fuzzy and there are use cases (eg
+    # debug / one-shot diagnostics) where the user accepts the drift.
+    sim_time = Float64(TR) * env.Npe
+    if sim_time > 60.0
+        @warn "TR × Npe = $(round(sim_time, digits=1)) s exceeds KomaMRI safe zone (~60 s). Per-shot signals will drift; see KOMA_BUG_REPRO.md." maxlog = 1
+    end
+
     α_exc = deg2rad(Float64(α_exc_deg))
     seq = Suppressor.@suppress ir_se_2d_sequence(
         TI, TE, TR;
@@ -366,45 +547,17 @@ function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
     )
     raw = Suppressor.@suppress simulate(env.phantom, seq, Scanner())
 
-    # Build k-space: rows = PE steps, cols = FE samples
-    Npe, Nfe = env.Npe, env.Nfe
-    ksp = zeros(ComplexF32, Npe, Nfe)
-    for k in 1:Npe
-        if k <= length(raw.profiles)
-            ksp[k, :] = ComplexF32.(raw.profiles[k].data[:, 1])
-        end
-    end
+    ksp = raw_to_kspace(raw, env.Npe, env.Nfe)
 
-    # Add complex Gaussian noise (relative to signal RMS)
-    all_sig  = vec(ksp)
-    sig_rms  = sqrt(sum(abs2, all_sig) / length(all_sig))
-    σ = Float32(env.noise_sigma_rel) * sig_rms
-    if σ > 0
-        ksp .+= σ .* (randn(Float32, Npe, Nfe) .+ im .* randn(Float32, Npe, Nfe))
-    end
+    # Absolute complex Gaussian noise (FIX_SIM_PLAN §2). σ is hardware-set,
+    # not scene-relative — same magnitude every step regardless of phantom.
+    add_noise!(ksp, env.noise_sigma_abs; rng = env.rng)
 
-    # Reconstruct image via 2D IFFT.
-    # - Magnitude (default, env.phase_sensitive = false): clinical convention,
-    #   produces non-negative real image. Throws away phase. Creates the abs()-
-    #   induced multimodal SSE in T1 fitting (cr_explainer.md §14, §15).
-    # - Phase-sensitive (env.phase_sensitive = true): take the real part of
-    #   the IFFT'd complex image. Sim-only — assumes a known reference phase
-    #   (which a real scanner needs a phase-calibration scan for, see
-    #   PSIR — Phase-Sensitive Inversion Recovery). The signed signal model
-    #   `S = A · (1 − 2·exp(−TI/T1))` is monotonic in T1, so the SSE has a
-    #   single basin per sphere, removing the multimodal-SSE failure mode at
-    #   the source.
-    img_complex = ifft(ksp, (1, 2))
-    image_mag = if env.phase_sensitive
-        # The complex image has a baseline phase (FFT shift convention etc.)
-        # we don't model directly. In simulation the IR signal aligns along
-        # one axis (set by the excitation phase 90°), so the relevant signed
-        # quantity is the real part. For non-trivial reference phases, this
-        # would need a phase-correction step.
-        Float32.(real.(img_complex))
-    else
-        Float32.(abs.(img_complex))
-    end
+    # Reconstruct via 2D IFFT. See `kspace_to_image` for convention notes.
+    # phase_sensitive=true uses signed real part (PSIR-style, sim-only);
+    # false (default) uses magnitude — clinical convention, abs() induces
+    # multimodal SSE in T1 fitting (cr_explainer.md §14, §15).
+    image_mag = kspace_to_image(ksp; phase_sensitive=env.phase_sensitive)
 
     image_mag, ksp
 end
@@ -429,12 +582,9 @@ function _e2_update_t1_estimates!(env::E2Env, image_mag::Matrix{Float32},
         if length(env.block_TIs[i]) >= 2
             # θ_inv = π for standard 180° inversion prep
             αs = fill(π, length(env.block_TIs[i]))
-            # Fix B (`docs/T1_FIT_AND_KOMA_TESTS.md` §7.3): use an *absolute*
-            # noise floor anchored to the first block's magnitude per sphere
-            # so σ_T1 stops coupling to the agent's per-fit data RMS. Any
-            # deterministic per-sphere reference works; first-block magnitude
-            # is the simplest stable choice.
-            abs_noise = env.noise_sigma_rel * abs(env.block_mags[i][1])
+            # Fitter noise floor = the same absolute σ injected on k-space
+            # (FIX_SIM_PLAN §2.2). Decoupled from per-sphere data RMS.
+            abs_noise = env.noise_sigma_abs
             # F1+ (`E2_4_PLAN.md` §2.2): pass env.Npe so the fitter uses the
             # finite-Npe transient closed form that matches what
             # ir_se_2d_sequence actually feeds the simulator.
@@ -479,20 +629,26 @@ end
 
 Start a new episode. Rebuilds the phantom with fresh domain randomisation.
 """
-function e2_reset!(env::E2Env; rng_seed::Union{Nothing,Integer} = nothing)
+function e2_reset!(env::E2Env; rng_seed::Union{Nothing,Integer} = nothing,
+                   forced_indices = nothing)
     if rng_seed !== nothing
         env.rng = MersenneTwister(Int(rng_seed))
     end
     ep_seed = rand(env.rng, 0:typemax(Int32))
 
     phantom, T1_ep, sphere_px, rot, trans =
-        _e2_build_episode_phantom(env, ep_seed)
+        _e2_build_episode_phantom(env, ep_seed; forced_indices=forced_indices)
 
     env.phantom              = phantom
     env.T1_true              = T1_ep
     env.sphere_px            = sphere_px
     env.episode_rotation     = rot
     env.episode_translation_m = trans
+    # Cache background pixel mask (zero-occupancy pixels, eroded by 1 px)
+    # so per-step `e2_image_stats` and `e2_dual_acq_snr_report` don't
+    # re-derive it on every call. Phantom is constant within an episode.
+    env.background_mask      = background_mask(phantom, env.Npe, env.Nfe,
+                                               env.FOV; erosion_px = 1)
 
     for i in 1:env.n_spheres
         empty!(env.block_TIs[i])
@@ -533,7 +689,7 @@ function e2_step!(env::E2Env, action_vec)
     TE = min(TE, TR * 0.30)
 
     # Simulate and reconstruct
-    image_mag, _ksp = _e2_simulate_step(env, TI, TE, TR, α_exc_deg)
+    image_mag, _ = _e2_simulate_step(env, TI, TE, TR, α_exc_deg)
 
     # Store image and update T1 estimates
     env.last_image_mag = vec(image_mag)
@@ -584,6 +740,69 @@ function e2_step!(env::E2Env, action_vec)
     (obs, reward, env.done, info)
 end
 
+"""
+    e2_image_stats(env; roi_radius=0) → NamedTuple
+
+Single-image NEMA SNR stats on the most recent step's reconstructed image.
+Cheap (no extra simulation). Requires that at least one `e2_step!` has run
+since the last reset. See `nema_stats` for the returned fields and the
+`/0.6551` Rayleigh-correction convention.
+"""
+function e2_image_stats(env::E2Env; roi_radius::Integer = 0)
+    env.background_mask === nothing &&
+        error("e2_image_stats: call e2_reset! first")
+    img = reshape(env.last_image_mag, env.Npe, env.Nfe)
+    nema_stats(img, env.sphere_px, env.background_mask; roi_radius = Int(roi_radius))
+end
+
+"""
+    e2_dual_acq_snr_report(env; TI=0.5, TE=0.02, TR=3.0, α_deg=90.0,
+                            roi_radius=0, seed=0) → SNRReport
+
+Run a **dual acquisition** (two independent noise realisations of the same
+sequence) on the current episode phantom with the current `noise_sigma_abs`,
+and return a full `SNRReport`. Costs 2 simulator calls — intended to be
+called once per `diagnose_e2` run, not per step. Uses default reference
+parameters (TI=0.5 s, TR=3.0 s, α=90°, TE=0.02 s) so the number is comparable
+across runs; override via kwargs if you want a different operating point.
+"""
+function e2_dual_acq_snr_report(env::E2Env;
+                                 TI::Real = 0.5,
+                                 TE::Real = 0.020,
+                                 TR::Real = 3.0,
+                                 α_deg::Real = 90.0,
+                                 roi_radius::Integer = 0,
+                                 seed::Integer = 0)
+    env.phantom === nothing && error("e2_dual_acq_snr_report: call e2_reset! first")
+    env.background_mask === nothing &&
+        error("e2_dual_acq_snr_report: missing background mask (call e2_reset!)")
+
+    α_exc = deg2rad(Float64(α_deg))
+    seq = Suppressor.@suppress ir_se_2d_sequence(
+        Float64(TI), Float64(TE), Float64(TR);
+        α_exc = α_exc, FOV = env.FOV, Nfe = env.Nfe, Npe = env.Npe,
+    )
+    scanner = Scanner()
+    rng = MersenneTwister(Int(seed))
+
+    raw_a = Suppressor.@suppress simulate(env.phantom, seq, scanner)
+    ksp_a = raw_to_kspace(raw_a, env.Npe, env.Nfe)
+    add_noise!(ksp_a, env.noise_sigma_abs; rng = rng)
+    img_a = kspace_to_image(ksp_a; phase_sensitive = env.phase_sensitive)
+
+    snr_report(env.phantom, seq, scanner;
+               σ = env.noise_sigma_abs,
+               sphere_px = env.sphere_px,
+               bg_mask = env.background_mask,
+               ksp_a = ksp_a,
+               img_a = img_a,
+               rng = rng,
+               phase_sensitive = env.phase_sensitive,
+               roi_radius = Int(roi_radius))
+end
+
 # Aliases for juliacall (Python can't reach names ending in `!`)
 const e2_reset_b = e2_reset!
 const e2_step_b  = e2_step!
+const e2_image_stats_b = e2_image_stats
+const e2_dual_acq_snr_report_b = e2_dual_acq_snr_report
