@@ -1,9 +1,11 @@
 # Python
 .venv/
+.venv_mrzero/
+
 __pycache__/
 *.py[cod]
 .envrc.local
-
+scripts/archive/
 # Training runs (model weights, tensorboard logs, eval history)
 runs/
 
