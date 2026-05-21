@@ -26,8 +26,10 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
         @test all(d -> d.radius == CONTRAST_RADIUS_M, pds)
         @test all(d -> d.radius == FIDUCIAL_RADIUS_M, fids)
 
-        # T1 descriptor T1 values match manual @ 3T
-        @test [d.T1 for d in t1s] == T1_ARRAY[:T3]
+        # T1 descriptor T1 values match manual (cfg defaults to :T15)
+        @test [d.T1 for d in t1s] == T1_ARRAY[:T15]
+        # Field :T3 picks the 3T table
+        @test [d.T1 for d in sphere_descriptors(:T1, PhantomConfig(field = :T3))] == T1_ARRAY[:T3]
 
         # PD descriptor ρ values match H₂O fractions
         @test [d.ρ for d in pds] == PD_FRACTIONS
@@ -90,6 +92,41 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
             augment = AugmentConfig(drop_sphere_p = 1.0))   # drop all
         descs = sphere_descriptors(:T1, cfgD)
         @test isempty(descs)
+    end
+
+    @testset "slice_thickness_mm — z-slab mask" begin
+        # Slab centred on T1 plate keeps only T1-plate spins.
+        cfgS = PhantomConfig(voxel_size_mm = 0.5,
+                             include_plates = [:T1, :T2, :PD],
+                             slice_thickness_mm = 1.0,
+                             slice_center_mm    = PLATE_Z_MM.T1)
+        obj = build_phantom(cfgS)
+        @test length(obj.x) > 0
+        @test all(abs.(obj.z .- PLATE_Z_MM.T1 * 1e-3) .<= 0.5e-3 + 1e-12)
+        # Every surviving T1 value must be one of the T1-plate values.
+        t1_vals = sort(unique([d.T1 for d in sphere_descriptors(:T1, cfgS)]))
+        @test all(in(t1_vals), obj.T1)
+
+        # Same slab but excluding the T1 plate → no spins survive.
+        cfgEmpty = PhantomConfig(voxel_size_mm = 0.5,
+                                 include_plates = [:T2, :PD],
+                                 slice_thickness_mm = 1.0,
+                                 slice_center_mm    = PLATE_Z_MM.T1)
+        @test length(build_phantom(cfgEmpty).x) == 0
+
+        # Default (nothing) reproduces the full phantom z-extent.
+        full = build_phantom(PhantomConfig(voxel_size_mm = 3.0))
+        @test maximum(abs.(full.z)) > 1e-2   # ≫ 1 mm
+
+        # Scanner-frame semantics: rotating the phantom does not tilt the slab.
+        cfgRot = PhantomConfig(voxel_size_mm = 1.0,
+                               include_plates = [:water],
+                               slice_thickness_mm = 1.0,
+                               slice_center_mm    = 0.0,
+                               rotation           = (deg2rad(20.0), 0.0, 0.0))
+        objRot = build_phantom(cfgRot)
+        @test length(objRot.x) > 0
+        @test all(abs.(objRot.z) .<= 0.5e-3 + 1e-12)
     end
 
     @testset "background water excludes contrast volumes" begin

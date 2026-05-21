@@ -205,40 +205,6 @@ println("  n_blocks = $n_blocks  scan_time = $(round(scan_time, digits=1)) s")
 println("  TIs: $(round.(TIs_opt, digits=3))")
 println("  TRs: $(round.(TRs_opt, digits=3))")
 
-# ── Recon helper: Hamming window + zero-pad + IFFT ───────────────────────────
-"""
-    clean_kspace_to_image(ksp; pad_factor, phase_sensitive)
-
-Reconstruct an image from cartesian k-space with the standard clinical recon
-steps: Hamming apodization (sidelobes −13 dB → −43 dB) and `pad_factor`× zero-
-padding before IFFT (image interpolation, no info added). Returns magnitude
-unless `phase_sensitive=true` (signed real part).
-"""
-function clean_kspace_to_image(ksp::Matrix{ComplexF32};
-                                pad_factor::Int = 2,
-                                phase_sensitive::Bool = false)
-    Npe_k, Nfe_k = size(ksp)
-
-    # Hamming window: 0.54 − 0.46·cos(2πk/(N−1))
-    w_pe = Float32.(0.54 .- 0.46 .* cos.(2π .* (0:Npe_k-1) ./ (Npe_k-1)))
-    w_fe = Float32.(0.54 .- 0.46 .* cos.(2π .* (0:Nfe_k-1) ./ (Nfe_k-1)))
-    ksp_w = ksp .* (w_pe .* transpose(w_fe))
-
-    # Zero-pad symmetrically before IFFT
-    if pad_factor > 1
-        Npe_pad = Npe_k * pad_factor
-        Nfe_pad = Nfe_k * pad_factor
-        ksp_padded = zeros(ComplexF32, Npe_pad, Nfe_pad)
-        pe0 = (Npe_pad - Npe_k) ÷ 2 + 1
-        fe0 = (Nfe_pad - Nfe_k) ÷ 2 + 1
-        @views ksp_padded[pe0:pe0+Npe_k-1, fe0:fe0+Nfe_k-1] = ksp_w
-        ksp_w = ksp_padded
-    end
-
-    img = fftshift(ifft(ifftshift(ksp_w, (1, 2)), (1, 2)), (1, 2))
-    return phase_sensitive ? Float32.(real.(img)) : Float32.(abs.(img))
-end
-
 # ── Simulate each block and accumulate per-sphere signals ─────────────────────
 println("\nSimulating $n_blocks blocks…")
 
@@ -267,9 +233,10 @@ for blk in 1:n_blocks
         Nfe   = Nfe,
         Npe   = Npe,
     )
-    raw = Suppressor.@suppress simulate(phantom, seq, Scanner())
+    raw = Suppressor.@suppress simulate(phantom, seq, scanner_for_field(phantom))
     ksp = raw_to_kspace(raw, Npe, Nfe)
 
+    # TODO: don't use the first block should be done with a fixed sequence I thought we fixed this?
     # If --snr was given, derive noise_sigma_abs from the first block's k-space RMS.
     if blk == 1 && target_snr !== nothing
         ksp_rms = sqrt(sum(abs2, ksp) / length(ksp))
@@ -282,8 +249,8 @@ for blk in 1:n_blocks
     add_noise!(ksp, noise_sigma_abs; rng = rng)
 
     img = clean_recon ?
-        clean_kspace_to_image(ksp; pad_factor = img_pad,
-                                    phase_sensitive = phase_sensitive) :
+        kspace_to_image(ksp; pad_factor = img_pad, hamming = true,
+                              phase_sensitive = phase_sensitive) :
         kspace_to_image(ksp; phase_sensitive = phase_sensitive)
 
     # NEMA single-image + MS-1 dual-acquisition SNR on the first block — the
@@ -315,15 +282,7 @@ for blk in 1:n_blocks
         ipe, ife = sphere_px[i]
         # ROI mean over (2·roi_radius+1)² pixels around the sphere centre.
         # roi_radius=0 → single-pixel sample (legacy); =1 → 3×3 mean.
-        if roi_radius == 0
-            mag_i = Float64(img[ipe, ife]) / sin_α
-        else
-            pe_lo = clamp(ipe - roi_radius, 1, size(img, 1))
-            pe_hi = clamp(ipe + roi_radius, 1, size(img, 1))
-            fe_lo = clamp(ife - roi_radius, 1, size(img, 2))
-            fe_hi = clamp(ife + roi_radius, 1, size(img, 2))
-            mag_i = Float64(mean(img[pe_lo:pe_hi, fe_lo:fe_hi])) / sin_α
-        end
+        mag_i = roi_mean(img, ipe, ife; r = roi_radius) / sin_α
         push!(block_TIs[i],    TI)
         push!(block_TRs[i],    TR)
         push!(block_α_excs[i], α_exc)
@@ -337,6 +296,7 @@ println("\nFitting T1 per sphere…")
 
 T1_fit   = zeros(n_spheres)
 T1_sigma = fill(NaN, n_spheres)
+M0_fit   = zeros(n_spheres)
 mapes    = zeros(n_spheres)
 
 α_inv_vec = fill(π, n_blocks)   # standard 180° inversion pulse
@@ -357,6 +317,7 @@ for i in 1:n_spheres
     )
     T1_fit[i]   = fit.T1
     T1_sigma[i] = fit.T1_sigma
+    M0_fit[i]   = fit.A
     mapes[i]    = abs(fit.T1 - T1_true[i]) / T1_true[i] * 100
 end
 
@@ -404,11 +365,24 @@ end
 
 csv_path = joinpath(outdir, "t1_fit_vs_true.csv")
 open(csv_path, "w") do io
-    println(io, "label,T1_true_s,T1_fit_s,T1_sigma_s,mape_pct,cx_m,cy_m")
+    println(io, "label,T1_true_s,T1_fit_s,T1_sigma_s,M0_fit,mape_pct,cx_m,cy_m")
     for i in 1:n_spheres
         cx, cy = centres[i][1], centres[i][2]
         σ = isnan(T1_sigma[i]) ? 0.0 : T1_sigma[i]
-        println(io, "$(descs[i].label),$(T1_true[i]),$(T1_fit[i]),$σ,$(mapes[i]),$cx,$cy")
+        println(io, "$(descs[i].label),$(T1_true[i]),$(T1_fit[i]),$σ,$(M0_fit[i]),$(mapes[i]),$cx,$cy")
     end
 end
 println("\nWrote $csv_path")
+
+# Per-block per-sphere observed magnitudes (what the fitter actually saw),
+# for downstream plotting via scripts/plot_recovery_curves.py --source koma.
+signals_path = joinpath(outdir, "block_signals.csv")
+open(signals_path, "w") do io
+    println(io, "label,block,TI_s,TR_s,mag")
+    for i in 1:n_spheres
+        for k in 1:length(block_TIs[i])
+            println(io, "$(descs[i].label),$k,$(block_TIs[i][k]),$(block_TRs[i][k]),$(block_mags[i][k])")
+        end
+    end
+end
+println("Wrote $signals_path")

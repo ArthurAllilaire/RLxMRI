@@ -1,3 +1,10 @@
+# Minimal duck-typed phantom for occupancy tests — avoids a full KomaMRI build.
+struct _MockPhantom
+    x::Vector{Float64}
+    y::Vector{Float64}
+    z::Vector{Float64}
+end
+
 @testset "geometry primitives" begin
     @testset "voxelise_sphere volume" begin
         # At 1 mm voxels, voxelised volume should track (4/3)πr³ within 2 %
@@ -36,6 +43,64 @@
             @test all(isapprox.(rings[1:10],  65e-3))
             @test all(isapprox.(rings[11:14], 28e-3))
         end
+    end
+
+    @testset "phantom_occupancy 2D" begin
+        Npe, Nfe = 16, 32
+        FOV = 0.2
+
+        # Single spin at origin → DC pixel (centred indexing)
+        p = _MockPhantom([0.0], [0.0], [0.0])
+        occ = phantom_occupancy(p, Npe, Nfe, FOV)
+        @test occ[Npe ÷ 2 + 1, Nfe ÷ 2 + 1] == 1.0
+        @test sum(occ) == 1.0
+
+        # Single spin at a known offset → correct pixel
+        x0, y0 = FOV / 4, FOV / 8
+        p2 = _MockPhantom([x0], [y0], [0.0])
+        occ2 = phantom_occupancy(p2, Npe, Nfe, FOV)
+        expected_ife = mod(round(Int, x0 * Nfe / FOV) + Nfe ÷ 2, Nfe) + 1
+        expected_ipe = mod(round(Int, y0 * Npe / FOV) + Npe ÷ 2, Npe) + 1
+        @test occ2[expected_ipe, expected_ife] == 1.0
+        @test sum(occ2) == 1.0
+
+        # Multiple spins accumulate correctly
+        p3 = _MockPhantom([0.0, 0.0], [0.0, 0.0], [0.0, 0.0])
+        occ3 = phantom_occupancy(p3, Npe, Nfe, FOV)
+        @test occ3[Npe ÷ 2 + 1, Nfe ÷ 2 + 1] == 2.0
+
+        # Output shape is correct
+        @test size(occ) == (Npe, Nfe)
+
+        # Spin at FOV/2 wraps to pixel 1 (modular indexing)
+        p4 = _MockPhantom([FOV / 2], [0.0], [0.0])
+        occ4 = phantom_occupancy(p4, Npe, Nfe, FOV)
+        @test sum(occ4) == 1.0   # exactly one spin landed somewhere
+    end
+
+    @testset "phantom_occupancy 3D" begin
+        Npe, Nfe, Nsl = 8, 16, 4
+        FOV_xy = 0.2
+        FOV_z  = 0.1
+
+        # Single spin at origin → DC voxel
+        p = _MockPhantom([0.0], [0.0], [0.0])
+        occ = phantom_occupancy(p, Npe, Nfe, Nsl, FOV_xy, FOV_z)
+        @test occ[Npe ÷ 2 + 1, Nfe ÷ 2 + 1, Nsl ÷ 2 + 1] == 1.0
+        @test sum(occ) == 1.0
+
+        # Off-centre spin in all three axes
+        x0, y0, z0 = FOV_xy / 4, -FOV_xy / 8, FOV_z / 4
+        p2 = _MockPhantom([x0], [y0], [z0])
+        occ2 = phantom_occupancy(p2, Npe, Nfe, Nsl, FOV_xy, FOV_z)
+        exp_ife = mod(round(Int, x0 * Nfe / FOV_xy) + Nfe ÷ 2, Nfe) + 1
+        exp_ipe = mod(round(Int, y0 * Npe / FOV_xy) + Npe ÷ 2, Npe) + 1
+        exp_isl = mod(round(Int, z0 * Nsl / FOV_z)  + Nsl ÷ 2, Nsl) + 1
+        @test occ2[exp_ipe, exp_ife, exp_isl] == 1.0
+        @test sum(occ2) == 1.0
+
+        # Output shape is correct
+        @test size(occ) == (Npe, Nfe, Nsl)
     end
 
     @testset "fiducial grid" begin

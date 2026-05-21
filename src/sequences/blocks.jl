@@ -47,7 +47,7 @@ magnitude tracks `S0·exp(−TE/T2)`.
 """
 function se_sequence(TE::Real;
                      amp_T::Real = 20e-6,    # harder pulses → short d180
-                     n_adc::Int  = 33,       # odd → one sample at centre
+                     n_adc::Int  = 32,       # even convention: -N/2 to N/2-1, DC at index N/2+1
                      dur_adc::Real = min(2e-3, TE/4))
     d90  = rf_duration(π/2; amp_T = amp_T)
     d180 = rf_duration(π;   amp_T = amp_T)
@@ -142,9 +142,10 @@ function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
     Gx_pre = kmax_x / (γ_Hz * dur_pe)
     Gx_ro  = 2.0 * kmax_x / (γ_Hz * dur_adc)
 
-    # Phase-encode steps, centred on zero ky
+    # Phase-encode steps: even convention, kmin = -Npe/2, kmax = Npe/2-1.
+    # DC (ky=0) lands at k = Npe÷2+1, matching the -N/2…N/2-1 FFT layout.
     Δky      = 1.0 / FOV
-    ky_steps = [(k - (Npe + 1.0) / 2.0) * Δky for k in 1:Npe]
+    ky_steps = [(k - 1 - Npe ÷ 2) * Δky for k in 1:Npe]
 
     # Timing clamped to be non-negative (min TI / TE constraints ensure positivity)
     ti_delay(d_i, d_e) = max(TI  - d_i / 2 - d_e / 2, 0.0)

@@ -29,6 +29,7 @@ include("materials/pd_array.jl")    # uses BACKGROUND_WATER
 # --- geometry primitives --------------------------------------------------
 include("geometry/sphere.jl")
 include("geometry/plate_layouts.jl")
+include("geometry/projection.jl")
 
 # --- configs, builder, augmentations --------------------------------------
 include("config.jl")
@@ -41,16 +42,17 @@ include("fitting/fits.jl")
 include("baselines/e0.jl")
 include("baselines/cr_optimal.jl")
 
+# --- imaging pipeline (k-space ↔ image, noise) ----------------------------
+include("imaging.jl")
+
 # --- RL experiments -------------------------------------------------------
 include("rl/e1.jl")
 include("rl/e2.jl")
 
 # --- diagnostics ----------------------------------------------------------
-# Included after rl/e2.jl because snr_report uses raw_to_kspace, add_noise!,
-# kspace_to_image, phantom_occupancy — all defined in e2.jl.
 include("diagnostics/snr.jl")
 
-export PhantomConfig, AugmentConfig, SphereDescriptor,
+export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        build_phantom, build_plate, build_sphere, build_background_water,
        sphere_descriptors, all_sphere_descriptors,
        voxelise_sphere, sphere_volume,
@@ -84,10 +86,13 @@ export PhantomConfig, AugmentConfig, SphereDescriptor,
        E2Env, e2_reset!, e2_step!, e2_obs_dim,
        e2_action_lo, e2_action_hi,
        e2_image_stats, e2_dual_acq_snr_report,
-       raw_to_kspace, kspace_to_image, phantom_occupancy,
-       add_noise!, add_gaussian_noise!,
+       raw_to_kspace, kspace_to_image, roi_mean, phantom_occupancy,
+       add_noise!, add_noise, add_gaussian_noise!,
        # SNR diagnostics
-       SNRReport, background_mask, nema_stats, dual_acq_stats,
-       snr_report, print_snr_report, snr_report_to_dict
+       SNRReport, ImageSNRReport, MultiBlockSNRReport,
+       background_mask, nema_stats, dual_acq_stats,
+       image_snr_report, snr_report, snr_report_from_clean,
+       pooled_image_snr_report, multi_block_snr_report_to_dict,
+       print_snr_report, snr_report_to_dict
 
 end # module

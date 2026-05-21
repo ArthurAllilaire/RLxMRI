@@ -210,6 +210,13 @@ function build_phantom(cfg::PhantomConfig = PhantomConfig())
     obj = isempty(parts) ? _empty_phantom("qalibremd") : reduce(+, parts)
     obj.name = "qalibremd"
     obj = apply_transform!(obj, cfg.rotation, cfg.translation_mm .* 1e-3)
+    if cfg.slice_thickness_mm !== nothing && length(obj.x) > 0
+        z_half   = (cfg.slice_thickness_mm * 1e-3) / 2
+        z_centre = cfg.slice_center_mm * 1e-3
+        keep = abs.(obj.z .- z_centre) .≤ z_half
+        obj = obj[keep]
+        obj.name = "qalibremd"
+    end
     obj = apply_per_spin_noise!(obj, cfg.augment, rng)
     obj
 end

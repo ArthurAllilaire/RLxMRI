@@ -64,79 +64,8 @@
 #   default (E2_5_PLAN §3) which is more robust to misspecification than
 #   the asymptotic J^T J formula.
 
-import FFTW: ifft, fftshift, ifftshift
 
-"""
-    add_noise!(ksp, σ; rng = Random.GLOBAL_RNG) → ksp
 
-Add absolute complex Gaussian noise to a k-space matrix in place. Real and
-imaginary parts are independently `N(0, σ²)` (Julia convention for
-`randn(ComplexF32, …)`). This is the physically-correct model (FIX_SIM_PLAN §2):
-MRI thermal noise is hardware-determined and scene-independent, and after
-`abs()` the residuals are Rician — which is what we want at low SNR. No-op
-when `σ ≤ 0`. Use this everywhere noise is added to k-space.
-"""
-function add_noise!(ksp::AbstractMatrix{<:Complex}, σ::Real;
-                    rng::AbstractRNG = Random.GLOBAL_RNG)
-    σ > 0 || return ksp
-    ksp .+= Float32(σ) .* randn(rng, ComplexF32, size(ksp))
-    ksp
-end
-
-"""
-    add_gaussian_noise!(x, σ; rng = Random.GLOBAL_RNG) → x
-
-Add real Gaussian noise in place. Kept as a reference implementation; not used
-anywhere in the codebase (E2 noise is complex via [`add_noise!`](@ref)). Do not
-call from new code unless you specifically want real-only Gaussian noise.
-"""
-function add_gaussian_noise!(x::AbstractArray{<:Real}, σ::Real;
-                             rng::AbstractRNG = Random.GLOBAL_RNG)
-    σ > 0 || return x
-    x .+= Float32(σ) .* randn(rng, Float32, size(x))
-    x
-end
-
-"""
-    raw_to_kspace(raw, Npe, Nfe) → Matrix{ComplexF32}
-
-Extract the Npe×Nfe k-space matrix from KomaMRI raw simulation output.
-"""
-function raw_to_kspace(raw, Npe::Int, Nfe::Int)
-    ksp = zeros(ComplexF32, Npe, Nfe)
-    for k in 1:Npe
-        k <= length(raw.profiles) || continue
-        ksp[k, :] = ComplexF32.(raw.profiles[k].data[:, 1])
-    end
-    ksp
-end
-
-"""
-    kspace_to_image(ksp; phase_sensitive=false) → Matrix{Float32}
-
-2D IFFT reconstruction: ifftshift → ifft → fftshift.
-Returns magnitude image by default; signed real part when `phase_sensitive=true`.
-"""
-function kspace_to_image(ksp::Matrix{ComplexF32}; phase_sensitive::Bool=false)
-    img = fftshift(ifft(ifftshift(ksp, (1, 2)), (1, 2)), (1, 2))
-    phase_sensitive ? Float32.(real.(img)) : Float32.(abs.(img))
-end
-
-"""
-    phantom_occupancy(phantom, Npe, Nfe, FOV) → Matrix{Float64}
-
-Project phantom spin positions onto the image pixel grid and count spins per pixel.
-Same centred-indexing convention as `kspace_to_image`.
-"""
-function phantom_occupancy(phantom, Npe::Int, Nfe::Int, FOV::Real)
-    occ = zeros(Float64, Npe, Nfe)
-    for k in eachindex(phantom.x)
-        ife = mod(round(Int, phantom.x[k] * Nfe / FOV) + Nfe ÷ 2, Nfe) + 1
-        ipe = mod(round(Int, phantom.y[k] * Npe / FOV) + Npe ÷ 2, Npe) + 1
-        occ[ipe, ife] += 1.0
-    end
-    occ
-end
 
 """
     E2Env
@@ -368,7 +297,7 @@ function _e2_calibrate_snr!(env::E2Env, target_snr::Real)
         Nfe   = env.Nfe,
         Npe   = env.Npe,
     )
-    scanner = Scanner()
+    scanner = scanner_for_field(env.cfg_field)
     raw_a = Suppressor.@suppress simulate(nominal_phantom, seq, scanner)
     ksp_a = raw_to_kspace(raw_a, env.Npe, env.Nfe)
 
@@ -406,7 +335,7 @@ function _e2_calibrate_snr!(env::E2Env, target_snr::Real)
                      phase_sensitive = env.phase_sensitive,
                      roi_radius = 0)
 
-    @info "E2Env SNR calibration" target_snr σ ksp_rms snr_ksp=rep.snr_ksp snr_nema_peak=rep.snr_nema_peak snr_dual_peak=rep.snr_dual_peak
+    @info "E2Env SNR calibration" target_snr σ ksp_rms snr_ksp=rep.snr_ksp snr_nema_peak_a=rep.image.snr_nema_peak_a snr_nema_peak_b=rep.image.snr_nema_peak_b snr_dual_peak=rep.image.snr_dual_peak
     env
 end
 
@@ -545,7 +474,7 @@ function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
         Nfe   = env.Nfe,
         Npe   = env.Npe,
     )
-    raw = Suppressor.@suppress simulate(env.phantom, seq, Scanner())
+    raw = Suppressor.@suppress simulate(env.phantom, seq, scanner_for_field(env.cfg_field))
 
     ksp = raw_to_kspace(raw, env.Npe, env.Nfe)
 
@@ -782,7 +711,7 @@ function e2_dual_acq_snr_report(env::E2Env;
         Float64(TI), Float64(TE), Float64(TR);
         α_exc = α_exc, FOV = env.FOV, Nfe = env.Nfe, Npe = env.Npe,
     )
-    scanner = Scanner()
+    scanner = scanner_for_field(env.cfg_field)
     rng = MersenneTwister(Int(seed))
 
     raw_a = Suppressor.@suppress simulate(env.phantom, seq, scanner)

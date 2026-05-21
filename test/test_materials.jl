@@ -47,3 +47,19 @@
     # Legacy T1 table is populated
     @test length(T1_ARRAY_LEGACY[:T3]) == 14
 end
+
+@testset "scanner_for_field" begin
+    sys_t3  = scanner_for_field(:T3)
+    sys_t15 = scanner_for_field(:T15)
+
+    @test sys_t3.B0  == 3.0
+    @test sys_t15.B0 == 1.5
+
+    # PhantomConfig overload
+    @test scanner_for_field(PhantomConfig(field = :T3)).B0  == 3.0
+    @test scanner_for_field(PhantomConfig(field = :T15)).B0 == 1.5
+
+    # Non-B0 fields are default Scanner values
+    @test sys_t3.Gmax  == Scanner().Gmax
+    @test sys_t15.Gmax == Scanner().Gmax
+end

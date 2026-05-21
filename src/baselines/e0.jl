@@ -13,28 +13,30 @@ relaxation times and return the magnitude of the first ADC sample.
 function measure_ir_signal(; T1::Real, T2::Real, TI::Real,
                              amp_T::Real = 2e-6,
                              n_adc::Int  = 16,
-                             dur_adc::Real = 2e-3)
+                             dur_adc::Real = 2e-3,
+                             scanner::Scanner = Scanner())
     obj = single_spin_phantom(T1 = T1, T2 = T2)
     seq = ir_sequence(TI; amp_T = amp_T, n_adc = n_adc, dur_adc = dur_adc)
-    raw = Suppressor.@suppress simulate(obj, seq, Scanner())
+    raw = Suppressor.@suppress simulate(obj, seq, scanner)
     abs(raw.profiles[1].data[1, 1])
 end
 
 """
-    measure_se_signal(; T1, T2, TE, amp_T = 2e-6, n_adc = 33, dur_adc = 2e-3)
+    measure_se_signal(; T1, T2, TE, amp_T = 2e-6, n_adc = 32, dur_adc = 2e-3)
 
 Run a single SE simulation on a single-spin phantom and return the
 magnitude of the sample nearest the echo centre.
 """
 function measure_se_signal(; T1::Real, T2::Real, TE::Real,
                              amp_T::Real = 20e-6,
-                             n_adc::Int  = 33,
-                             dur_adc::Real = min(2e-3, TE/4))
+                             n_adc::Int  = 32,
+                             dur_adc::Real = min(2e-3, TE/4),
+                             scanner::Scanner = Scanner())
     obj = single_spin_phantom(T1 = T1, T2 = T2)
     seq = se_sequence(TE; amp_T = amp_T, n_adc = n_adc, dur_adc = dur_adc)
-    raw = Suppressor.@suppress simulate(obj, seq, Scanner())
+    raw = Suppressor.@suppress simulate(obj, seq, scanner)
     samples = raw.profiles[1].data[:, 1]
-    abs(samples[cld(n_adc, 2)])          # middle sample ≈ echo peak
+    abs(samples[n_adc ÷ 2 + 1])         # DC index for even convention (N/2+1)
 end
 
 """
@@ -117,12 +119,13 @@ function run_e0(; field::Symbol = :T3, verbose::Bool = true,
     t1_true  = T1_ARRAY[field]
     t2_of_t1 = T2_OF_T1_ARRAY[field]
     t2_true  = T2_ARRAY[field]
+    sys = scanner_for_field(field)
 
     verbose && @info "E0: T1 mapping on the T1 array" field n_TIs
     t1_est = zeros(14)
     for i in 1:14
         TIs = adaptive_TI_schedule(t1_true[i]; n = n_TIs)
-        res = measure_t1(t1_true[i], t2_of_t1[i]; TIs = TIs)
+        res = measure_t1(t1_true[i], t2_of_t1[i]; TIs = TIs, scanner = sys)
         t1_est[i] = res.T1_est
         verbose && @info "  T1-$i" T1_true_ms = 1000*t1_true[i] T1_est_ms = 1000*res.T1_est
     end
@@ -132,7 +135,7 @@ function run_e0(; field::Symbol = :T3, verbose::Bool = true,
     t1_of_t2 = T1_OF_T2_ARRAY[field]
     for i in 1:14
         TEs = adaptive_TE_schedule(t2_true[i]; n = n_TEs)
-        res = measure_t2(t1_of_t2[i], t2_true[i]; TEs = TEs)
+        res = measure_t2(t1_of_t2[i], t2_true[i]; TEs = TEs, scanner = sys)
         t2_est[i] = res.T2_est
         verbose && @info "  T2-$i" T2_true_ms = 1000*t2_true[i] T2_est_ms = 1000*res.T2_est
     end

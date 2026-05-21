@@ -267,14 +267,7 @@ end
         image_mag, _ = _sim_step(env, 3.0, 0.02, 8.0, 90.0)
 
         # ------- Ground-truth occupancy from the phantom spins -----------
-        # Bin every phantom spin into its (ipe, ife) pixel using centred
-        # indexing. This is the "where signal should appear" image.
-        occ = zeros(Float64, Npe, Nfe)
-        for k in eachindex(phantom.x)
-            ife = mod(round(Int, phantom.x[k] * Nfe / FOV) + Nfe ÷ 2, Nfe) + 1
-            ipe = mod(round(Int, phantom.y[k] * Npe / FOV) + Npe ÷ 2, Npe) + 1
-            occ[ipe, ife] += 1.0
-        end
+        occ = phantom_occupancy(phantom, Npe, Nfe, FOV)
 
         # Sanity: occupancy is non-trivial.
         @test sum(occ .> 0) >= 14
