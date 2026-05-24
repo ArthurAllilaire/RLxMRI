@@ -67,6 +67,81 @@ seconds.
 > explicitly `export PATH="$HOME/.juliaup/bin:$PATH"` in the script itself.
 > `setup_full.sh` does this; `setup.sh` assumes juliaup is already on PATH.
 
+## 2b. KomaMRIBase fork (temporary — `fix/grad-fp`)
+
+We currently depend on a fork of `KomaMRIBase` that carries a gradient
+fix not yet in the registered release. This must be applied to **both**
+Julia projects (the main project *and* the Python-bridge runtime), or the
+two `Manifest.toml`s will resolve to different `KomaMRIBase` versions.
+
+Only `KomaMRIBase` comes from the fork; `KomaMRI`, `KomaMRICore`, etc. stay
+on the registry. That's fine as long as the fork keeps its version in the
+`0.11.x` range the registry packages expect.
+
+Run each project **under its own Julia version** so the resolved stdlib
+versions in each `Manifest.toml` match the Julia that actually runs the
+project (main = 1.12, Python-bridge runtime = 1.11 — juliacall is pinned to
+≤ 1.11). Mixing them works but produces noisy stdlib churn in the diff.
+
+Use the API form (not the `pkg>` REPL string form) — the REPL parser does
+not split `:subdir#rev` cleanly and produces a malformed `repo-rev` entry.
+
+From the repo root:
+
+```bash
+# Main project — use the default Julia (1.12)
+julia --project=. -e '
+  using Pkg
+  Pkg.add(url="https://github.com/ArthurAllilaire/KomaMRI.jl.git",
+          subdir="KomaMRIBase",
+          rev="fix/grad-fp")'
+
+# Python-bridge runtime — must use Julia 1.11 (juliacall constraint)
+julia +1.11 --project=python/julia_runtime -e '
+  using Pkg
+  Pkg.add(url="https://github.com/ArthurAllilaire/KomaMRI.jl.git",
+          subdir="KomaMRIBase",
+          rev="fix/grad-fp")'
+```
+
+Verify both `Manifest.toml`s show three separate fields for `KomaMRIBase`
+(and identical `git-tree-sha1`):
+
+```
+repo-rev = "fix/grad-fp"
+repo-subdir = "KomaMRIBase"
+repo-url = "https://github.com/ArthurAllilaire/KomaMRI.jl.git"
+```
+
+This pins each `[[deps.KomaMRIBase]]` block to a fork git-tree-sha1, so the
+override travels with the committed `Manifest.toml` — fresh clones that run
+`Pkg.instantiate()` pick it up automatically and **do not** need to re-run
+the `add`. Only re-run it if you're changing the branch/rev.
+
+To pull newer commits on the branch later, run in each project (mind the
+Julia channel):
+
+```bash
+julia        --project=.                     -e 'using Pkg; Pkg.update("KomaMRIBase")'
+julia +1.11  --project=python/julia_runtime  -e 'using Pkg; Pkg.update("KomaMRIBase")'
+```
+
+### Reverting once the fix lands in `main`
+
+When the gradient fix is merged upstream and a new `KomaMRIBase` is
+registered, drop the fork and return to the registered release in **both**
+projects:
+
+```bash
+julia        --project=.                     -e 'using Pkg; Pkg.free("KomaMRIBase")'
+julia +1.11  --project=python/julia_runtime  -e 'using Pkg; Pkg.free("KomaMRIBase")'
+```
+
+`free` detaches `KomaMRIBase` from the git branch and resolves it back to the
+latest registered version. Then bump the `[compat]` floor for `KomaMRIBase`
+in `Project.toml` and `python/julia_runtime/Project.toml` to the release that
+contains the fix, and commit the updated `Manifest.toml`s.
+
 ## 3. Train
 
 ```bash
