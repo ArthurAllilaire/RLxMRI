@@ -96,7 +96,37 @@ function generalized_ir_signal(T1::Real, T2::Real;
 end
 
 """
-    ir_se_2d_sequence(TI, TE, TR; α_exc, FOV, Nfe, Npe, amp_T) → Sequence
+    SpoilerConfig(; enabled=false, amp_T=30e-3, dur=5e-3, axis=:z)
+
+Bundles spoiler/crusher parameters so sequence builders can share one
+opinion of "what a spoiler is". `axis` selects which gradient axis carries
+the spoil moment (`:x`, `:y`, or `:z`).
+"""
+Base.@kwdef struct SpoilerConfig
+    enabled::Bool   = false
+    amp_T::Float64  = 30e-3
+    dur::Float64    = 5e-3
+    axis::Symbol    = :z
+end
+
+"""
+    apply_spoiler(seq, cfg::SpoilerConfig) → Sequence
+
+Append a gradient-only spoiler block on `cfg.axis` when `cfg.enabled`,
+otherwise return `seq` unchanged. Mutates `seq` and returns it for
+chaining inside `@addblocks` loops.
+"""
+function apply_spoiler(seq, cfg::SpoilerConfig)
+    cfg.enabled || return seq
+    g = Grad(cfg.amp_T, cfg.dur)
+    cfg.axis === :z && return addblock!(seq; z=g)
+    cfg.axis === :y && return addblock!(seq; y=g)
+    cfg.axis === :x && return addblock!(seq; x=g)
+    error("unknown spoiler axis $(cfg.axis)")
+end
+
+"""
+    ir_se_2d_sequence(TI, TE, TR; α_exc, FOV, Nfe, Npe, amp_T, spoiler) → Sequence
 
 Multi-shot 2D spin-echo IR sequence. `Npe` shots are concatenated, each with a
 different Gy phase-encode amplitude. Returns a `Sequence` with exactly `Npe`
@@ -114,15 +144,18 @@ Sphere centre (x,y) [m] → image pixel (i_pe, i_fe):
   `i_fe = mod(round(Int, x*Nfe/FOV), Nfe) + 1`
   `i_pe = mod(round(Int, y*Npe/FOV), Npe) + 1`
 
-Note you do a spin echo to remove the T2* decay which is much faster and less predictable
-than the T2 delay incurred while doing spin echo.
+A spin echo is used to remove T2* decay (much faster and less predictable
+than T2). Pass a non-default `spoiler::SpoilerConfig` to add Gz crushers
+around the refocus pulse plus a TR spoiler — required at short TR to
+prevent FID contamination and residual Mxy carryover between shots.
 """
 function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
-                            α_exc::Real   = π / 2,
-                            FOV::Real     = 0.2,
-                            Nfe::Int      = 16,
-                            Npe::Int      = 8,
-                            amp_T::Real   = 20e-6)
+                            α_exc::Real             = π / 2,
+                            FOV::Real               = 0.2,
+                            Nfe::Int                = 16,
+                            Npe::Int                = 8,
+                            amp_T::Real             = 20e-6,
+                            spoiler::SpoilerConfig  = SpoilerConfig())
     # KomaMRI convention: k = γ * ∫G dt with γ in Hz/T (no 2π factor — see
     # `KomaMRIBase.jl:17` const global γ = 42.5774688e6 Hz/T). Previous code
     # divided by γ_rad = 2π·γ_Hz and produced gradients 2π× too small,
@@ -137,8 +170,6 @@ function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
     dur_pe  = dur_adc / 2     # prewinder / phase-encode duration [s]
 
     kmax_x = Nfe / (2.0 * FOV)
-    # Positive prewinder (applied after excitation) sets kx → +kmax_x before refocus.
-    # Refocus conjugates → kx_eff = −kmax_x. Positive readout sweeps to +kmax_x.
     Gx_pre = kmax_x / (γ_Hz * dur_pe)
     Gx_ro  = 2.0 * kmax_x / (γ_Hz * dur_adc)
 
@@ -147,71 +178,104 @@ function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
     Δky      = 1.0 / FOV
     ky_steps = [(k - 1 - Npe ÷ 2) * Δky for k in 1:Npe]
 
-    # Timing clamped to be non-negative (min TI / TE constraints ensure positivity)
-    ti_delay(d_i, d_e) = max(TI  - d_i / 2 - d_e / 2, 0.0)
-    te_delay1(d_e, d_r) = max(TE / 2 - d_e / 2 - dur_pe - d_r / 2, 0.0)
-    te_delay2(d_r) = max(TE / 2 - d_r / 2 - dur_adc / 2, 0.0)
+    # Spoiler duration absorbed into TE budget when enabled.
+    d_crush = spoiler.enabled ? spoiler.dur : 0.0
 
-    ti_d  = ti_delay(d_inv, d_exc)
-    te1_d = te_delay1(d_exc, d_ref)
-    te2_d = te_delay2(d_ref)
+    ti_d  = max(TI  - d_inv / 2 - d_exc / 2, 0.0)
+    te1_d = max(TE / 2 - d_exc / 2 - dur_pe - d_crush - d_ref / 2, 0.0)
+    te2_d = max(TE / 2 - d_ref / 2 - d_crush - dur_adc / 2, 0.0)
 
-    shot_time = d_inv + ti_d + d_exc + dur_pe + te1_d + d_ref + te2_d + dur_adc
+    shot_time = d_inv + ti_d + d_exc + dur_pe + te1_d +
+                d_crush + d_ref + d_crush + te2_d + dur_adc + d_crush
     tr_d      = max(TR - shot_time, 0.0)
 
-    _gr0(d) = reshape([Grad(0.0, d), Grad(0.0, d), Grad(0.0, d)], 3, 1)
-    _rf0(d) = reshape([RF(0.0, d)], 1, 1)
-    _rf1(d) = reshape([RF(amp_T, d)], 1, 1)
-    _adc0   = [ADC(0, 0.0)]
-
     seq = Sequence()
-
-    for k in 1:Npe
-        # Negative prewinder so that after the 180° refocus (which conjugates
-        # phase) the readout samples ky = +ky_steps[k]. With no Gy during ADC
-        # this gives clean Cartesian sampling at the intended ky line.
+    @addblocks for k in 1:Npe
+        # Negative prewinder: after the 180° conjugates phase, the readout
+        # samples ky = +ky_steps[k] with no Gy during ADC (clean Cartesian).
         Gy_k = -ky_steps[k] / (γ_Hz * dur_pe)
 
-        # 1. 180° inversion
-        seq += Sequence(_gr0(d_inv), _rf1(d_inv), _adc0)
-
-        # 2. TI delay
-        ti_d > 1e-9 && (seq += Delay(ti_d))
-
-        # 3. Excitation
-        seq += Sequence(_gr0(d_exc), _rf1(d_exc), _adc0)
-
-        # 4. Gx prewinder + Gy phase encode (no RF, after excitation)
-        seq += Sequence(
-            reshape([Grad(Gx_pre, dur_pe), Grad(Gy_k, dur_pe), Grad(0.0, dur_pe)], 3, 1),
-            _rf0(dur_pe), _adc0,
-        )
-
-        # 5. TE/2 delay to refocus
-        te1_d > 1e-9 && (seq += Delay(te1_d))
-
-        # 6. 180° refocus 
-        # TODO: leave out ??
-        seq += Sequence(_gr0(d_ref), _rf1(d_ref), _adc0)
-
-        # 7. TE/2 delay to echo
-        te2_d > 1e-9 && (seq += Delay(te2_d))
-
-        # 8. ADC + Gx readout (no Gy during readout — Cartesian sampling)
-        # The kth profile samples ky = -ky_steps[k] (sign-flipped because the
-        # 180° refocus already conjugated ky after the prewinder). ky_steps
-        # is symmetric about zero so the resulting ksp is row-reversed vs.
-        # canonical; pixel mapping accounts for this via the same FFT.
-        seq += Sequence(
-            reshape([Grad(Gx_ro, dur_adc), Grad(0.0, dur_adc), Grad(0.0, dur_adc)], 3, 1),
-            _rf0(dur_adc),
-            [ADC(Nfe, dur_adc)],
-        )
-
-        # 9. TR recovery
-        tr_d > 1e-9 && (seq += Delay(tr_d))
+        seq += (RF(amp_T, d_inv),)                                          # 1. 180° inversion
+        ti_d > 1e-9 && (seq += Delay(ti_d))                                 # 2. TI
+        seq += (RF(amp_T, d_exc),)                                          # 3. excitation
+        seq += (x=Grad(Gx_pre, dur_pe), y=Grad(Gy_k, dur_pe))               # 4. prewinder + PE
+        te1_d > 1e-9 && (seq += Delay(te1_d))                               # 5. TE/2
+        seq = apply_spoiler(seq, spoiler)                                   # 6a. pre-crusher: kills FID from 180°
+        seq += (RF(amp_T, d_ref),)                                          # 6b. 180° refocus
+        seq = apply_spoiler(seq, spoiler)                                   # 6c. post-crusher: rephases echo
+        te2_d > 1e-9 && (seq += Delay(te2_d))                               # 7. TE/2 to echo
+        seq += (ADC(Nfe, dur_adc), x=Grad(Gx_ro, dur_adc))                  # 8. readout
+        seq = apply_spoiler(seq, spoiler)                                   # 9a. TR spoiler: kills residual Mxy
+        tr_d > 1e-9 && (seq += Delay(tr_d))                                 # 9b. TR recovery
     end
+    seq
+end
 
+"""
+    gre_2d_sequence(TE, TR; α, FOV, Nfe, Npe, amp_T, spoiler) → Sequence
+
+Multi-shot 2D Cartesian gradient-echo sequence. `Npe` shots are concatenated,
+each with a different Gy phase-encode amplitude. Returns a `Sequence` with
+exactly `Npe` ADC blocks (one `Nfe`-sample readout per phase-encode step).
+
+Differences from `ir_se_2d_sequence`:
+  - No 180° refocus pulse: echo is formed by Gx polarity reversal alone.
+  - Prewinder Gx is *negative* (walks kx → −kmax_x directly — no 180° to
+    conjugate, unlike spin echo where the prewinder is positive and the
+    refocus flips it).
+  - Phase-encode Gy is *positive* (no sign flip needed).
+  - Echo is T2*-weighted, not T2-weighted; decays faster than spin echo.
+
+The TR spoiler is doing real work here: at short TR, residual Mxy from the
+previous shot survives into the next α excitation and creates banding /
+stimulated-echo contamination. Note this implements gradient spoiling only;
+a fully spoiled GRE (FLASH) additionally varies the RF phase per shot
+(quadratic increments) to scramble coherence pathways. Add later if needed.
+
+After `simulate()`, reconstruct as `abs.(ifft(ksp, (1,2)))` with the same
+pixel mapping as `ir_se_2d_sequence`.
+"""
+function gre_2d_sequence(TE::Real, TR::Real;
+                          α::Real                = deg2rad(15),
+                          FOV::Real              = 0.2,
+                          Nfe::Int               = 16,
+                          Npe::Int               = 8,
+                          amp_T::Real            = 20e-6,
+                          spoiler::SpoilerConfig = SpoilerConfig())
+    γ_Hz = 42.577e6
+
+    d_exc = rf_duration(α; amp_T = amp_T)
+
+    dur_adc = 1e-3
+    dur_pe  = dur_adc / 2
+
+    kmax_x = Nfe / (2.0 * FOV)
+    Gx_pre = -kmax_x / (γ_Hz * dur_pe)        # negative — see docstring
+    Gx_ro  = 2.0 * kmax_x / (γ_Hz * dur_adc)
+
+    Δky      = 1.0 / FOV
+    ky_steps = [(k - 1 - Npe ÷ 2) * Δky for k in 1:Npe]
+
+    d_crush = spoiler.enabled ? spoiler.dur : 0.0
+
+    # TE measured from centre of α-pulse to centre of ADC (echo at kx=0).
+    te_d = max(TE - d_exc / 2 - dur_pe - dur_adc / 2, 0.0)
+
+    shot_time = d_exc + dur_pe + te_d + dur_adc + d_crush
+    tr_d      = max(TR - shot_time, 0.0)
+
+    seq = Sequence()
+    @addblocks for k in 1:Npe
+        # Positive Gy: no 180° to conjugate, so the echo samples ky directly.
+        Gy_k = ky_steps[k] / (γ_Hz * dur_pe)
+
+        seq += (RF(amp_T, d_exc),)                                          # 1. α excitation
+        seq += (x=Grad(Gx_pre, dur_pe), y=Grad(Gy_k, dur_pe))               # 2. prewinder + PE
+        te_d > 1e-9 && (seq += Delay(te_d))                                 # 3. TE
+        seq += (ADC(Nfe, dur_adc), x=Grad(Gx_ro, dur_adc))                  # 4. readout (echo at midpoint)
+        seq = apply_spoiler(seq, spoiler)                                   # 5. TR spoiler: kills residual Mxy
+        tr_d > 1e-9 && (seq += Delay(tr_d))                                 # 6. TR recovery
+    end
     seq
 end
 

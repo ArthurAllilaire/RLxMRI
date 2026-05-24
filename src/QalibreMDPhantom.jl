@@ -13,6 +13,7 @@ code.
 module QalibreMDPhantom
 
 using KomaMRI
+using FFTW
 using Random
 using LinearAlgebra
 import Suppressor
@@ -45,6 +46,9 @@ include("baselines/cr_optimal.jl")
 # --- imaging pipeline (k-space ↔ image, noise) ----------------------------
 include("imaging.jl")
 
+# --- analytical forward models (phantom → predicted image) ----------------
+include("forward_model.jl")
+
 # --- RL experiments -------------------------------------------------------
 include("rl/e1.jl")
 include("rl/e2.jl")
@@ -65,6 +69,8 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        PLATE_Z_MM, CONTRAST_RADIUS_M, FIDUCIAL_RADIUS_M, HOUSING_RADIUS_M,
        # sequences
        rf_duration, ir_sequence, se_sequence, ir_se_2d_sequence,
+       gre_2d_sequence,
+       SpoilerConfig, apply_spoiler,
        single_spin_phantom,
        # fitting
        fit_t1_ir, fit_t2_se,
@@ -86,7 +92,11 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        E2Env, e2_reset!, e2_step!, e2_obs_dim,
        e2_action_lo, e2_action_hi,
        e2_image_stats, e2_dual_acq_snr_report,
-       raw_to_kspace, kspace_to_image, roi_mean, phantom_occupancy,
+       raw_to_kspace, kspace_to_image, hamming_window_2d, roi_mean, phantom_occupancy,
+       phys_to_pixel, phys_to_pixel_wrap,
+       phantom_parameter_map, image_to_kspace,
+       # analytical forward models
+       central_crop, bandlimit_image, ir_se_theory_image, ir_se_theory_image_binned,
        add_noise!, add_noise, add_gaussian_noise!,
        # SNR diagnostics
        SNRReport, ImageSNRReport, MultiBlockSNRReport,

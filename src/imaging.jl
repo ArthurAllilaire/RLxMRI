@@ -83,6 +83,21 @@ function raw_to_kspace(raw, Npe::Int, Nfe::Int)
 end
 
 """
+    hamming_window_2d(Npe, Nfe) → Matrix{Float32}
+
+Separable 2D Hamming window of size `Npe × Nfe`. Multiply k-space by this
+before IFFT to suppress sidelobes from −13 dB to −43 dB, at the cost of a
+~3× DC attenuation and a wider main lobe. Exposed so callers can dump the
+windowed k-space directly (rather than passing `hamming=true` to
+`kspace_to_image`, which only returns the image).
+"""
+function hamming_window_2d(Npe::Integer, Nfe::Integer)
+    w_pe = Float32.(0.54 .- 0.46 .* cos.(2π .* (0:Npe-1) ./ (Npe-1)))
+    w_fe = Float32.(0.54 .- 0.46 .* cos.(2π .* (0:Nfe-1) ./ (Nfe-1)))
+    w_pe .* transpose(w_fe)
+end
+
+"""
     kspace_to_image(ksp; phase_sensitive=false, pad_factor=1, hamming=false) → Matrix{Float32}
 
 2D IFFT reconstruction: ifftshift → ifft → fftshift.
@@ -97,13 +112,7 @@ function kspace_to_image(ksp::Matrix{ComplexF32};
                          phase_sensitive::Bool=false,
                          pad_factor::Int=1,
                          hamming::Bool=false)
-    ksp_w = ksp
-    if hamming
-        Npe_k, Nfe_k = size(ksp_w)
-        w_pe = Float32.(0.54 .- 0.46 .* cos.(2π .* (0:Npe_k-1) ./ (Npe_k-1)))
-        w_fe = Float32.(0.54 .- 0.46 .* cos.(2π .* (0:Nfe_k-1) ./ (Nfe_k-1)))
-        ksp_w = ksp_w .* (w_pe .* transpose(w_fe))
-    end
+    ksp_w = hamming ? ksp .* hamming_window_2d(size(ksp)...) : ksp
     if pad_factor > 1
         Npe_k, Nfe_k = size(ksp_w)
         Npe_pad = Npe_k * pad_factor

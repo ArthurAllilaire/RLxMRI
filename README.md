@@ -9,7 +9,7 @@ per-property jitter, sphere drop-out) controlled by one `PhantomConfig`.
 
 ```julia
 using KomaMRI, QalibreMDPhantom
-cfg = PhantomConfig(field = :T3, voxel_size_mm = 2.0)
+cfg = PhantomConfig(field = :T15, voxel_size_mm = 2.0)
 obj = build_phantom(cfg)
 raw = simulate(obj, seq, Scanner())
 ```

@@ -676,15 +676,18 @@ version = "0.10.3"
 
 [[deps.KomaMRIBase]]
 deps = ["Interpolations", "MAT", "MRIBase", "Parameters", "Reexport"]
-git-tree-sha1 = "898e0e79e56b73c8d617633c23d4e195abfe5f09"
+git-tree-sha1 = "ef86dd6c463860f55b3e09d0ca6a4206acc93695"
+repo-rev = "fix/grad-fp"
+repo-subdir = "KomaMRIBase"
+repo-url = "https://github.com/ArthurAllilaire/KomaMRI.jl.git"
 uuid = "d0bc0b20-b151-4d03-b2a4-6ca51751cb9c"
-version = "0.11.1"
+version = "0.11.2"
 
 [[deps.KomaMRICore]]
 deps = ["AcceleratedKernels", "Adapt", "Functors", "KernelAbstractions", "KomaMRIBase", "ProgressMeter", "Reexport", "ThreadsX"]
-git-tree-sha1 = "21783302263126dbc3e29e72fefe4381c666acff"
+git-tree-sha1 = "d6184f17387a51f8d60186c635d85ef4390a585a"
 uuid = "4baa4f4d-2ae9-40db-8331-a7d1080e3f4e"
-version = "0.11.0"
+version = "0.11.2"
 
     [deps.KomaMRICore.extensions]
     KomaAMDGPUExt = "AMDGPU"
@@ -700,9 +703,9 @@ version = "0.11.0"
 
 [[deps.KomaMRIFiles]]
 deps = ["FileIO", "HDF5", "InteractiveUtils", "KomaMRIBase", "MAT", "MD5", "MRIFiles", "Printf", "Reexport", "SHA"]
-git-tree-sha1 = "ef90d81af669c1253e19dd1be18f8e462cef8c16"
+git-tree-sha1 = "b9803022fda1488a6fb49a056118854b2089f6c9"
 uuid = "fcf631a6-1c7e-4e88-9e64-b8888386d9dc"
-version = "0.10.3"
+version = "0.10.4"
 
 [[deps.KomaMRIPlots]]
 deps = ["Interpolations", "KomaMRIBase", "MAT", "PlotlyJS", "QMRIColors", "Reexport"]
@@ -1035,6 +1038,12 @@ git-tree-sha1 = "e20ac21560b314a7c38c4cd2fdcece34c66f36b6"
 uuid = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 version = "0.2.7"
 
+[[deps.NPZ]]
+deps = ["FileIO", "ZipFile"]
+git-tree-sha1 = "60a8e272fe0c5079363b28b0953831e2dd7b7e6f"
+uuid = "15e1cf62-19b3-5cfa-8e77-841668bca605"
+version = "0.4.3"
+
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
 version = "1.2.0"
@@ -1055,13 +1064,14 @@ weakdeps = ["Adapt"]
 
 [[deps.OhMyThreads]]
 deps = ["BangBang", "ChunkSplitters", "ScopedValues", "StableTasks", "TaskLocalValues"]
-git-tree-sha1 = "b3c63491156b66f60c2cd181ba05bc0b327e5c7d"
+git-tree-sha1 = "9a07c25c438110500d871fd5309649ec6791ef57"
 uuid = "67456a42-1dca-4109-a031-0a68de7e3ad5"
-version = "0.8.5"
-weakdeps = ["Markdown"]
+version = "0.8.6"
+weakdeps = ["Markdown", "ProgressMeter"]
 
     [deps.OhMyThreads.extensions]
     MarkdownExt = "Markdown"
+    ProgressMeterExt = "ProgressMeter"
 
 [[deps.OpenBLAS_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
@@ -1246,7 +1256,7 @@ uuid = "2bec176e-9e8c-4764-a62f-295118d1ec05"
 version = "1.0.1"
 
 [[deps.QalibreMDPhantom]]
-deps = ["DisplayAs", "FFTW", "JSON", "KomaMRI", "KomaMRIBase", "LinearAlgebra", "MRIReco", "Random", "Statistics", "Suppressor"]
+deps = ["DisplayAs", "FFTW", "JSON", "KomaMRI", "KomaMRIBase", "LinearAlgebra", "MRIReco", "NPZ", "Random", "Statistics", "Suppressor"]
 path = "../.."
 uuid = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
 version = "0.1.0"
@@ -1678,6 +1688,12 @@ git-tree-sha1 = "58972370b81423fc546c56a60ed1a009450177c3"
 uuid = "a65dc6b1-eb27-53a1-bb3e-dea574b5389e"
 version = "0.19.0+0"
 
+[[deps.ZipFile]]
+deps = ["Libdl", "Printf", "Zlib_jll"]
+git-tree-sha1 = "f492b7fe1698e623024e873244f10d89c95c340a"
+uuid = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
+version = "0.10.1"
+
 [[deps.Zlib_jll]]
 deps = ["Libdl"]
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
@@ -1784,9 +1800,9 @@ version = "17.4.0+2"
 
 [[deps.pixi_jll]]
 deps = ["Artifacts", "JLLWrappers", "LazyArtifacts", "Libdl"]
-git-tree-sha1 = "f349584316617063160a947a82638f7611a8ef0f"
+git-tree-sha1 = "3667b0931a7fe50f0a5554c61af00e5640019e21"
 uuid = "4d7b5844-a134-5dcd-ac86-c8f19cd51bed"
-version = "0.41.3+0"
+version = "0.63.2+0"
 
 [[deps.s2n_tls_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl"]

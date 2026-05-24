@@ -311,8 +311,8 @@ function _e2_calibrate_snr!(env::E2Env, target_snr::Real)
     sphere_px = NTuple{2,Int}[]
     for c in env.sphere_centres_base
         cx, cy = c[1], c[2]
-        ife = mod(round(Int, cx * env.Nfe / env.FOV) + env.Nfe ÷ 2, env.Nfe) + 1
-        ipe = mod(round(Int, cy * env.Npe / env.FOV) + env.Npe ÷ 2, env.Npe) + 1
+        ife = phys_to_pixel(cx, env.Nfe, env.FOV)
+        ipe = phys_to_pixel(cy, env.Npe, env.FOV)
         push!(sphere_px, (ipe, ife))
     end
     bg = background_mask(nominal_phantom, env.Npe, env.Nfe, env.FOV; erosion_px = 1)
@@ -409,11 +409,8 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
     for c in env.sphere_centres_base
         c_trans = R * collect(c) .+ t_m
         cx, cy = c_trans[1], c_trans[2]
-        # Centred indexing: image centre (FOV origin) maps to pixel
-        # (Npe÷2+1, Nfe÷2+1) after fftshift; offsets are added relative to
-        # that. Matches the recon convention in `_e2_simulate_step`.
-        ife = mod(round(Int, cx * env.Nfe / env.FOV) + env.Nfe ÷ 2, env.Nfe) + 1
-        ipe = mod(round(Int, cy * env.Npe / env.FOV) + env.Npe ÷ 2, env.Npe) + 1
+        ife = phys_to_pixel(cx, env.Nfe, env.FOV)
+        ipe = phys_to_pixel(cy, env.Npe, env.FOV)
         push!(sphere_px, (ipe, ife))
     end
 

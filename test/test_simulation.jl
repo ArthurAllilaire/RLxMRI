@@ -1,4 +1,5 @@
 using Suppressor: @suppress
+using KomaMRI
 
 # End-to-end smoke test: FID on a single sphere from the T1 array → the
 # exponential decay envelope should recover the nominal T2 within a few %.

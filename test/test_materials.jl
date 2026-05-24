@@ -1,3 +1,5 @@
+using KomaMRI: Scanner
+
 @testset "material tables" begin
     # Table lengths — all 14 contrast spheres per array
     @test length(T1_ARRAY[:T15]) == 14

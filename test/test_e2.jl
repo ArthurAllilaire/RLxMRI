@@ -26,20 +26,30 @@
         seq = ir_se_2d_sequence(0.5, 0.02, 2.0;
                                  FOV = 0.2, Nfe = 8, Npe = 4)
 
-        # Prewinder blocks: identifiable as "no ADC, Gy != 0"
-        gy_areas = Float64[]
+        # Prewinder blocks: "no ADC, has Gx prewinder". Filtering on Gx
+        # picks up the ky=0 step (Gy=0) which is dropped by a Gy-based
+        # predicate under the even FFT convention (Npe=4 → ky∈{-2,-1,0,+1}·Δky).
+        gy_amps = Float64[]
         for i in 1:length(seq)
             b = seq[i]
-            if b.ADC[1].N == 0 && abs(b.GR[2, 1].A) > 1e-12
-                push!(gy_areas, b.GR[2, 1].A * b.DUR[1])
+            if b.ADC[1].N == 0 && abs(b.GR[1, 1].A) > 1e-12
+                push!(gy_amps, b.GR[2, 1].A)
             end
         end
 
-        @test length(gy_areas) == 4
-        # Antisymmetric about zero (centred PE steps): pairwise sums ≈ 0
-        sorted = sort(gy_areas)
-        @test isapprox(sorted[1] + sorted[end], 0.0; atol = 1e-12)
-        @test isapprox(sorted[2] + sorted[3],   0.0; atol = 1e-12)
+        @test length(gy_amps) == 4
+
+        # The fix that the test is guarding: prewinder Gy = -ky_step/(γ·dur_pe).
+        # Recompute the expected schedule and confirm element-wise (in order of
+        # appearance — k = 1..Npe).
+        γ_Hz = 42.577e6
+        FOV  = 0.2
+        Npe  = 4
+        dur_pe = 0.5e-3   # dur_adc/2 in the builder, with dur_adc = 1e-3
+        Δky    = 1.0 / FOV
+        expected = [-((k - 1 - Npe÷2) * Δky) / (γ_Hz * dur_pe) for k in 1:Npe]
+
+        @test all(isapprox.(gy_amps, expected; atol = 1e-12))
     end
 
     @testset "fit_t1_generalized_ir: α_exc-scaled magnitudes need correction" begin

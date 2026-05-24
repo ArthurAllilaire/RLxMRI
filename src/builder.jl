@@ -78,7 +78,7 @@ Return the descriptor list for one plate, applying `drop_sphere_p` and any
 entries from `cfg.custom_sphere_map` keyed on the sphere's label.
 """
 function sphere_descriptors(plate::Symbol, cfg::PhantomConfig;
-                            rng::AbstractRNG = Random.MersenneTwister(cfg.rng_seed))
+                            rng::AbstractRNG = Random.MersenneTwister(cfg.rng_seed))::Vector{SphereDescriptor}
     descs = plate === :T1        ? _build_t1_descriptors(cfg) :
             plate === :T2        ? _build_t2_descriptors(cfg) :
             plate === :PD        ? _build_pd_descriptors(cfg) :
@@ -213,7 +213,9 @@ function build_phantom(cfg::PhantomConfig = PhantomConfig())
     if cfg.slice_thickness_mm !== nothing && length(obj.x) > 0
         z_half   = (cfg.slice_thickness_mm * 1e-3) / 2
         z_centre = cfg.slice_center_mm * 1e-3
-        keep = abs.(obj.z .- z_centre) .≤ z_half
+        # +1 nm float-tolerance so voxels landing exactly on the slab edge
+        # (common when slice_thickness_mm == voxel_size_mm) survive roundoff.
+        keep = abs.(obj.z .- z_centre) .≤ z_half + 1e-9
         obj = obj[keep]
         obj.name = "qalibremd"
     end

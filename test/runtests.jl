@@ -7,6 +7,7 @@ using KomaMRI
     include("test_materials.jl")
     include("test_geometry.jl")
     include("test_imaging.jl")
+    include("test_forward_model.jl")
     include("test_builder.jl")
     include("test_augment.jl")
     include("test_determinism.jl")

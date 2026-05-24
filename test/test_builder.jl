@@ -129,6 +129,27 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
         @test all(abs.(objRot.z) .<= 0.5e-3 + 1e-12)
     end
 
+    @testset "slice mask — float tolerance at slab boundary" begin
+        # Regression: when slice_thickness_mm == voxel_size_mm, voxel layers
+        # land exactly on the slab edge. A strict ≤ comparison drops them via
+        # IEEE-754 roundoff and the slab comes out empty. The builder uses a
+        # 1 nm float tolerance to keep these boundary voxels.
+        #
+        # T1-plate spheres sit at z = 56.5 mm with radius 7.5 mm, so a 1 mm
+        # voxel grid centred on the sphere has z-layers at …, 55, 56, 57, 58 …
+        # The slab [56.0, 57.0] mm contains them only via the tolerance.
+        cfg = PhantomConfig(voxel_size_mm = 1.0,
+                            include_plates = [:T1, :water],
+                            slice_thickness_mm = 1.0,
+                            slice_center_mm    = PLATE_Z_MM.T1)
+        obj = build_phantom(cfg)
+        @test length(obj.x) > 0
+        # Boundary layers (56 and 57 mm) should be present, not silently dropped.
+        z_mm = obj.z .* 1000
+        @test any(abs.(z_mm .- 56.0) .< 1e-6)
+        @test any(abs.(z_mm .- 57.0) .< 1e-6)
+    end
+
     @testset "background water excludes contrast volumes" begin
         cfgW = PhantomConfig(voxel_size_mm = 3.0,
                              include_plates = [:T1, :T2, :PD, :fiducials, :water])
