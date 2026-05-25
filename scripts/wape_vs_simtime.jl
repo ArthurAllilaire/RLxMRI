@@ -16,7 +16,7 @@ const Npe = 16
 const TI  = 3.0
 const TE  = 0.02
 
-cfg = PhantomConfig(field = :T3, voxel_size_mm = 2.0, include_plates = [:T1])
+cfg = PhantomConfig(field = :T3, voxel_size_mm = 3.0, include_plates = [:T1])
 phantom = build_phantom(cfg)
 
 occ   = phantom_occupancy(phantom, Npe, Nfe, FOV)
@@ -30,7 +30,7 @@ for (idx, TR) in enumerate(TRs)
     seq = Suppressor.@suppress ir_se_2d_sequence(
         TI, TE, TR; α_exc = π/2, FOV = FOV, Nfe = Nfe, Npe = Npe,
     )
-    raw   = Suppressor.@suppress simulate(phantom, seq, Scanner())
+    raw   = Suppressor.@suppress simulate(phantom, seq, scanner_for_field(cfg))
     ksp   = raw_to_kspace(raw, Npe, Nfe)
     img   = kspace_to_image(ksp)
     img_n = img ./ sum(img)

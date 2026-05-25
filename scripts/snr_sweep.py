@@ -43,6 +43,9 @@ Usage:
     python scripts/snr_sweep.py --indir scripts/runs/snr_sweep_voxel_0p5mm
     python scripts/snr_sweep.py --indir scripts/runs/snr_sweep_voxel_1mm
     python scripts/snr_sweep.py --indir scripts/runs/snr_sweep_voxel_3mm
+    python scripts/snr_sweep.py --indir scripts/runs/snr_sweep_voxel_0p5mm_water
+    python scripts/snr_sweep.py --indir scripts/runs/snr_sweep_voxel_1mm_water
+    python scripts/snr_sweep.py --indir scripts/runs/snr_sweep_voxel_3mm_water
 """
 
 from __future__ import annotations

@@ -34,6 +34,32 @@ if "PYTHON_JULIAPKG_EXE" not in os.environ:
     if _j11_candidates:
         os.environ["PYTHON_JULIAPKG_EXE"] = _j11_candidates[0]
 
+# WSL2/Ubuntu's system libcrypto is too old for OpenSSL_jll ≥ 3.3 (libssl needs
+# OPENSSL_3.3.0 symbols not present in /lib/x86_64-linux-gnu/libcrypto.so.3).
+# glibc reads LD_LIBRARY_PATH at process exec time and caches it, so mutating
+# os.environ after Python has started has no effect — we must re-exec ourselves
+# with the JLL lib dir on the search path *before* juliacall triggers the
+# libjulia → libssl dlopen chain. A sentinel env var prevents an exec loop.
+if os.environ.get("_QMD_LD_REEXEC") != "1":
+    _ossl_candidates = glob.glob(str(Path.home() / ".julia" / "artifacts" / "*" / "lib" / "libssl.so"))
+    if _ossl_candidates:
+        _ossl_dir = os.path.dirname(max(_ossl_candidates, key=os.path.getmtime))
+        if _ossl_dir not in os.environ.get("LD_LIBRARY_PATH", "").split(":"):
+            # Reconstruct the real argv from /proc/self/cmdline — sys.argv loses
+            # the `python -c "<code>"` form (the -c content is consumed before
+            # sys.argv is built). Fall back to sys.argv on non-Linux.
+            try:
+                with open("/proc/self/cmdline", "rb") as _f:
+                    _argv = _f.read().rstrip(b"\x00").split(b"\x00")
+                _argv = [a.decode("utf-8", errors="replace") for a in _argv]
+            except OSError:
+                import sys as _sys
+                _argv = [_sys.executable] + _sys.argv
+            _new_env = os.environ.copy()
+            _new_env["LD_LIBRARY_PATH"] = f"{_ossl_dir}:{_new_env.get('LD_LIBRARY_PATH', '')}"
+            _new_env["_QMD_LD_REEXEC"] = "1"
+            os.execvpe(_argv[0], _argv, _new_env)
+
 # juliacall must also be imported before torch (pulled in by stable-baselines3)
 # to avoid a segfault on some PyTorch builds.
 # See https://github.com/pytorch/pytorch/issues/78829

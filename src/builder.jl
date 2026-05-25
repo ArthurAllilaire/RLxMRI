@@ -170,6 +170,16 @@ function build_background_water(cfg::PhantomConfig)
     delta_x = cfg.voxel_size_mm * 1e-3
     xs, ys, zs = voxelise_sphere((0.0, 0.0, 0.0), HOUSING_RADIUS_M, delta_x)
     isempty(xs) && return _empty_phantom("water")
+    # Apply slice mask here — before allocating spin-property arrays — so that
+    # the full-3D water sphere (up to 33M spins at 0.5 mm) is never fully
+    # materialised in memory when a thin slice is requested.
+    if cfg.slice_thickness_mm !== nothing
+        z_half   = (cfg.slice_thickness_mm * 1e-3) / 2
+        z_centre = cfg.slice_center_mm * 1e-3
+        slice_ok = abs.(zs .- z_centre) .≤ z_half + 1e-9
+        xs, ys, zs = xs[slice_ok], ys[slice_ok], zs[slice_ok]
+    end
+    isempty(xs) && return _empty_phantom("water")
     keep = trues(length(xs))
     for d in all_sphere_descriptors(cfg)
         @. keep &= ((xs - d.centre[1])^2 + (ys - d.centre[2])^2 +

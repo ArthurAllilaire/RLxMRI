@@ -78,17 +78,30 @@ def main():
                    help="output PNG (default: <run-dir>/recovery_curves_koma.png)")
     args = p.parse_args()
 
-    print("Initialising Julia bridge...")
-    jl_qmd = init_julia()
-    print("OK.")
-
     cfg, rows, signals = load_run(args.run)
     TIs    = np.asarray(cfg["TIs_s"], dtype=float)
     TRs    = np.asarray(cfg["TRs_s"], dtype=float)
     Npe    = int(cfg["Npe"])
-    TR_eff = float(np.median(TRs))
+    TR_eff = float(cfg.get("TR_eff_s", np.median(TRs)))
 
-    TI_dense = np.geomspace(1e-3, max(float(np.max(TRs)), 3.0), 400)
+    # Fast path: if the Julia run pre-computed the dense recovery curves, load
+    # them and skip booting a second Julia via juliacall entirely. The curves
+    # already have M0_fit baked in (y = M0_fit·|Mz|) and their rows align with
+    # the CSV / descs order, so y_*_all[i] matches rows[i].
+    npz_path = RUNS_DIR / args.run / "recovery_curves.npz"
+    precomputed = npz_path.exists()
+    if precomputed:
+        print(f"Loading pre-computed recovery curves from {npz_path.name}")
+        rc = np.load(npz_path)
+        TI_dense = rc["TI_dense"]
+        y_true_all = rc["y_true"]
+        y_fit_all = rc["y_fit"]
+        jl_qmd = None
+    else:
+        print("Initialising Julia bridge...")
+        jl_qmd = init_julia()
+        print("OK.")
+        TI_dense = np.geomspace(1e-3, max(float(np.max(TRs)), 3.0), 400)
     TR_dense = np.full_like(TI_dense, TR_eff)
 
     T1_true = np.array([r["T1_true"] for r in rows])
@@ -109,8 +122,12 @@ def main():
         T1f = r["T1_fit"]
         M0  = r["M0_fit"]
 
-        y_true = M0 * mz_abs(jl_qmd, T1t, TI_dense, TR_dense, Npe)
-        y_fit  = M0 * mz_abs(jl_qmd, T1f, TI_dense, TR_dense, Npe)
+        if precomputed:
+            y_true = y_true_all[i]
+            y_fit  = y_fit_all[i]
+        else:
+            y_true = M0 * mz_abs(jl_qmd, T1t, TI_dense, TR_dense, Npe)
+            y_fit  = M0 * mz_abs(jl_qmd, T1f, TI_dense, TR_dense, Npe)
 
         ax.plot(TI_dense, y_true, color="C0", lw=1.4,
                 label=f"|Mz| T1_true={T1t:.3f} s")

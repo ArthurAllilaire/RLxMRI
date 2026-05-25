@@ -70,21 +70,27 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
         if ep == 0 and snr_holder is not None and not snr_holder:
             rep = qmd.e2_dual_acq_snr_report(raw_env._env)
             snr_holder.update({
-                "ksp_rms":             float(rep.ksp_rms),
-                "sigma_used":          float(rep.sigma_used),
-                "snr_ksp":             float(rep.snr_ksp),
-                "background_std":      float(rep.background_std),
-                "diff_roi_std":        float(rep.diff_roi_std),
-                "sphere_means":        [float(v) for v in rep.sphere_means],
-                "snr_nema_per_sphere": [float(v) for v in rep.snr_nema_per_sphere],
-                "snr_nema_peak":       float(rep.snr_nema_peak),
-                "snr_dual_per_sphere": [float(v) for v in rep.snr_dual_per_sphere],
-                "snr_dual_peak":       float(rep.snr_dual_peak),
+                "ksp_rms":               float(rep.ksp_rms),
+                "sigma_used":            float(rep.sigma_used),
+                "snr_ksp":               float(rep.snr_ksp),
+                "background_std_a":      float(rep.image.background_std_a),
+                "background_std_b":      float(rep.image.background_std_b),
+                "diff_roi_std":          float(rep.image.diff_roi_std),
+                "sphere_mean_a":         [float(v) for v in rep.image.sphere_mean_a],
+                "sphere_mean_b":         [float(v) for v in rep.image.sphere_mean_b],
+                "sphere_means":          [float(v) for v in rep.image.sphere_means],
+                "temporal_instability":  [float(v) for v in rep.image.temporal_instability],
+                "snr_nema_per_sphere_a": [float(v) for v in rep.image.snr_nema_per_sphere_a],
+                "snr_nema_per_sphere_b": [float(v) for v in rep.image.snr_nema_per_sphere_b],
+                "snr_nema_peak_a":       float(rep.image.snr_nema_peak_a),
+                "snr_nema_peak_b":       float(rep.image.snr_nema_peak_b),
+                "snr_dual_per_sphere":   [float(v) for v in rep.image.snr_dual_per_sphere],
+                "snr_dual_peak":         float(rep.image.snr_dual_peak),
             })
             print(f"[diagnose] SNR calibration (NEMA MS-1 dual-acq):")
             print(f"           σ = {snr_holder['sigma_used']:.4g}   "
                   f"snr_ksp = {snr_holder['snr_ksp']:.2f}   "
-                  f"snr_nema_peak = {snr_holder['snr_nema_peak']:.2f}   "
+                  f"snr_nema_peak_a = {snr_holder['snr_nema_peak_a']:.2f}   "
                   f"snr_dual_peak = {snr_holder['snr_dual_peak']:.2f}  ← report figure")
         ep_record = {
             "TI":            [],

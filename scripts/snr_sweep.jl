@@ -82,6 +82,9 @@ struct SweepConfig
     outdir::String
     n_seeds::Int
     voxel_mm::Float64
+    water::Bool
+    slice_mm::Float64
+    slice_center_mm::Float64
 end
 
 function parse_args()
@@ -99,6 +102,9 @@ function parse_args()
     outdir      = nothing
     n_seeds     = 15
     voxel_mm    = VOXEL_MM
+    water       = false
+    slice_mm        = 0.0    # --slice-mm: slab thickness; 0 → auto (voxel_mm)
+    slice_center_mm = NaN    # --slice-center-mm: slab centre; NaN → auto (PLATE_Z_MM.T1)
     sigmas_user = false
     i = 1
     while i <= length(ARGS)
@@ -119,6 +125,12 @@ function parse_args()
             n_seeds = parse(Int, ARGS[i+1]); i += 2
         elseif ARGS[i] == "--voxel-mm" && i < length(ARGS)
             voxel_mm = parse(Float64, ARGS[i+1]); i += 2
+        elseif ARGS[i] == "--water"
+            water = true; i += 1
+        elseif ARGS[i] == "--slice-mm" && i < length(ARGS)
+            slice_mm = parse(Float64, ARGS[i+1]); i += 2
+        elseif ARGS[i] == "--slice-center-mm" && i < length(ARGS)
+            slice_center_mm = parse(Float64, ARGS[i+1]); i += 2
         else
             i += 1
         end
@@ -126,8 +138,9 @@ function parse_args()
     # Default outdir is voxel-size-suffixed so 1 mm and 3 mm sweeps don't
     # overwrite each other (the SNR characteristics differ drastically).
     if outdir === nothing
-        vox_tag = replace(@sprintf("%gmm", voxel_mm), "." => "p")
-        outdir  = joinpath(@__DIR__, "runs", "snr_sweep_voxel_$(vox_tag)")
+        vox_tag   = replace(@sprintf("%gmm", voxel_mm), "." => "p")
+        water_tag = water ? "_water" : ""
+        outdir    = joinpath(@__DIR__, "runs", "snr_sweep_voxel_$(vox_tag)$(water_tag)")
     end
     # Default σ list (when --sigmas not given): scale the 3 mm baseline by
     # (3/voxel_mm)³ — per-voxel signal grows cubically with spin count, so
@@ -137,7 +150,8 @@ function parse_args()
         scale = (3.0 / voxel_mm)^3
         sigmas = [round(σ * scale; sigdigits = 3) for σ in baseline_3mm]
     end
-    SweepConfig(sigmas, budget_s, Npe, Nfe, clean_recon, outdir, n_seeds, voxel_mm)
+    SweepConfig(sigmas, budget_s, Npe, Nfe, clean_recon, outdir, n_seeds, voxel_mm, water,
+                slice_mm, slice_center_mm)
 end
 
 # Filesystem-friendly σ label used in filenames + JSON keys.
@@ -274,13 +288,23 @@ function main()
     println("  clean_recon   = $(cfg.clean_recon)")
     println("  n_seeds       = $(cfg.n_seeds)")
     println("  voxel_mm      = $(cfg.voxel_mm)")
+    println("  water         = $(cfg.water)")
     println("  output dir    = $(cfg.outdir)")
     println("="^60)
 
-    # Build phantom + sphere geometry ONCE
+    # Build phantom + sphere geometry ONCE.
+    # Resolve slice geometry. Centre on the T1 plate z; slab thickness defaults
+    # to one voxel so spins and recon agree on a single in-plane slice. Both
+    # values are forwarded to PhantomConfig so the builder applies the z-mask —
+    # we don't post-filter phantom.z ourselves.
+    slice_center = isnan(cfg.slice_center_mm) ? QalibreMDPhantom.PLATE_Z_MM.T1 : cfg.slice_center_mm
+    slice_thick  = cfg.slice_mm > 0 ? cfg.slice_mm : cfg.voxel_mm
     pcfg     = PhantomConfig(field = :T15, voxel_size_mm = cfg.voxel_mm,
-                              include_plates = [:T1])
+                              include_plates     = cfg.water ? [:T1, :water] : [:T1],
+                              slice_thickness_mm = slice_thick,
+                              slice_center_mm    = slice_center)
     phantom = build_phantom(pcfg)
+    println("Slab: z=$(slice_center) ± $(slice_thick/2) mm")
     scanner = scanner_for_field(pcfg)
     descs   = sphere_descriptors(:T1, pcfg; rng = MersenneTwister(0))
     T1_true = [d.T1 for d in descs]
@@ -294,15 +318,11 @@ function main()
     Nfe_img = cfg.Nfe * img_pad
     sphere_px = NTuple{2,Int}[]
     for c in centres
-        ife = mod(round(Int, c[1] * Nfe_img / FOV) + Nfe_img ÷ 2, Nfe_img) + 1
-        ipe = mod(round(Int, c[2] * Npe_img / FOV) + Npe_img ÷ 2, Npe_img) + 1
-        push!(sphere_px, (ipe, ife))
+        push!(sphere_px, (phys_to_pixel(c[2], Npe_img, FOV), phys_to_pixel(c[1], Nfe_img, FOV)))
     end
     sphere_px_raw = NTuple{2,Int}[]
     for c in centres
-        ife = mod(round(Int, c[1] * cfg.Nfe / FOV) + cfg.Nfe ÷ 2, cfg.Nfe) + 1
-        ipe = mod(round(Int, c[2] * cfg.Npe / FOV) + cfg.Npe ÷ 2, cfg.Npe) + 1
-        push!(sphere_px_raw, (ipe, ife))
+        push!(sphere_px_raw, (phys_to_pixel(c[2], cfg.Npe, FOV), phys_to_pixel(c[1], cfg.Nfe, FOV)))
     end
     bg_mask_raw = background_mask(phantom, cfg.Npe, cfg.Nfe, FOV; erosion_px = 1)
     println("Background mask: $(sum(bg_mask_raw)) / $(length(bg_mask_raw)) pixels")
@@ -322,7 +342,7 @@ function main()
     println("\nOptimising CR schedule (budget=$(cfg.budget_s) s, Npe=$(cfg.Npe))…")
     sched = cr_optimize_sweep(T1_true;
         budget_s = cfg.budget_s, Npe = cfg.Npe,
-        n_block_grid = [4, 6, 8, 10, 14, 18],
+        n_block_grid = [4, 6, 8, 10],   # 14/18 never beat the floor — dropped for speed
         n_starts = 1000, n_refine = 10)
     TIs_opt = sched.schedule.TIs
     TRs_opt = sched.schedule.TRs
@@ -531,6 +551,9 @@ function main()
             "FOV_m"         => FOV,
             "voxel_mm"      => cfg.voxel_mm,
             "clean_recon"   => cfg.clean_recon,
+            "water"         => cfg.water,
+            "slice_thickness_mm" => slice_thick,
+            "slice_center_mm"    => slice_center,
             "n_blocks"      => n_blocks,
             "TIs_s"         => TIs_opt,
             "TRs_s"         => TRs_opt,
