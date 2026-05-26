@@ -298,9 +298,7 @@ args = parser.parse_args()
 cfg = load_run_config(args.subdir)
 if cfg:
     if args.noise_label is None:
-        if cfg.get("target_snr") is not None:
-            args.noise_label = f"SNR={cfg['target_snr']:g}"
-        elif cfg.get("noise_sigma_abs", 0.0) > 0:
+        if cfg.get("noise_sigma_abs", 0.0) > 0:
             args.noise_label = str(cfg["noise_sigma_abs"])
     if not args.phase_sensitive and cfg.get("phase_sensitive", False):
         args.phase_sensitive = True

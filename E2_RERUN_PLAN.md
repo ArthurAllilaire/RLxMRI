@@ -83,17 +83,71 @@ anchor; `snr_dual_peak` column). Per your decision (**realism first**), that σ 
 the training noise level — we report whatever CR-opt and RL MAPE result, rather
 than tuning σ to manufacture RL headroom.
 
-Record in this doc once known:
+**Recorded (2026-05-25, 25 seeds, 64×32, 1 mm voxel, 1 mm axial slab through the
+T1 plate, no water, field :T15):**
 
-| quantity | value (fill after rerun) |
+| quantity | value |
 |---|---|
-| σ_abs for NEMA_dual ≈ 25 | … |
-| NEMA single-image SNR at that σ | … |
-| snr_ksp at that σ | … |
-| CR-opt 14-sphere MAPE at that σ | … |
+| **σ_abs for NEMA_dual ≈ 25** | **50** (snr_dual_peak = 24.9) |
+| NEMA single-image SNR at that σ | 25.2 |
+| snr_ksp at that σ | 3.40 (phantom-corrected 10.6) |
+| CR-opt 14-sphere MAPE at that σ | **mean 10.3 %, median 3.7 %, max 63.4 %** |
 
-> Old memory note (target_snr=2.5 → NEMA≈30) is from the buggy sim — do not trust
-> it; the σ↔NEMA map must be re-derived here.
+Collapse cliff: mean MAPE explodes (catastrophic short-T1 rail-pins) past σ ≈ 85
+(NEMA_dual ≈ 17); median stays ~5–6 % through there. Use **median** as the headline.
+
+**T3-vs-T15 comparison (2026-05-25, `--field T3`, same 64×32 / 1 mm / 15-seed grid):**
+the σ↔SNR map and CR-opt MAPE are **field-independent to within seed noise** — the
+σ* = 50 number above is authoritative for both fields. At σ = 50:
+
+| field | snr_dual | MAPE median | MAPE mean | MAPE max |
+|---|---|---|---|---|
+| :T15 | 24.9 | 3.72 % | 10.3 % | 63.4 % |
+| :T3  | 24.1 | 3.86 % | 10.1 % | 62.8 % |
+
+(Makes sense: σ is absolute/hardware-set and the fleet T1s differ only modestly
+between fields, so per-sphere SNR — and therefore the fit — barely move.) Results in
+`scripts/runs/snr_sweep_voxel_1mm_T3/`. The mean column is noisier than T15 at a few
+σ (rare short-T1 rail-pins, e.g. σ=70/100 spike to ~200 %); median is smooth and
+matched — another reason to headline median.
+
+**CRITICAL — geometry must match between sweep and training, or σ*=50 is invalid:**
+
+- **Slicing/voxel:** the sweep slices a 1 mm axial slab and uses 1 mm voxels. The E2
+  env was non-slice-selective full-3D at a 3 mm voxel default — now made to match:
+  `voxelise_sphere`/`build_sphere` gained a `z_range` arg, and
+  `_e2_build_episode_phantom` voxelises **only the 1 mm slab** (centred on the T1
+  plate) so out-of-slab voxels are never materialised (low memory). Pose is now
+  **in-plane only** (rz + tx,ty; rx=ry=tz=0) so the constructed slab is exactly the
+  imaged slab and in-slice signal is constant every episode. Default voxel → 1 mm
+  (`e2.jl` + `env_e2.py`). Verified: env episode phantom = 4816 spins = sweep; e2 /
+  e2_imaging / geometry / builder tests pass.
+- **Resolution:** ~~the env default is 16×8~~ **Resolved (2026-05-25):** env default
+  bumped to **Nfe=64, Npe=32** in both `src/rl/e2.jl` and
+  `python/qalibremd_gym/env_e2.py`, so training/baseline now match the sweep by
+  default (no per-call override needed). 16×8 collided ROIs (§6.1).
+- **Field:** ~~this sweep used :T15; plan §2 targets :T3~~ **Resolved (2026-05-25):**
+  standardised on **:T15** (matches the 1.5 T scanner default, `t1_fit_vs_true`, and
+  the existing sweep). Env default flipped to `:T15` in `e2.jl` + `env_e2.py`, and
+  `scripts/snr_sweep.jl` gained a `--field {T15,T3}` flag (default :T15; T3 runs land
+  in a `_T3`-suffixed outdir). The T3-vs-T15 comparison sweep is recorded below.
+  `python/baseline_e2.py` reads its 14-sphere fleet field-parametrically from Julia's
+  `T1_ARRAY` (`nominal_fleet_t1s(field)`), so `--field T15` yields the matching T15
+  fleet for the yardstick.
+
+**Water:** not in the env (training has none). A water sweep was run for realism but
+water is a large long-T1 volume that partially cancels the spheres at low spatial
+frequency and leaks into the coarse-grid ROIs (noise-free median MAPE 1.9 %→4.3 %);
+`--clean-recon` (hamming+pad+3×3 ROI) did **not** fix it (median worsened to ~11 %).
+Keep water out unless a custom eroded-interior ROI is added later.
+
+**T1_1 caveat:** sphere T1_1 (T1_true = 1.879 s) fits to ~0.68 s even at σ=0 (64 %
+MAPE, noiseless) — the CR-opt 4-block schedule (max TI 0.64 s, TR 2.9 s) can't
+constrain a 1.88 s T1. This single sphere sets `max` MAPE across all low σ; report
+median + per-decade, not mean.
+
+> Old memory note (SNR target 2.5 -> NEMA≈30) is from the buggy/unsliced sim — do not
+> trust it. The corrected σ↔NEMA map (1 mm slice, 1 mm voxel) gives **σ* ≈ 50**.
 
 ### 3.2 Re-run the fixed-schedule + CR-optimal baselines at that σ
 
@@ -327,31 +381,50 @@ they're in `test/test_e2_imaging.jl` / `python/tests/`; if not, add at least:
 
 ## 9. Run sequencing & commands
 
-```bash
-# Step 0 — re-baseline (must precede RL)
-julia --project=. scripts/snr_sweep.jl --voxel-mm 1.0 --npe 32 --nfe 64 --budget 160
-python scripts/snr_sweep.py                       # pick σ at NEMA_dual≈25  → σ*
-python python/baseline_e2.py --episodes 50 --noise σ* --time-budget 160 \
-   --max-blocks 30 --cr-optimal --out runs/e2/rerun_baselines
+σ* = **50** (§3.1), field **:T15**, 64×32, run-once CR baselines, budget-guarded
+env (realised scan time ≤ budget). Observation defaults to `[T1_est, budget]`
+(image + σ channels off — §6.2/6.3); add `--include-image`/`--include-sigma` only
+to ablate. `--noise` now defaults to 50, but the commands pass it explicitly.
 
-# Run A — learn α
+```bash
+# Step 0 — re-baseline (must precede RL). σ* already chosen (§3.1); re-run the
+# sweep only if geometry changes.
+julia --project=. scripts/snr_sweep.jl --voxel-mm 1.0 --npe 32 --nfe 64 --budget 160
+python scripts/snr_sweep.py                       # pick σ at NEMA_dual≈25  → σ*=50
+PYTHON_JULIAPKG_OFFLINE=yes python python/baseline_e2.py \
+   --episodes 50 --seed 500000 --out runs/e2/baselines \
+   --field T15 --max-blocks 30 --time-budget 160.0 --noise 50 \
+   --sigma-method asymptotic \
+   --cr-optimal --cr-block-grid 6 10 14 18 --cr-starts 1000 --cr-refine 10
+
+# Run A0 — WITHOUT α (clean 2-dim [TI, TR] ablation; TE fixed at 20 ms)
 PYTHON_JULIAPKG_OFFLINE=yes python python/train_e2.py \
-   --simplified-action --learn-alpha \
+   --fix-te --field T15 \
    --reward-mode delta_mape --terminal-bonus 0.0 --mape-alpha 1.0 \
-   --noise σ* --time-budget 160 --max-blocks 30 \
+   --sigma-method asymptotic --noise 50 --time-budget 160 --max-blocks 30 \
+   --timesteps 300000 --out runs/e2/rerun_A0_noalpha
+
+# Run A — WITH α (3-dim [TI, TR, α]; the primary scientific run)
+PYTHON_JULIAPKG_OFFLINE=yes python python/train_e2.py \
+   --fix-te --learn-alpha --field T15 \
+   --reward-mode delta_mape --terminal-bonus 0.0 --mape-alpha 1.0 \
+   --sigma-method asymptotic --noise 50 --time-budget 160 --max-blocks 30 \
    --timesteps 300000 --out runs/e2/rerun_A_alpha
-# eval + diagnostics vs runs/e2/rerun_baselines
 
 # Run B — add spoiler (after A is understood)
 PYTHON_JULIAPKG_OFFLINE=yes python python/train_e2.py \
-   --simplified-action --learn-alpha --spoiler-action \
-   --reward-mode delta_mape --terminal-bonus 0.0 \
-   --noise σ* --time-budget 160 --max-blocks 30 \
+   --fix-te --learn-alpha --spoiler-action --field T15 \
+   --reward-mode delta_mape --terminal-bonus 0.0 --mape-alpha 1.0 \
+   --sigma-method asymptotic --noise 50 --time-budget 160 --max-blocks 30 \
    --timesteps 300000 --out runs/e2/rerun_B_spoiler
 ```
 
-Eval each run with `eval_e2.py` (paired seeds 500000+) against
-`runs/e2/rerun_baselines`, and `diagnose_e2.py` for adaptivity + Ernst-angle plots.
+A0 and A are independent processes, so run them concurrently to use separate
+CPU cores (the env can't spread one run's rollouts across cores — juliacall
+keeps Julia in-process). Eval each run with `eval_e2.py` (paired seeds 500000+,
+matching `--fix-te`/`--learn-alpha`) against `runs/e2/baselines`, and
+`diagnose_e2.py` for adaptivity + Ernst-angle plots. The headline is **A vs A0
+MAPE** (the α gain) against the CR-opt anchor.
 
 ---
 

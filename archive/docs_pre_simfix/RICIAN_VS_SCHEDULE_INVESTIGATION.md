@@ -185,11 +185,11 @@ phase is not zero. This is the new bug — see §6.4 and
 
 ## 6. New bugs uncovered in this session
 
-### 6.1 `--snr` defaults to 2.5; `--noise` is silently overridden
+### 6.1 Old SNR auto-calibration defaults to 2.5; `--noise` is silently overridden
 
-`scripts/t1_fit_vs_true.jl:46` sets `global target_snr = 2.5` instead
-of `nothing`. Passing `--noise X` does not disable the SNR auto-calib,
-so `target_snr=2.5` wins and the resulting σ is whatever the
+`scripts/t1_fit_vs_true.jl:46` sets the old SNR auto-calibration level to 2.5.
+Passing `--noise X` does not disable the SNR auto-calib, so that level wins and
+the resulting σ is whatever the
 first-block ksp_rms / 2.5 happens to be.
 
 For the manual schedule this is catastrophic. Its first block is
@@ -199,7 +199,7 @@ tiny and σ gets scaled up ~6× to compensate (image σ ≈ 0.79 vs
 chased early in the session was largely an artefact of this.
 
 **Workaround until fixed:** pass `--snr 0 --noise X` to actually use
-a fixed noise level. Or set `target_snr = nothing` as default.
+a fixed noise level. Or disable the SNR auto-calibration default.
 
 ### 6.2 `--noise` is k-space σ, not image σ
 
@@ -310,8 +310,8 @@ Ordered by cost / value:
    reference-block calibration, ~25 lines, ~2 hours.
    See `REMOVE_PHASE_ASSUMPTION.md`.
 
-2. **Fix the `--snr` default and the `--noise` semantics.** Default
-   `target_snr = nothing` so `--noise X` actually wins. Rename
+2. **Fix the `--snr` default and the `--noise` semantics.** Disable
+   SNR auto-calibration by default so `--noise X` actually wins. Rename
    `--noise` to `--noise-ksp` (or add a separate `--noise-img` that
    converts via the analytic IFFT scaling). 30 minutes.
 

@@ -717,13 +717,48 @@
         @test info["TR"] >= (TI_req + TE_req) / 0.90 - 1e-9
     end
 
+    @testset "e2_step!: budget guard never overruns the scan-time budget" begin
+        # Npe=8, TR=3 → block_time = 24 s. Two blocks (48 s) fit in a 60 s
+        # budget; the third (→72 s) must be rejected without executing, so the
+        # realised scan time never exceeds the budget.
+        env = E2Env(; Nfe = 8, Npe = 8, max_blocks = 30, time_budget_s = 60.0)
+        e2_reset!(env; rng_seed = 7)
+
+        done = false
+        local info
+        while !done
+            _, _, done, info = e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
+        end
+
+        @test env.time_used_s <= env.time_budget_s + 1e-9
+        @test env.n_blocks == 2                       # 3rd block rejected
+        @test get(info, "budget_exceeded", false) == true
+        @test info["block_time"] == 0.0               # discarded block ran nothing
+    end
+
+    @testset "e2_step!: skips simulation when only one block could fit (fitter needs ≥2)" begin
+        # budget 26 s, Npe=8: one TR=3 block costs 24 s, but a second (≥ 8·0.5 =
+        # 4 s) would overrun → the lone block can't yield a fit, so the env ends
+        # the episode WITHOUT simulating it (time stays 0, no block executed).
+        env = E2Env(; Nfe = 8, Npe = 8, max_blocks = 30, time_budget_s = 26.0)
+        e2_reset!(env; rng_seed = 1)
+        _, _, done, info = e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
+
+        @test done == true
+        @test env.n_blocks == 0
+        @test env.time_used_s == 0.0
+        @test get(info, "budget_exceeded", false) == true
+    end
+
     @testset "E2 random subset reset keeps fixed obs shape and active sphere identities" begin
+        # include_image + include_sigma on → full obs = Nfe*Npe + 2*n_spheres + 3.
         env = E2Env(; subset_size = 5, Nfe = 8, Npe = 4,
-                     max_blocks = 2, time_budget_s = 600.0)
+                     max_blocks = 2, time_budget_s = 600.0,
+                     include_image = true, include_sigma = true)
 
         obs1 = e2_reset!(env; rng_seed = 123)
         idx1 = copy(env.sphere_indices)
-        T1_1 = copy(env.T1_base)
+        T1_1 = [d.T1 for d in env.active_base_descs]
 
         @test env.n_spheres == 5
         @test length(obs1) == 8 * 4 + 2 * 5 + 3
@@ -731,16 +766,39 @@
         @test issorted(idx1)
         @test length(unique(idx1)) == 5
         @test all(1 .<= idx1 .<= 14)
-        @test T1_1 == env.T1_base_pool[idx1]
+        @test T1_1 == [d.T1 for d in env.base_descs_pool[idx1]]
 
         obs2 = e2_reset!(env; rng_seed = 123)
         @test env.sphere_indices == idx1
-        @test env.T1_base == T1_1
+        @test [d.T1 for d in env.active_base_descs] == T1_1
         @test length(obs2) == length(obs1)
 
         obs3 = e2_reset!(env; rng_seed = 124)
         @test length(obs3) == length(obs1)
         @test length(env.T1_true) == 5
+    end
+
+    @testset "E2 observation channels are gated by include_image / include_sigma" begin
+        Nfe, Npe, k = 8, 4, 5
+        # Default: image + σ dropped → obs = n_spheres + 3.
+        env_def = E2Env(; subset_size = k, Nfe = Nfe, Npe = Npe,
+                         max_blocks = 2, time_budget_s = 600.0)
+        @test e2_obs_dim(env_def) == k + 3
+        @test length(e2_reset!(env_def; rng_seed = 1)) == k + 3
+
+        # Image only.
+        env_img = E2Env(; subset_size = k, Nfe = Nfe, Npe = Npe,
+                         max_blocks = 2, time_budget_s = 600.0,
+                         include_image = true)
+        @test e2_obs_dim(env_img) == Nfe * Npe + k + 3
+        @test length(e2_reset!(env_img; rng_seed = 1)) == Nfe * Npe + k + 3
+
+        # σ only.
+        env_sig = E2Env(; subset_size = k, Nfe = Nfe, Npe = Npe,
+                         max_blocks = 2, time_budget_s = 600.0,
+                         include_sigma = true)
+        @test e2_obs_dim(env_sig) == 2 * k + 3
+        @test length(e2_reset!(env_sig; rng_seed = 1)) == 2 * k + 3
     end
 
 end

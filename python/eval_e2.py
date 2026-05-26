@@ -27,16 +27,15 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from qalibremd_gym.env_e2 import QalibreMDE2Env
+from qalibremd_gym.schedules import log_ti_grid
 
 
 # ── Fixed-TI grid baseline ─────────────────────────────────────────────────
 
-_FIXED_TI_GRID = [0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 3.0]   # seconds
-
 
 def _fixed_grid_action(step: int, n_ti: int = 7) -> np.ndarray:
     """Cycle through a fixed log-spaced TI grid, TE=20ms, TR=4s, α=90°."""
-    tis = np.exp(np.linspace(np.log(0.05), np.log(3.0), n_ti))
+    tis = log_ti_grid(n=n_ti)
     ti  = float(tis[step % n_ti])
     return np.array([ti, 0.020, 4.0, 90.0, 0.0], dtype=np.float32)
 
@@ -147,6 +146,12 @@ def main():
     p.add_argument("--simplified-action", action="store_true",
                    help="Required if the policy was trained with "
                         "--simplified-action (3-dim action space)")
+    p.add_argument("--fix-te", action="store_true",
+                   help="Required if the policy was trained with --fix-te "
+                        "([TI, TR] action space; TE fixed at 20ms).")
+    p.add_argument("--learn-alpha", action="store_true",
+                   help="Required if the policy was trained with --learn-alpha "
+                        "([TI, TR, α] action space).")
     p.add_argument("--log-ti-action", action="store_true",
                    help="Required if the policy was trained with "
                         "--log-ti-action (log-spaced TI mapping).")
@@ -162,6 +167,12 @@ def main():
                    help="n_grid for fit_t1_generalized_ir. §17.10 control: "
                         "use 2000 to separate grid coarseness from genuine "
                         "multimodal SSE under the baseline fitter.")
+    p.add_argument("--include-image", action="store_true",
+                   help="Required if the policy was trained with --include-image "
+                        "(obs prepends the flattened recon image).")
+    p.add_argument("--include-sigma", action="store_true",
+                   help="Required if the policy was trained with --include-sigma "
+                        "(obs appends the per-sphere fitter-σ channel).")
     args = p.parse_args()
 
     env_kwargs = dict(cfg_field=args.field,
@@ -171,10 +182,14 @@ def main():
                        phase_sensitive=args.phase_sensitive,
                        sigma_method=args.sigma_method,
                        simplified_action=args.simplified_action,
+                       fix_te=args.fix_te,
+                       learn_alpha=args.learn_alpha,
                        log_ti_action=args.log_ti_action,
                        oracle_fit=args.oracle_fit,
                        oracle_band=args.oracle_band,
-                       fitter_n_grid=args.fitter_n_grid)
+                       fitter_n_grid=args.fitter_n_grid,
+                       include_image=args.include_image,
+                       include_sigma=args.include_sigma)
 
     print("=" * 60)
     print(f"E2 Evaluation — policy: {args.policy}")
@@ -214,7 +229,8 @@ def main():
     # physical [TI, TE, TR, α, slice_z] vector by construction.
     print(f"\nEvaluating fixed-TI grid baseline on same configs …")
     base_kwargs = {k: v for k, v in env_kwargs.items()
-                   if k not in ("simplified_action", "log_ti_action")}
+                   if k not in ("simplified_action", "log_ti_action",
+                                "fix_te", "learn_alpha")}
     env_base = QalibreMDE2Env(rng_seed=args.seed, **base_kwargs)
     base = evaluate_fixed_grid(env_base, args.episodes, args.seed)
     print(f"  MAPE        = {base['mape_pct']:.2f}%")

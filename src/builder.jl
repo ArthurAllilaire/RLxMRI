@@ -1,20 +1,60 @@
-struct SphereDescriptor
-    centre::NTuple{3,Float64}   # m
-    radius::Float64             # m
-    ρ::Float64
-    T1::Float64                 # s
-    T2::Float64                 # s
-    T2s::Float64                # s
-    delta_w::Float64            # rad/s
-    label::Symbol
-end
-
 "Fiducial sphere radius in metres (10 mm OD)."
 const FIDUCIAL_RADIUS_M = 5.0e-3
 "Contrast sphere radius in metres (15 mm OD)."
 const CONTRAST_RADIUS_M = 7.5e-3
 "Water housing sphere radius in metres (200 mm ID hemispheres joined)."
 const HOUSING_RADIUS_M = 100e-3
+
+"""
+    with_sphere_relaxation(d, T1, T2; T2s=T2)
+
+Return a copy of sphere descriptor `d` with updated relaxation values.
+Geometry, density, off-resonance, and label are preserved.
+"""
+function with_sphere_relaxation(d::SphereDescriptor, T1::Real, T2::Real;
+                                T2s::Real = T2)
+    SphereDescriptor(
+        d.centre, d.radius, d.ρ,
+        Float64(T1), Float64(T2), Float64(T2s), d.delta_w, d.label,
+    )
+end
+
+"""
+    transform_descriptor(d, euler, translation)
+
+Return a copy of sphere descriptor `d` whose centre has been rotated by
+Euler angles `euler` and translated by `translation` (metres). Material
+properties and radius are unchanged.
+"""
+function transform_descriptor(d::SphereDescriptor,
+                              euler::NTuple{3,<:Real},
+                              translation::NTuple{3,<:Real})
+    transform_descriptor(d, rotation_matrix(euler...), translation)
+end
+
+function transform_descriptor(d::SphereDescriptor,
+                              R::AbstractMatrix{<:Real},
+                              translation::NTuple{3,<:Real})
+    c_vec = R * collect(d.centre)
+    c = (
+        Float64(c_vec[1] + translation[1]),
+        Float64(c_vec[2] + translation[2]),
+        Float64(c_vec[3] + translation[3]),
+    )
+    SphereDescriptor(c, d.radius, d.ρ, d.T1, d.T2, d.T2s, d.delta_w, d.label)
+end
+
+function transform_descriptors(descs::AbstractVector{<:SphereDescriptor},
+                               euler::NTuple{3,<:Real},
+                               translation::NTuple{3,<:Real})
+    [transform_descriptor(d, euler, translation) for d in descs]
+end
+
+function transform_descriptors(descs::AbstractVector{<:SphereDescriptor},
+                               R::AbstractMatrix{<:Real},
+                               translation::NTuple{3,<:Real})
+    [transform_descriptor(d, R, translation) for d in descs]
+end
 
 function _t1_table(field::Symbol, class::Symbol)
     class === :legacy ? T1_ARRAY_LEGACY[field] : T1_ARRAY[field]
@@ -92,6 +132,16 @@ function sphere_descriptors(plate::Symbol, cfg::PhantomConfig;
         end
     end
 
+    if cfg.keep_sphere_labels !== nothing
+        keep_labels = Set(cfg.keep_sphere_labels)
+        descs = [d for d in descs if d.label in keep_labels]
+    end
+
+    if !isempty(cfg.drop_sphere_labels)
+        drop_labels = Set(cfg.drop_sphere_labels)
+        descs = [d for d in descs if !(d.label in drop_labels)]
+    end
+
     # Sphere dropout (only if p > 0)
     p = cfg.augment.drop_sphere_p
     if p > 0
@@ -102,14 +152,8 @@ function sphere_descriptors(plate::Symbol, cfg::PhantomConfig;
     descs
 end
 
-"""
-    all_sphere_descriptors(cfg)
-
-Every contrast + fiducial sphere that the full phantom would contain.
-Used by `build_background_water` to cut sphere volumes out of water.
-"""
-function all_sphere_descriptors(cfg::PhantomConfig)
-    rng = Random.MersenneTwister(cfg.rng_seed)
+function _generated_sphere_descriptors(cfg::PhantomConfig;
+                                       rng::AbstractRNG = Random.MersenneTwister(cfg.rng_seed))
     descs = SphereDescriptor[]
     for plate in (:T1, :T2, :PD, :fiducials)
         plate ∈ cfg.include_plates || continue
@@ -118,13 +162,59 @@ function all_sphere_descriptors(cfg::PhantomConfig)
     descs
 end
 
+"""
+    all_sphere_descriptors(cfg)
+
+Every contrast + fiducial sphere that the full phantom would contain.
+Used by `build_background_water` to cut sphere volumes out of water.
+"""
+function all_sphere_descriptors(cfg::PhantomConfig;
+                                rng::AbstractRNG = Random.MersenneTwister(cfg.rng_seed))
+    descs = _generated_sphere_descriptors(cfg; rng)
+    append!(descs, cfg.custom_sphere_descriptors)
+    descs
+end
+
+"""
+    sphere_descriptor_pixel(d, Npe, Nfe, FOV) -> (i_pe, i_fe)
+
+Map a descriptor centre to the corresponding phase/frequency image pixel.
+"""
+function sphere_descriptor_pixel(d::SphereDescriptor, Npe::Int, Nfe::Int,
+                                 FOV::Real)::NTuple{2,Int}
+    (phys_to_pixel(d.centre[2], Npe, FOV),
+     phys_to_pixel(d.centre[1], Nfe, FOV))
+end
+
+function sphere_descriptor_pixels(descs::AbstractVector{<:SphereDescriptor},
+                                  Npe::Int, Nfe::Int, FOV::Real)
+    [sphere_descriptor_pixel(d, Npe, Nfe, FOV) for d in descs]
+end
+
 function _empty_phantom(name::AbstractString = "empty")
     Phantom(name = String(name), x = Float64[])
 end
 
+function build_phantom_from_descriptors(descs::AbstractVector{<:SphereDescriptor},
+                                        delta_x::Real;
+                                        name::AbstractString = "spheres",
+                                        z_range::Union{Nothing,Tuple{<:Real,<:Real}} = nothing)
+    isempty(descs) && return _empty_phantom(name)
+    parts = Phantom[]
+    for d in descs
+        p = build_sphere(d, delta_x; z_range = z_range)
+        length(p.x) > 0 && push!(parts, p)
+    end
+    isempty(parts) && return _empty_phantom(name)
+    obj = reduce(+, parts)
+    obj.name = String(name)
+    obj
+end
+
 function build_sphere(d::SphereDescriptor, delta_x::Real;
-                      name::AbstractString = String(d.label))
-    x, y, z = voxelise_sphere(d.centre, d.radius, delta_x)
+                      name::AbstractString = String(d.label),
+                      z_range::Union{Nothing,Tuple{<:Real,<:Real}} = nothing)
+    x, y, z = voxelise_sphere(d.centre, d.radius, delta_x; z_range = z_range)
     n = length(x)
     n == 0 && return _empty_phantom(name)
     Phantom(
@@ -148,25 +238,16 @@ function build_plate(plate::Symbol, cfg::PhantomConfig)
     rng = Random.MersenneTwister(cfg.rng_seed + hash(plate) % 10_000)
     descs = sphere_descriptors(plate, cfg; rng)
     delta_x = cfg.voxel_size_mm * 1e-3
-    isempty(descs) && return _empty_phantom(String(plate))
-    parts = Phantom[]
-    for d in descs
-        p = build_sphere(d, delta_x)
-        length(p.x) > 0 && push!(parts, p)
-    end
-    isempty(parts) && return _empty_phantom(String(plate))
-    obj = reduce(+, parts)
-    obj.name = String(plate)
-    obj
+    build_phantom_from_descriptors(descs, delta_x; name = String(plate))
 end
 
 """
-    build_background_water(cfg) -> Phantom
+    build_background_water(cfg; cutout_descs=nothing) -> Phantom
 
 Voxelise a 100 mm-radius water sphere and cut out all contrast + fiducial
 sphere volumes. Spins are labelled as bulk water.
 """
-function build_background_water(cfg::PhantomConfig)
+function build_background_water(cfg::PhantomConfig; cutout_descs = nothing)
     delta_x = cfg.voxel_size_mm * 1e-3
     xs, ys, zs = voxelise_sphere((0.0, 0.0, 0.0), HOUSING_RADIUS_M, delta_x)
     isempty(xs) && return _empty_phantom("water")
@@ -181,7 +262,8 @@ function build_background_water(cfg::PhantomConfig)
     end
     isempty(xs) && return _empty_phantom("water")
     keep = trues(length(xs))
-    for d in all_sphere_descriptors(cfg)
+    cutouts = cutout_descs === nothing ? all_sphere_descriptors(cfg) : cutout_descs
+    for d in cutouts
         @. keep &= ((xs - d.centre[1])^2 + (ys - d.centre[2])^2 +
                     (zs - d.centre[3])^2) > d.radius^2
     end
@@ -209,12 +291,14 @@ per-spin noise. The returned `Phantom` can be fed directly to
 """
 function build_phantom(cfg::PhantomConfig = PhantomConfig())
     rng = Random.MersenneTwister(cfg.rng_seed)
+    sphere_descs = all_sphere_descriptors(cfg; rng)
     parts = Phantom[]
-    :fiducials ∈ cfg.include_plates && push!(parts, build_plate(:fiducials, cfg))
-    :T1        ∈ cfg.include_plates && push!(parts, build_plate(:T1, cfg))
-    :T2        ∈ cfg.include_plates && push!(parts, build_plate(:T2, cfg))
-    :PD        ∈ cfg.include_plates && push!(parts, build_plate(:PD, cfg))
-    :water     ∈ cfg.include_plates && push!(parts, build_background_water(cfg))
+    if !isempty(sphere_descs)
+        push!(parts, build_phantom_from_descriptors(
+            sphere_descs, cfg.voxel_size_mm * 1e-3; name = "spheres"))
+    end
+    :water ∈ cfg.include_plates &&
+        push!(parts, build_background_water(cfg; cutout_descs = sphere_descs))
 
     filter!(p -> length(p.x) > 0, parts)
     obj = isempty(parts) ? _empty_phantom("qalibremd") : reduce(+, parts)

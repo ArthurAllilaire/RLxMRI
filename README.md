@@ -219,7 +219,7 @@ without touching the builder. v1 uses bulk water T1 / T2 for all mixtures.
 
 ```julia
 Base.@kwdef struct PhantomConfig
-    field::Symbol                     = :T3              # :T15 or :T3
+    field::Symbol                     = :T15             # :T15 or :T3
     voxel_size_mm::Float64            = 2.0              # isotropic voxel
     include_plates::Vector{Symbol}    = [:T1, :T2, :PD, :fiducials, :water]
     serial_number_class::Symbol       = :new             # :new or :legacy
@@ -229,6 +229,11 @@ Base.@kwdef struct PhantomConfig
     augment::AugmentConfig            = AugmentConfig()
     rng_seed::Int                     = 0
     custom_sphere_map::Dict{Symbol,Any} = Dict{Symbol,Any}()
+    keep_sphere_labels::Union{Nothing,Vector{Symbol}} = nothing
+    drop_sphere_labels::Vector{Symbol} = Symbol[]
+    custom_sphere_descriptors::Vector{SphereDescriptor} = SphereDescriptor[]
+    slice_thickness_mm::Union{Nothing,Float64} = nothing
+    slice_center_mm::Float64                   = 0.0
 end
 
 Base.@kwdef struct AugmentConfig

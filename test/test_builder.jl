@@ -37,6 +37,33 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
         @test_throws ErrorException sphere_descriptors(:bogus, cfg)
     end
 
+    @testset "descriptor helpers" begin
+        d = SphereDescriptor((0.010, 0.0, 0.020), CONTRAST_RADIUS_M, 0.8,
+                             0.5, 0.05, 0.04, 2.0, :probe)
+        d_relaxed = with_sphere_relaxation(d, 0.7, 0.07)
+        @test d_relaxed.centre == d.centre
+        @test d_relaxed.radius == d.radius
+        @test d_relaxed.ρ == d.ρ
+        @test d_relaxed.delta_w == d.delta_w
+        @test d_relaxed.label == d.label
+        @test d_relaxed.T1 == 0.7
+        @test d_relaxed.T2 == 0.07
+        @test d_relaxed.T2s == 0.07
+
+        d_tx = transform_descriptor(d, (0.0, 0.0, π / 2), (0.001, 0.002, 0.003))
+        @test isapprox(d_tx.centre[1], 0.001; atol = 1e-12)
+        @test isapprox(d_tx.centre[2], 0.012; atol = 1e-12)
+        @test isapprox(d_tx.centre[3], 0.023; atol = 1e-12)
+        @test d_tx.radius == d.radius
+        @test d_tx.T1 == d.T1
+
+        @test sphere_descriptor_pixel(
+            SphereDescriptor((0.0, 0.0, 0.0), CONTRAST_RADIUS_M, 1.0,
+                             1.0, 0.1, 0.1, 0.0, :origin),
+            8, 16, 0.2,
+        ) == (5, 9)
+    end
+
     @testset "build_sphere produces a populated Phantom" begin
         d = _one_t1_descriptor()
         p = build_sphere(d, 1e-3)
@@ -92,6 +119,62 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
             augment = AugmentConfig(drop_sphere_p = 1.0))   # drop all
         descs = sphere_descriptors(:T1, cfgD)
         @test isempty(descs)
+    end
+
+    @testset "sphere label filters and explicit descriptors" begin
+        cfg_keep = PhantomConfig(include_plates = [:T1],
+                                 keep_sphere_labels = [:T1_1, :T1_3])
+        @test [d.label for d in sphere_descriptors(:T1, cfg_keep)] == [:T1_1, :T1_3]
+
+        cfg_drop = PhantomConfig(include_plates = [:T1],
+                                 drop_sphere_labels = [:T1_1, :T1_3])
+        labels_drop = [d.label for d in sphere_descriptors(:T1, cfg_drop)]
+        @test length(labels_drop) == 12
+        @test :T1_1 ∉ labels_drop
+        @test :T1_3 ∉ labels_drop
+
+        custom = SphereDescriptor((0.0, 0.0, 0.0), CONTRAST_RADIUS_M, 1.0,
+                                  0.42, 0.084, 0.084, 0.0, :custom)
+        cfg_custom = PhantomConfig(voxel_size_mm = 3.0,
+                                   include_plates = Symbol[],
+                                   custom_sphere_descriptors = [custom])
+        obj_custom = build_phantom(cfg_custom)
+        @test length(obj_custom.x) > 0
+        @test unique(obj_custom.T1) == [0.42]
+        @test [d.label for d in all_sphere_descriptors(cfg_custom)] == [:custom]
+
+        cfg_custom_water = PhantomConfig(voxel_size_mm = 3.0,
+                                         include_plates = [:water],
+                                         custom_sphere_descriptors = [custom],
+                                         slice_thickness_mm = 3.0,
+                                         slice_center_mm = 0.0)
+        obj_custom_water = build_phantom(cfg_custom_water)
+        @test length(obj_custom_water.x) > length(obj_custom.x)
+        @test any(obj_custom_water.T1 .== 0.42)
+    end
+
+    @testset "water fills omitted sphere volumes" begin
+        base = sphere_descriptors(
+            :T1, PhantomConfig(field = :T15, include_plates = [:T1]))
+        kept = base[1]
+        omitted = base[2]
+        cfg_keep_water = PhantomConfig(
+            voxel_size_mm = 2.0,
+            include_plates = [:T1, :water],
+            keep_sphere_labels = [kept.label],
+            slice_thickness_mm = 2.0,
+            slice_center_mm = PLATE_Z_MM.T1)
+        water = build_background_water(cfg_keep_water)
+
+        inside_kept = @. ((water.x - kept.centre[1])^2 +
+                          (water.y - kept.centre[2])^2 +
+                          (water.z - kept.centre[3])^2) <= kept.radius^2 - 1e-12
+        @test !any(inside_kept)
+
+        inside_omitted = @. ((water.x - omitted.centre[1])^2 +
+                             (water.y - omitted.centre[2])^2 +
+                             (water.z - omitted.centre[3])^2) <= omitted.radius^2
+        @test any(inside_omitted)
     end
 
     @testset "slice_thickness_mm — z-slab mask" begin

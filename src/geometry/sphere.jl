@@ -8,13 +8,22 @@ locally aligned to its centre; points from different spheres are not
 guaranteed to share a global grid, but that is fine for a bag-of-spins
 phantom.
 """
-function voxelise_sphere(centre::NTuple{3,<:Real}, radius::Real, delta_x::Real)
+function voxelise_sphere(centre::NTuple{3,<:Real}, radius::Real, delta_x::Real;
+                         z_range::Union{Nothing,Tuple{<:Real,<:Real}} = nothing)
     cx, cy, cz = Float64.(centre)
     r = Float64(radius)
     h = Float64(delta_x)
     xs = cx - r : h : cx + r
     ys = cy - r : h : cy + r
     zs = cz - r : h : cz + r
+    # Optional z-slab restriction. Filter the full lattice (rather than starting
+    # the range at z_range) so the kept voxels are *exactly* those a full
+    # voxelisation followed by a post-hoc z-mask would keep — and we never
+    # materialise the out-of-slab voxels.
+    if z_range !== nothing
+        zlo, zhi = Float64(z_range[1]), Float64(z_range[2])
+        zs = filter(z -> zlo - 1e-9 <= z <= zhi + 1e-9, collect(zs))
+    end
     X = [x for x in xs, _ in ys, _ in zs]
     Y = [y for _ in xs, y in ys, _ in zs]
     Z = [z for _ in xs, _ in ys, z in zs]

@@ -16,5 +16,7 @@ using KomaMRI
     include("test_e1.jl")
     include("test_e2.jl")
     include("test_e2_imaging.jl")
+    include("test_fit_alpha.jl")
+    include("test_cr_optimal_alpha.jl")
     include("test_snr.jl")
 end

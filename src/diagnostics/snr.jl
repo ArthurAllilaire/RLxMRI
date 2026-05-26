@@ -3,8 +3,8 @@
 # magnitude images; no environment coupling.
 #
 # Three SNR metrics, all reported together so the figure-of-merit number in
-# the FYP report is rooted in a standard MRI method (NEMA MS-1) and not the
-# internal `target_snr` knob (which is `ksp_rms / σ` — non-standard, see plan).
+# the FYP report is rooted in a standard MRI method (NEMA MS-1) rather than an
+# internal k-space RMS ratio.
 #
 # Conventions
 # -----------
@@ -28,10 +28,9 @@
 # * Alternative method for comparison (not implemented):
 #   Calculate mean of background ROI / 1.25 and use that as image noise (as std is noisy thanks to squared term x artifacts)
 #   Ratio should be close to 1. or Mean / std = 1.91 (see appendix A of NEMA guide)
-# * Internal k-space SNR (calibration knob):
+# * Internal k-space SNR:
 #     SNR_ksp = sqrt(mean(|ksp|²)) / σ
-#   Non-standard; reported here for cross-check against the `target_snr`
-#   argument to E2Env.
+#   Non-standard; reported here only as a cross-check.
 
 """
     ImageSNRReport
@@ -273,8 +272,8 @@ Build a full `SNRReport`. Caller must already have:
 
 Runs **one** additional `simulate(phantom, seq, scanner)` to produce
 acquisition B, adds independent noise (`add_noise!` with σ), reconstructs via
-`kspace_to_image`, and returns all three SNR metrics. This is the entry point
-both call sites (`E2Env`, `t1_fit_vs_true.jl`) use.
+`kspace_to_image`, and returns all three SNR metrics. Prefer
+[`snr_report_from_clean`](@ref) when a clean k-space is already available.
 """
 function snr_report(phantom, seq, scanner;
                     σ::Real,

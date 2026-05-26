@@ -87,7 +87,7 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
                 "snr_dual_per_sphere":   [float(v) for v in rep.image.snr_dual_per_sphere],
                 "snr_dual_peak":         float(rep.image.snr_dual_peak),
             })
-            print(f"[diagnose] SNR calibration (NEMA MS-1 dual-acq):")
+            print(f"[diagnose] SNR report (NEMA MS-1 dual-acq):")
             print(f"           σ = {snr_holder['sigma_used']:.4g}   "
                   f"snr_ksp = {snr_holder['snr_ksp']:.2f}   "
                   f"snr_nema_peak_a = {snr_holder['snr_nema_peak_a']:.2f}   "
@@ -541,6 +541,57 @@ def plot_ti_vs_subset_t1(episodes, out_path):
     return {"pearson_log_r": r, "n": n}
 
 
+def plot_alpha_vs_tr_vs_t1(episodes, out_path):
+    """α-vs-TR scatter with Ernst-angle curves overlaid (ALPHA_DOF.md, Ernst diagnostic).
+
+    Tests for Ernst-angle emergence under Run A: if the policy is behaving
+    SNR-efficiently, its (TR, α) choices should track the Ernst curve
+    α* = acos(exp(−TR/T1)) for the fleet's T1 range. Points are coloured by the
+    mean running T1 estimate at decision time.
+    """
+    TRs, alphas, t1est = [], [], []
+    for ep in episodes:
+        tr = np.asarray(ep.get("TR", []), dtype=np.float64)
+        al = np.asarray(ep.get("alpha_deg", []), dtype=np.float64)
+        te = np.asarray(ep.get("T1_est_at_decision", []), dtype=np.float64)
+        m = min(len(tr), len(al), len(te))
+        if m == 0:
+            continue
+        TRs.extend(tr[:m]); alphas.extend(al[:m]); t1est.extend(te[:m])
+    TRs = np.asarray(TRs); alphas = np.asarray(alphas); t1est = np.asarray(t1est)
+    ok = np.isfinite(TRs) & np.isfinite(alphas)
+    if not ok.any():
+        return {"n": 0}
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    c = np.where(np.isfinite(t1est) & (t1est > 0), t1est, np.nan)
+    sc = ax.scatter(TRs[ok], alphas[ok],
+                    c=np.log10(c[ok]) if np.isfinite(c[ok]).any() else None,
+                    cmap="viridis", alpha=0.55, s=22)
+    if np.isfinite(c[ok]).any():
+        cb = fig.colorbar(sc, ax=ax)
+        cb.set_label("log10(mean running T1_est at decision) [s]")
+
+    tr_grid = np.linspace(0.5, 5.0, 200)
+    for T1, style in ((0.046, ":"), (0.367, "--"), (1.398, "-")):
+        ernst = np.degrees(np.arccos(np.clip(np.exp(-tr_grid / T1), 0.0, 1.0)))
+        ax.plot(tr_grid, ernst, style, color="crimson", linewidth=1.5,
+                label=f"Ernst (T1={T1:.3f}s)")
+
+    ax.set_xlabel("TR [s]")
+    ax.set_ylabel("excitation flip angle α [deg]")
+    ax.set_title("Learned (TR, α) vs Ernst-angle curves")
+    ax.set_ylim(0, 95)
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=130)
+    plt.close(fig)
+    return {"n": int(ok.sum()),
+            "alpha_deg_mean": float(np.nanmean(alphas[ok])),
+            "alpha_deg_std": float(np.nanstd(alphas[ok]))}
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--policy",   type=Path, required=True)
@@ -554,19 +605,22 @@ def main():
     p.add_argument("--simplified-action", action="store_true",
                    help="Required if the policy was trained with "
                         "--simplified-action (3-dim action space)")
+    p.add_argument("--fix-te", action="store_true",
+                   help="Required if the policy was trained with --fix-te.")
+    p.add_argument("--learn-alpha", action="store_true",
+                   help="Required if the policy was trained with --learn-alpha.")
     p.add_argument("--log-ti-action", action="store_true",
                    help="Required if the policy was trained with "
                         "--log-ti-action.")
+    p.add_argument("--include-image", action="store_true",
+                   help="Required if the policy was trained with --include-image.")
+    p.add_argument("--include-sigma", action="store_true",
+                   help="Required if the policy was trained with --include-sigma.")
     p.add_argument("--max-blocks", type=int, default=15)
     p.add_argument("--time-budget", type=float, default=120.0)
     p.add_argument("--subset-size", type=int, default=None,
                    help="Diagnose policy on random k-sphere subsets.")
     p.add_argument("--phase-sensitive", action="store_true")
-    p.add_argument("--target-snr", type=float, default=None,
-                   help="Calibrate env noise σ from this NEMA-knob SNR via "
-                        "ksp_rms / target_snr at construction. The actual "
-                        "report figure is the NEMA MS-1 dual-acq SNR printed "
-                        "and saved under summary['snr_calibration'].")
     p.add_argument("--sigma-method", type=str, default="bootstrap",
                    choices=["asymptotic", "profile_likelihood", "bootstrap"])
     p.add_argument("--from-json", type=Path, default=None, metavar="EPISODES_JSON",
@@ -592,12 +646,13 @@ def main():
         phase_sensitive=args.phase_sensitive,
         sigma_method=args.sigma_method,
         simplified_action=args.simplified_action,
+        fix_te=args.fix_te,
+        learn_alpha=args.learn_alpha,
         log_ti_action=args.log_ti_action,
+        include_image=args.include_image,
+        include_sigma=args.include_sigma,
     )
-    if args.target_snr is not None:
-        env_kwargs["target_snr"] = args.target_snr
-
-    snr_calibration = {}
+    snr_measurement = {}
     if args.from_json is not None:
         print(f"[diagnose] Loading episodes from {args.from_json} (skipping Julia) …")
         eps = load_episodes(args.from_json)
@@ -608,14 +663,14 @@ def main():
             args.policy, args.vecnorm, args.seed,
             target_per_bucket=args.target_per_bucket,
             mixed_target=args.mixed_target,
-            snr_holder=snr_calibration,
+            snr_holder=snr_measurement,
             **env_kwargs,
         )
         save_episodes(eps, out_dir / "episodes.json")
     else:
         print(f"[diagnose] Collecting {args.episodes} rollouts from {args.policy} …")
         eps = collect(args.policy, args.vecnorm, args.episodes, args.seed,
-                      snr_holder=snr_calibration, **env_kwargs)
+                      snr_holder=snr_measurement, **env_kwargs)
         save_episodes(eps, out_dir / "episodes.json")
 
     print("[diagnose] Plotting …")
@@ -623,12 +678,15 @@ def main():
     plot_ti_histogram    (eps, out_dir / "ti_histogram.png")
     plot_t1est_trajectory(eps, out_dir / "t1est_trajectory.png")
     plot_snr_vs_block    (eps, out_dir / "snr_vs_block.png",
-                          dual_acq_snr=snr_calibration.get("snr_dual_peak"))
+                          dual_acq_snr=snr_measurement.get("snr_dual_peak"))
     ti_vs_t1est_summary = plot_ti_vs_t1est(eps, out_dir / "ti_vs_t1est.png")
+    alpha_ernst_summary = plot_alpha_vs_tr_vs_t1(
+        eps, out_dir / "alpha_vs_tr_vs_t1.png")
     summary = write_summary(eps, out_dir / "diagnose_summary.json")
     summary["ti_vs_t1est_correlations"] = ti_vs_t1est_summary
-    if snr_calibration:
-        summary["snr_calibration"] = snr_calibration
+    summary["alpha_ernst_diagnostic"] = alpha_ernst_summary
+    if snr_measurement:
+        summary["snr_report"] = snr_measurement
     bucket_summary = None
     subset_t1_corr = None
     if args.subset_size:

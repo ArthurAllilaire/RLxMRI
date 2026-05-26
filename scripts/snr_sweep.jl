@@ -8,12 +8,12 @@
 # scripts/snr_sweep.py for the report-ready figures.
 #
 # ═════════════════════════════════════════════════════════════════════════════
-# WHY σ IS THE INPUT (and not `target_snr` as before)
+# WHY σ IS THE INPUT
 # ═════════════════════════════════════════════════════════════════════════════
 #
 # The previous version calibrated σ from the FIRST block's k-space RMS divided
-# by a user-facing `target_snr`. That coupled σ to whichever TI/TR happened to
-# sit in slot 1: a short-TI block-1 has low signal → small σ → the remaining
+# by a user-facing SNR target. That coupled σ to whichever TI/TR happened to
+# sit in slot 1: a short-TI block-1 has low signal -> small σ -> the remaining
 # blocks look artificially high-SNR. Comparisons across schedules were not
 # apples-to-apples.
 #
@@ -50,6 +50,7 @@
 # julia --project=. scripts/snr_sweep.jl                       # default sweep
 # julia --project=. scripts/snr_sweep.jl --sigmas 1e-4,1e-3,1e-2,1e-1
 # julia --project=. scripts/snr_sweep.jl --budget 160 --npe 32 --nfe 64
+# julia --project=. scripts/snr_sweep.jl --field T3            # 3 T fleet + scanner
 # julia --project=. scripts/snr_sweep.jl --clean-recon         # Hamming+ROI
 #
 # Output: runs/snr_sweep/snr_sweep.csv           (one row per σ)
@@ -85,6 +86,7 @@ struct SweepConfig
     water::Bool
     slice_mm::Float64
     slice_center_mm::Float64
+    field::Symbol
 end
 
 function parse_args()
@@ -105,6 +107,7 @@ function parse_args()
     water       = false
     slice_mm        = 0.0    # --slice-mm: slab thickness; 0 → auto (voxel_mm)
     slice_center_mm = NaN    # --slice-center-mm: slab centre; NaN → auto (PLATE_Z_MM.T1)
+    field           = :T15   # --field: :T15 (1.5 T) or :T3 (3 T); sets T1/T2 fleet + scanner B0
     sigmas_user = false
     i = 1
     while i <= length(ARGS)
@@ -131,16 +134,20 @@ function parse_args()
             slice_mm = parse(Float64, ARGS[i+1]); i += 2
         elseif ARGS[i] == "--slice-center-mm" && i < length(ARGS)
             slice_center_mm = parse(Float64, ARGS[i+1]); i += 2
+        elseif ARGS[i] == "--field" && i < length(ARGS)
+            field = Symbol(ARGS[i+1]); i += 2
         else
             i += 1
         end
     end
+    field ∈ (:T15, :T3) || error("--field must be T15 or T3, got $field")
     # Default outdir is voxel-size-suffixed so 1 mm and 3 mm sweeps don't
     # overwrite each other (the SNR characteristics differ drastically).
     if outdir === nothing
         vox_tag   = replace(@sprintf("%gmm", voxel_mm), "." => "p")
         water_tag = water ? "_water" : ""
-        outdir    = joinpath(@__DIR__, "runs", "snr_sweep_voxel_$(vox_tag)$(water_tag)")
+        field_tag = field === :T15 ? "" : "_$(field)"
+        outdir    = joinpath(@__DIR__, "runs", "snr_sweep_voxel_$(vox_tag)$(water_tag)$(field_tag)")
     end
     # Default σ list (when --sigmas not given): scale the 3 mm baseline by
     # (3/voxel_mm)³ — per-voxel signal grows cubically with spin count, so
@@ -151,7 +158,7 @@ function parse_args()
         sigmas = [round(σ * scale; sigdigits = 3) for σ in baseline_3mm]
     end
     SweepConfig(sigmas, budget_s, Npe, Nfe, clean_recon, outdir, n_seeds, voxel_mm, water,
-                slice_mm, slice_center_mm)
+                slice_mm, slice_center_mm, field)
 end
 
 # Filesystem-friendly σ label used in filenames + JSON keys.
@@ -285,6 +292,7 @@ function main()
     println("  sigmas        = $(cfg.sigmas)")
     println("  budget        = $(cfg.budget_s) s")
     println("  Nfe × Npe     = $(cfg.Nfe) × $(cfg.Npe)")
+    println("  field         = $(cfg.field)")
     println("  clean_recon   = $(cfg.clean_recon)")
     println("  n_seeds       = $(cfg.n_seeds)")
     println("  voxel_mm      = $(cfg.voxel_mm)")
@@ -299,7 +307,7 @@ function main()
     # we don't post-filter phantom.z ourselves.
     slice_center = isnan(cfg.slice_center_mm) ? QalibreMDPhantom.PLATE_Z_MM.T1 : cfg.slice_center_mm
     slice_thick  = cfg.slice_mm > 0 ? cfg.slice_mm : cfg.voxel_mm
-    pcfg     = PhantomConfig(field = :T15, voxel_size_mm = cfg.voxel_mm,
+    pcfg     = PhantomConfig(field = cfg.field, voxel_size_mm = cfg.voxel_mm,
                               include_plates     = cfg.water ? [:T1, :water] : [:T1],
                               slice_thickness_mm = slice_thick,
                               slice_center_mm    = slice_center)
@@ -549,6 +557,7 @@ function main()
             "Nfe"           => cfg.Nfe,
             "Npe"           => cfg.Npe,
             "FOV_m"         => FOV,
+            "field"         => String(cfg.field),
             "voxel_mm"      => cfg.voxel_mm,
             "clean_recon"   => cfg.clean_recon,
             "water"         => cfg.water,

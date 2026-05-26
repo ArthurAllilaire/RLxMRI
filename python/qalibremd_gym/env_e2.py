@@ -8,12 +8,14 @@ Action space : Box(5), continuous, normalised to [-1, 1] by the env wrapper.
                  alpha   [5, 180]      deg  (excitation flip angle)
                  slice_z [-60, 60]     mm   (future use)
 
-Observation  : float32 Box of length Nfe*Npe + 2*n_spheres + 3
-                 = flattened magnitude image (normalised to [0,1])
+Observation  : float32 Box. The T1-estimate channel and budget are always
+               present; the image and σ channels are optional (default off,
+               E2_RERUN_PLAN §6.2–6.3). Default obs = n_spheres + 3:
                  + log10(running T1 estimate) per sphere (0 = no estimate)
-                 + log10(σ_T1 / T1_est) per sphere, clamped [-3, 0]
-                   (0 = fully uncertain / no estimate yet)
                  + (time_fraction, block_fraction, 1.0)
+               include_image prepends the flattened magnitude image (Nfe*Npe,
+               normalised to [0,1]); include_sigma appends log10(σ_T1 / T1_est)
+               per sphere, clamped [-3, 0] (0 = fully uncertain / no estimate).
 
 Reward       : −aggMAPE across 14 spheres per step (0 for first block),
                where aggMAPE = α·mean + (1−α)·max (α=mape_alpha; 1.0 = legacy mean).
@@ -85,22 +87,17 @@ class QalibreMDE2Env(gym.Env):
         self,
         *,
         rng_seed: int = 0,
-        cfg_field: str = "T3",
-        voxel_size_mm: float = 3.0,
-        Nfe: int = 16,
-        Npe: int = 8,
+        cfg_field: str = "T15",
+        voxel_size_mm: float = 1.0,
+        Nfe: int = 64,
+        Npe: int = 32,
         FOV: float = 0.2,
+        use_gpu: bool = False,
         max_blocks: int = 15,
         time_budget_s: float = 120.0,
         terminal_bonus: float = 0.5,
         success_tol: float = 0.05,
-        noise_sigma_abs: float = 0.005,
-        # If set, override noise_sigma_abs by calibrating once at env
-        # construction: simulate one reference IR-SE block (TI=0.5 s, TR=3.0 s,
-        # α=90°) on a nominal (no-jitter, no-pose) phantom, then set
-        # σ = ksp_rms / target_snr. σ is then fixed for the env's lifetime
-        # (scene-independent, matches the physical hardware-noise model).
-        target_snr: Optional[float] = None,
+        noise_sigma_abs: float = 50.0,   # σ* for NEMA dual-acq SNR ≈ 25 (E2_RERUN_PLAN §3.1)
         T1_sigma_rel: float = 0.05,
         translation_sigma_mm: float = 5.0,
         rotation_sigma_rad: float = 0.15,
@@ -108,6 +105,12 @@ class QalibreMDE2Env(gym.Env):
         # α in α·mean + (1−α)·max; 1.0 = mean only
         mape_alpha: float = 1.0,
         simplified_action: bool = False,     # drop slice_z, fix α_exc=90°
+        # Fix TE at 20 ms and expose only [TI, TR] (2-dim). With learn_alpha,
+        # exposes [TI, TR, α] (3-dim). Isolates α as the single new DOF for the
+        # Run A0/A ablation (ALPHA_DOF.md, action-space ablation). Takes precedence over
+        # simplified_action when set.
+        fix_te: bool = False,
+        learn_alpha: bool = False,
         # True = signed real() recon (cr_explainer.md §14)
         phase_sensitive: bool = False,
         # "asymptotic" | "profile_likelihood" | "bootstrap"
@@ -121,9 +124,18 @@ class QalibreMDE2Env(gym.Env):
         # §17.10 control: bump fitter T1 grid resolution to test whether
         # baseline MAPE is grid-coarseness-limited.
         fitter_n_grid: int = 200,
+        # Observation channels (E2_RERUN_PLAN §6.2–6.3). Both default off, so
+        # obs = [log10(T1_est) per sphere, budget(3)]. Enable include_image to
+        # prepend the flattened normalised recon image (Nfe*Npe dims);
+        # include_sigma to append the per-sphere fitter-σ channel (n_spheres).
+        include_image: bool = False,
+        include_sigma: bool = False,
+        include_water: bool = True,
         project_dir: Optional[str] = None,
     ) -> None:
         super().__init__()
+        if bool(learn_alpha) and not bool(fix_te):
+            raise ValueError("learn_alpha requires fix_te=True (Run A action mode)")
         _ensure_julia(project_dir)
 
         jl = _env_mod._JL
@@ -136,6 +148,7 @@ class QalibreMDE2Env(gym.Env):
             FOV=float(FOV),
             Nfe=int(Nfe),
             Npe=int(Npe),
+            use_gpu=bool(use_gpu),
             max_blocks=int(max_blocks),
             time_budget_s=float(time_budget_s),
             terminal_bonus=float(terminal_bonus),
@@ -151,11 +164,12 @@ class QalibreMDE2Env(gym.Env):
             oracle_fit=bool(oracle_fit),
             oracle_band=float(oracle_band),
             fitter_n_grid=int(fitter_n_grid),
+            include_image=bool(include_image),
+            include_sigma=bool(include_sigma),
+            include_water=bool(include_water),
         )
         if subset_size is not None:
             env_kwargs["subset_size"] = int(subset_size)
-        if target_snr is not None:
-            env_kwargs["target_snr"] = float(target_snr)
         self._env = qmd.E2Env(**env_kwargs)
 
         obs_dim = int(qmd.e2_obs_dim(self._env))
@@ -165,8 +179,16 @@ class QalibreMDE2Env(gym.Env):
         # 90° and slice_z at 0 — both were either coordinated-but-wasted (α
         # interacted with the fitter) or completely unused (slice_z).
         self._simplified_action = bool(simplified_action)
+        self._fix_te = bool(fix_te)
+        self._learn_alpha = bool(learn_alpha)
         self._log_ti_action = bool(log_ti_action)
-        n_act = 3 if self._simplified_action else 5
+        if self._fix_te:
+            # [TI, TR] (2-dim) or [TI, TR, α] (3-dim) — TE fixed at 20 ms.
+            n_act = 3 if self._learn_alpha else 2
+        elif self._simplified_action:
+            n_act = 3
+        else:
+            n_act = 5
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(n_act,), dtype=np.float32
         )
@@ -187,10 +209,29 @@ class QalibreMDE2Env(gym.Env):
             return float(lo) * (float(hi) / float(lo)) ** float(u01)
         return float(lo) + float(u01) * (float(hi) - float(lo))
 
+    # Fixed-TE action modes (ALPHA_DOF.md, action-space ablation): TE pinned, α window narrowed
+    # to [5°, 90°] so the Ernst regime sits mid-range.
+    _FIXED_TE_S = 0.020
+    _ALPHA_LO_DEG = 5.0
+    _ALPHA_HI_DEG = 90.0
+
     def _denorm_action(self, action: np.ndarray) -> np.ndarray:
         """Map agent output in [-1, 1] to a physical 5-vector for Julia."""
         a = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
         u = (a + 1.0) / 2.0  # [0, 1]
+        if self._fix_te:
+            # [TI, TR] (α=90° fixed) or [TI, TR, α]; TE fixed, slice_z=0.
+            full = np.zeros(5, dtype=np.float32)
+            full[0] = self._map_ti(u[0], self._ACT_LO[0], self._ACT_HI[0])
+            full[1] = self._FIXED_TE_S
+            full[2] = self._ACT_LO[2] + u[1] * (self._ACT_HI[2] - self._ACT_LO[2])
+            if self._learn_alpha:
+                full[3] = self._ALPHA_LO_DEG + u[2] * (
+                    self._ALPHA_HI_DEG - self._ALPHA_LO_DEG)
+            else:
+                full[3] = 90.0
+            full[4] = 0.0
+            return full
         if self._simplified_action:
             full = np.zeros(5, dtype=np.float32)
             full[0] = self._map_ti(u[0], self._ACT_LO[0], self._ACT_HI[0])

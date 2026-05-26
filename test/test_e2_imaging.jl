@@ -55,7 +55,6 @@ function _single_sphere_env(; centre::NTuple{3,Float64} = (0.0, 0.0, 0.0),
     # Override env state to reflect the custom phantom.
     env.phantom  = phantom
     env.T1_true  = [T1]
-    env.T1_base  = [T1]
 
     # Expected pixel under centred indexing (DC at array centre):
     mc_pe = Npe ÷ 2 + 1
@@ -323,6 +322,26 @@ end
         # Allow 15 % rtol — the ROI samples the centred pixel which may
         # carry a sub-peak signal due to half-sample offset and finite voxel
         # size. Noiseless single-sphere fit should still recover T1 well.
+        @test isapprox(env.T1_est[1], 1.0; rtol = 0.15)
+    end
+
+    @testset "T9b: end-to-end fit at non-90° α (noiseless)" begin
+        # Same integration path as T9 but at α=40°. Exercises the sin(α)
+        # magnitude correction + cos(α) recurrence through the real e2_step!
+        # pipeline (ALPHA_DOF.md tests). Catches any recon/normalisation
+        # regression that only bites away from 90°.
+        env, _, _ = _single_sphere_env(; centre = (0.0, 0.0, 0.0),
+                                          T1 = 1.0, T2 = 0.5)
+        e2_reset!(env; rng_seed = 0)
+        d = SphereDescriptor((0.0, 0.0, 0.0), CONTRAST_RADIUS_M, 1.0,
+                              1.0, 0.5, 0.5, 0.0, :probe)
+        env.phantom = build_sphere(d, env.voxel_size_mm * 1e-3)
+        env.T1_true = [1.0]
+        env.sphere_px = [(env.Npe ÷ 2 + 1, env.Nfe ÷ 2 + 1)]
+
+        for ti in (0.1, 0.3, 0.7, 1.5, 3.0)
+            _ = e2_step!(env, Float64[ti, 0.02, 5.0, 40.0, 0.0])   # α = 40°
+        end
         @test isapprox(env.T1_est[1], 1.0; rtol = 0.15)
     end
 

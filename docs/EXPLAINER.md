@@ -154,6 +154,9 @@ Base.@kwdef struct PhantomConfig
     augment::AugmentConfig            = AugmentConfig()
     rng_seed::Int                     = 0
     custom_sphere_map::Dict{Symbol,Any} = Dict{Symbol,Any}()
+    keep_sphere_labels::Union{Nothing,Vector{Symbol}} = nothing
+    drop_sphere_labels::Vector{Symbol} = Symbol[]
+    custom_sphere_descriptors::Vector{SphereDescriptor} = SphereDescriptor[]
 end
 ```
 
@@ -259,10 +262,10 @@ It's immutable and serialisable — small enough that drop-out and
 override are cheap. The pipeline:
 
 1. Material tables + plate layouts → list of `SphereDescriptor`s.
-2. Apply augmentations (`drop_sphere_p`, `custom_sphere_map`).
+2. Apply generated-sphere overrides, keep/drop label filters, and random dropout.
 3. Voxelise each descriptor → `Phantom` per sphere.
 4. Concatenate via `+` (KomaMRI `Phantom` supports `+`).
-5. Add background water with all sphere volumes cut out.
+5. Add background water with final built sphere volumes cut out.
 6. Rotate/translate.
 7. Per-spin Gaussian jitter.
 

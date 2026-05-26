@@ -33,6 +33,7 @@ include("geometry/plate_layouts.jl")
 include("geometry/projection.jl")
 
 # --- configs, builder, augmentations --------------------------------------
+include("sphere_descriptor.jl")
 include("config.jl")
 include("augment.jl")
 include("builder.jl")
@@ -42,6 +43,7 @@ include("sequences/blocks.jl")
 include("fitting/fits.jl")
 include("baselines/e0.jl")
 include("baselines/cr_optimal.jl")
+include("baselines/cr_optimal_alpha.jl")
 
 # --- imaging pipeline (k-space ↔ image, noise) ----------------------------
 include("imaging.jl")
@@ -58,7 +60,11 @@ include("diagnostics/snr.jl")
 
 export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        build_phantom, build_plate, build_sphere, build_background_water,
+       build_phantom_from_descriptors,
        sphere_descriptors, all_sphere_descriptors,
+       with_sphere_relaxation,
+       transform_descriptor, transform_descriptors,
+       sphere_descriptor_pixel, sphere_descriptor_pixels,
        voxelise_sphere, sphere_volume,
        contrast_plate_centres, fiducial_grid_centres,
        rotation_matrix, apply_transform!, apply_per_spin_noise!,
@@ -83,6 +89,10 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        # CR-optimal baseline
        cr_T1_variance, cr_fleet_objective, cr_optimize, cr_optimize_sweep,
        block_time_s, schedule_time_s,
+       # α-aware CR-optimal + Ernst-angle baseline
+       ernst_angle, ernst_fixed_schedule,
+       cr_T1_variance_alpha, cr_fleet_objective_alpha,
+       cr_optimize_alpha, cr_optimize_sweep_alpha,
        # generalized IR
        generalized_ir_signal, fit_t1_generalized_ir, steady_state_mz_at_excite,
        transient_mz_at_excite_npe,

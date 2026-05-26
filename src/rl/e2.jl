@@ -80,6 +80,10 @@ mutable struct E2Env
     FOV::Float64                           # image field of view [m]
     Nfe::Int                               # frequency-encode samples
     Npe::Int                               # phase-encode steps
+    use_gpu::Bool                          # run KomaMRI Bloch sim on GPU. Passed as
+                                            # sim_params["gpu"]; KomaMRI falls back to
+                                            # CPU when no GPU backend is loaded, so
+                                            # false (default) == prior CPU behaviour.
     n_spheres::Int                         # active spheres per episode
     subset_size::Union{Nothing,Int}        # nothing = all spheres; k = random k-subset
     max_blocks::Int
@@ -87,9 +91,6 @@ mutable struct E2Env
     terminal_bonus::Float64
     success_tol::Float64                   # MAPE threshold for terminal bonus
     noise_sigma_abs::Float64               # absolute complex-Gaussian σ on k-space
-    target_snr::Float64                    # if > 0, σ was derived at construction from
-                                            # a reference acquisition on a nominal phantom
-                                            # (ksp_rms / target_snr). 0 = σ used as-is.
     T1_sigma_rel::Float64                  # per-sphere T1 jitter (relative)
     translation_sigma_mm::Float64          # pose translation σ per axis [mm]
     rotation_sigma_rad::Float64            # pose rotation σ per axis [rad]
@@ -118,17 +119,27 @@ mutable struct E2Env
                                             # Default 200. Higher values test whether
                                             # baseline MAPE is grid-resolution-limited
                                             # (§17.10 control).
+    include_image::Bool                    # include flattened recon image in the obs.
+                                            # Default false (E2_RERUN_PLAN §6.2): the
+                                            # in-env fit already distils the image into
+                                            # T1_est, so the raw pixels are largely
+                                            # redundant and inflate the obs to ~2048 dims.
+    include_sigma::Bool                    # include the per-sphere fitter-σ channel in
+                                            # the obs. Default false (E2_RERUN_PLAN §6.3):
+                                            # the σ-uncertainty machinery was a red herring
+                                            # of the pre-fix sim.
+    include_water::Bool                    # include background-water spins in the phantom
+                                            # slab. Default true. Set false to benchmark
+                                            # sim cost without the water background, or for
+                                            # a spheres-only phantom (the T1 sphere spins
+                                            # remain via custom_sphere_descriptors).
 
     # ── sphere pool info (fixed at construction) ──────────────────────────
-    sphere_centres_pool::Vector{NTuple{3,Float64}}  # all original centres [m]
-    T1_base_pool::Vector{Float64}          # nominal pool T1 at cfg_field [s]
-    T2_ratio_pool::Vector{Float64}         # T2/T1 ratio per pool sphere
+    base_descs_pool::Vector{SphereDescriptor}       # full nominal T1 descriptor pool
 
-    # ── active sphere info (changes at reset when subset_size is set) ─────
+    # ── active sphere info (filled at reset) ───────────────────────────────
     sphere_indices::Vector{Int}            # 1-based indices into the 14-sphere pool
-    sphere_centres_base::Vector{NTuple{3,Float64}}
-    T1_base::Vector{Float64}
-    T2_ratio::Vector{Float64}
+    active_base_descs::Vector{SphereDescriptor}
 
     # ── episode state ────────────────────────────────────────────────────────
     rng::MersenneTwister
@@ -167,23 +178,17 @@ end
 Construct a fresh E2 environment. Defaults match E2_PLAN.md training config.
 """
 function E2Env(;
-    cfg_field::Symbol             = :T3,
-    voxel_size_mm::Real           = 3.0,
+    cfg_field::Symbol             = :T15,
+    voxel_size_mm::Real           = 1.0,
     FOV::Real                     = 0.2,
-    Nfe::Int                      = 16,
-    Npe::Int                      = 8,
+    Nfe::Int                      = 64,
+    Npe::Int                      = 32,
+    use_gpu::Bool                  = false,
     max_blocks::Int                = 15,
     time_budget_s::Real            = 120.0,
     terminal_bonus::Real           = 0.5,
     success_tol::Real              = 0.05,
-    noise_sigma_abs::Real          = 0.005,
-    target_snr::Union{Nothing,Real} = nothing,  # if given, override noise_sigma_abs by
-                                                 # calibrating once at construction off a
-                                                 # reference IR-SE block on a nominal phantom
-                                                 # (σ = ksp_rms / target_snr). Scene-relative
-                                                 # knob; the resulting σ is fixed across
-                                                 # episodes — preserves physical model
-                                                 # (hardware-determined σ, see header §Noise).
+    noise_sigma_abs::Real          = 50.0,    # σ* for NEMA dual-acq SNR ≈ 25 (E2_RERUN_PLAN §3.1)
     T1_sigma_rel::Real             = 0.05,
     translation_sigma_mm::Real     = 5.0,
     rotation_sigma_rad::Real       = 0.15,   # ~8.6°
@@ -197,6 +202,9 @@ function E2Env(;
     oracle_fit::Bool               = false,            # D2 diagnostic only
     oracle_band::Real              = 2.0,
     fitter_n_grid::Integer         = 200,
+    include_image::Bool            = false,            # E2_RERUN_PLAN §6.2
+    include_sigma::Bool            = false,            # E2_RERUN_PLAN §6.3
+    include_water::Bool            = true,             # background-water spins on/off
 )
     cfg_field ∈ (:T3, :T15) || error("cfg_field must be :T3 or :T15")
     reward_mode ∈ (:neg_mape, :delta_mape) ||
@@ -207,31 +215,21 @@ function E2Env(;
         error("mape_alpha must be in [0, 1]")
 
     # Base sphere info (no rotation/translation/jitter)
-    base_cfg   = PhantomConfig(field = cfg_field, voxel_size_mm = 1.0,
-                                include_plates = [:T1])
-    base_descs = sphere_descriptors(:T1, base_cfg;
-                                    rng = MersenneTwister(0))
+    base_cfg = PhantomConfig(field = cfg_field, include_plates = [:T1])
+    base_descs = sphere_descriptors(:T1, base_cfg)
     n_pool      = length(base_descs)
     subset_size !== nothing &&
         (1 <= Int(subset_size) <= n_pool ||
          error("subset_size must be between 1 and $n_pool, or nothing"))
     n_spheres  = subset_size === nothing ? n_pool : Int(subset_size)
-    pool_centres = [d.centre for d in base_descs]
-    pool_T1      = [d.T1 for d in base_descs]
-    pool_ratio   = Float64.(T2_OF_T1_ARRAY[cfg_field] ./ T1_ARRAY[cfg_field])
-    active_idx   = collect(1:n_spheres)
-    centres      = pool_centres[active_idx]
-    T1_base      = pool_T1[active_idx]
-    T2_ratio     = pool_ratio[active_idx]
-
-    snr_for_struct = target_snr === nothing ? 0.0 : Float64(target_snr)
 
     env = E2Env(
         cfg_field, Float64(voxel_size_mm),
-        Float64(FOV), Nfe, Npe, n_spheres, subset_size === nothing ? nothing : n_spheres,
+        Float64(FOV), Nfe, Npe, Bool(use_gpu),
+        n_spheres, subset_size === nothing ? nothing : n_spheres,
         Int(max_blocks), Float64(time_budget_s),
         Float64(terminal_bonus), Float64(success_tol),
-        Float64(noise_sigma_abs), snr_for_struct, Float64(T1_sigma_rel),
+        Float64(noise_sigma_abs), Float64(T1_sigma_rel),
         Float64(translation_sigma_mm), Float64(rotation_sigma_rad),
         Float64.(T1_sample_range),
         reward_mode,
@@ -241,8 +239,11 @@ function E2Env(;
         Bool(oracle_fit),
         Float64(oracle_band),
         Int(fitter_n_grid),
-        pool_centres, Float64.(pool_T1), pool_ratio,
-        active_idx, centres, Float64.(T1_base), T2_ratio,
+        Bool(include_image),
+        Bool(include_sigma),
+        Bool(include_water),
+        base_descs,
+        Int[], SphereDescriptor[],
         MersenneTwister(rng_seed),
         nothing,                            # phantom (filled at reset)
         zeros(n_spheres), fill((1, 1), n_spheres),
@@ -258,89 +259,20 @@ function E2Env(;
         nothing,                            # background_mask (filled at reset)
     )
 
-    # If target_snr was requested, calibrate noise_sigma_abs ONCE here off a
-    # reference acquisition on a nominal phantom (no jitter, no pose). This
-    # gives an interpretable SNR knob for sweeps while keeping σ fixed and
-    # scene-independent during training — matches the physical noise model
-    # documented in §Noise. Reference block: TI=0.5 s, TR=3.0 s, α=90°,
-    # TE=0.020 s — produces signal across most spheres.
-    if target_snr !== nothing && Float64(target_snr) > 0.0
-        _e2_calibrate_snr!(env, Float64(target_snr))
-    end
-
     env
 end
 
+
 """
-    _e2_calibrate_snr!(env, target_snr) → env
-
-Calibrate `env.noise_sigma_abs` so a reference IR-SE acquisition on a nominal
-phantom (no jitter, no pose) has k-space RMS / σ = `target_snr`. Run once at
-construction; the resulting σ stays fixed for all episodes (hardware-determined
-noise model). Reference block parameters are deterministic so the same
-(target_snr, phantom_config) always produces the same σ.
+Observation dimension. The T1-estimate channel (n_spheres) and budget (3) are
+always present; the flattened image (Nfe*Npe) and the per-sphere σ-channel
+(n_spheres) are gated by `include_image` / `include_sigma` (both default false,
+E2_RERUN_PLAN §6.2–6.3). Default obs = n_spheres + 3.
 """
-function _e2_calibrate_snr!(env::E2Env, target_snr::Real)
-    # Build nominal phantom: same plate config as training, no jitter or pose.
-    base_cfg = PhantomConfig(field = env.cfg_field,
-                              voxel_size_mm = env.voxel_size_mm,
-                              include_plates = [:T1])
-    nominal_phantom = build_phantom(base_cfg)
-
-    # Reference acquisition (matches docstring above).
-    TI_ref, TE_ref, TR_ref = 0.5, 0.020, 3.0
-    α_ref = deg2rad(90.0)
-    seq = Suppressor.@suppress ir_se_2d_sequence(
-        TI_ref, TE_ref, TR_ref;
-        α_exc = α_ref,
-        FOV   = env.FOV,
-        Nfe   = env.Nfe,
-        Npe   = env.Npe,
-    )
-    scanner = scanner_for_field(env.cfg_field)
-    raw_a = Suppressor.@suppress simulate(nominal_phantom, seq, scanner)
-    ksp_a = raw_to_kspace(raw_a, env.Npe, env.Nfe)
-
-    ksp_rms = sqrt(sum(abs2, ksp_a) / length(ksp_a))
-    σ = ksp_rms / Float64(target_snr)
-    env.noise_sigma_abs = σ
-
-    # Build per-sphere pixel locations on the nominal phantom (no pose
-    # transform), and a background mask, so we can compute NEMA and dual-acq
-    # SNR right here at construction.
-    sphere_px = NTuple{2,Int}[]
-    for c in env.sphere_centres_base
-        cx, cy = c[1], c[2]
-        ife = phys_to_pixel(cx, env.Nfe, env.FOV)
-        ipe = phys_to_pixel(cy, env.Npe, env.FOV)
-        push!(sphere_px, (ipe, ife))
-    end
-    bg = background_mask(nominal_phantom, env.Npe, env.Nfe, env.FOV; erosion_px = 1)
-
-    # Inject noise on a *copy* of ksp_a so the calibration figure for
-    # `ksp_rms` stays on the noiseless k-space (clean reference); the
-    # reconstructed image we use for NEMA/dual must include noise.
-    ksp_a_noisy = copy(ksp_a)
-    rng_cal = MersenneTwister(0)
-    add_noise!(ksp_a_noisy, σ; rng = rng_cal)
-    img_a = kspace_to_image(ksp_a_noisy; phase_sensitive = env.phase_sensitive)
-
-    rep = snr_report(nominal_phantom, seq, scanner;
-                     σ = σ,
-                     sphere_px = sphere_px,
-                     bg_mask = bg,
-                     ksp_a = ksp_a_noisy,
-                     img_a = img_a,
-                     rng = rng_cal,
-                     phase_sensitive = env.phase_sensitive,
-                     roi_radius = 0)
-
-    @info "E2Env SNR calibration" target_snr σ ksp_rms snr_ksp=rep.snr_ksp snr_nema_peak_a=rep.image.snr_nema_peak_a snr_nema_peak_b=rep.image.snr_nema_peak_b snr_dual_peak=rep.image.snr_dual_peak
-    env
-end
-
-"Observation dimension: image (Nfe*Npe) + T1 estimates (n_spheres) + T1 σ-channel (n_spheres) + budget (3)."
-e2_obs_dim(env::E2Env) = env.Nfe * env.Npe + 2 * env.n_spheres + 3
+e2_obs_dim(env::E2Env) =
+    (env.include_image ? env.Nfe * env.Npe : 0) +
+    env.n_spheres +
+    (env.include_sigma ? env.n_spheres : 0) + 3
 
 "Action space bounds: [TI_lo, TE_lo, TR_lo, α_deg_lo, slice_z_mm_lo], same for hi."
 e2_action_lo(::E2Env) = Float64[0.010, 0.005, 0.5,   5.0,  -60.0]
@@ -354,94 +286,98 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
     if forced_indices !== nothing
         env.sphere_indices = sort(Int.(forced_indices))
     elseif env.subset_size === nothing
-        env.sphere_indices = collect(eachindex(env.T1_base_pool))
+        env.sphere_indices = collect(eachindex(env.base_descs_pool))
     else
-        env.sphere_indices = sort(randperm(rng_ep, length(env.T1_base_pool))[1:env.subset_size])
+        env.sphere_indices = sort(randperm(rng_ep, length(env.base_descs_pool))[1:env.subset_size])
     end
-    env.sphere_centres_base = env.sphere_centres_pool[env.sphere_indices]
-    env.T1_base             = env.T1_base_pool[env.sphere_indices]
-    env.T2_ratio            = env.T2_ratio_pool[env.sphere_indices]
+    env.active_base_descs = env.base_descs_pool[env.sphere_indices]
 
     # Per-sphere T1 jitter (log-normal, centred on nominal values)
-    T1_ep = [env.T1_base[i] * exp(env.T1_sigma_rel * randn(rng_ep))
-             for i in 1:env.n_spheres]
+    T1_ep = [d.T1 * exp(env.T1_sigma_rel * randn(rng_ep))
+             for d in env.active_base_descs]
 
     # Per-sphere T2 (preserve T2/T1 ratio)
-    T2_ep = T1_ep .* env.T2_ratio
+    T2_ep = [T1_ep[i] * env.active_base_descs[i].T2 / env.active_base_descs[i].T1
+             for i in eachindex(T1_ep)]
 
-    # Build a custom active-sphere list: subset_size episodes contain only the
-    # selected T1 spheres, while the default path keeps the full 14-sphere plate.
-    base_cfg  = PhantomConfig(field = env.cfg_field, voxel_size_mm = 1.0,
-                               include_plates = [:T1])
-    base_descs = sphere_descriptors(:T1, base_cfg; rng = MersenneTwister(0))
     active_descs = SphereDescriptor[]
-    for (i, pool_i) in enumerate(env.sphere_indices)
-        d = base_descs[pool_i]
-        push!(active_descs, SphereDescriptor(
-            d.centre, d.radius, d.ρ,
-            T1_ep[i], T2_ep[i], T2_ep[i], d.delta_w, d.label,
-        ))
+    for (i, d) in enumerate(env.active_base_descs)
+        push!(active_descs, with_sphere_relaxation(d, T1_ep[i], T2_ep[i]))
     end
 
-    # Episode rotation and translation (domain randomisation)
-    rx = env.rotation_sigma_rad * randn(rng_ep)
-    ry = env.rotation_sigma_rad * randn(rng_ep)
+    # Episode pose (domain randomisation). IN-PLANE ONLY: we acquire a single
+    # thin axial slab, so out-of-plane tilt (rx, ry) and z-translation (tz) would
+    # move spheres out of the constructed slab. In-plane rotation rz + translation
+    # tx, ty still relocate every sphere on the image each episode — enough to stop
+    # the agent memorising fixed pixel locations.
     rz = env.rotation_sigma_rad * randn(rng_ep)
     tx = env.translation_sigma_mm * randn(rng_ep)
     ty = env.translation_sigma_mm * randn(rng_ep)
-    tz = env.translation_sigma_mm * randn(rng_ep)
+    rx = ry = 0.0
+    tz = 0.0
 
-    delta_x = env.voxel_size_mm * 1e-3
-    parts = Phantom[]
-    for d in active_descs
-        p = build_sphere(d, delta_x)
-        length(p.x) > 0 && push!(parts, p)
-    end
-    phantom = isempty(parts) ? _empty_phantom("e2_subset") : reduce(+, parts)
+    episode_rotation = (rx, ry, rz)
+    episode_translation_m = (tx, ty, tz) .* 1e-3
+    phantom_cfg = PhantomConfig(
+        field = env.cfg_field,
+        voxel_size_mm = env.voxel_size_mm,
+        include_plates = env.include_water ? [:water] : Symbol[],
+        rotation = episode_rotation,
+        translation_mm = (tx, ty, tz),
+        augment = AugmentConfig(B0_sigma_Hz = 5.0),
+        rng_seed = rng_seed,
+        custom_sphere_descriptors = active_descs,
+        slice_thickness_mm = env.voxel_size_mm,
+        slice_center_mm = PLATE_Z_MM.T1,
+    )
+    phantom = build_phantom(phantom_cfg)
     phantom.name = "e2_subset"
-    phantom = apply_transform!(phantom, (rx, ry, rz), (tx, ty, tz) .* 1e-3)
-    phantom = apply_per_spin_noise!(phantom, AugmentConfig(B0_sigma_Hz = 5.0), rng_ep)
 
-    # Compute transformed sphere centres for pixel mapping
-    R = rotation_matrix(rx, ry, rz)
-    t_m = [tx, ty, tz] .* 1e-3
-    sphere_px = NTuple{2,Int}[]
-    for c in env.sphere_centres_base
-        c_trans = R * collect(c) .+ t_m
-        cx, cy = c_trans[1], c_trans[2]
-        ife = phys_to_pixel(cx, env.Nfe, env.FOV)
-        ipe = phys_to_pixel(cy, env.Npe, env.FOV)
-        push!(sphere_px, (ipe, ife))
-    end
+    active_descs_scanner = transform_descriptors(active_descs,
+                                                 episode_rotation,
+                                                 episode_translation_m)
+    sphere_px = sphere_descriptor_pixels(active_descs_scanner,
+                                         env.Npe, env.Nfe, env.FOV)
 
     phantom, T1_ep, sphere_px,
-    (rx, ry, rz), (tx * 1e-3, ty * 1e-3, tz * 1e-3)
+    episode_rotation, episode_translation_m
 end
 
 function _e2_observation(env::E2Env)
-    # 1. Normalised magnitude image (flat)
-    img_max = maximum(env.last_image_mag)
-    img_norm = img_max > 0f0 ? env.last_image_mag ./ img_max :
-                                env.last_image_mag
-
-    # 2. Running T1 estimates (log10 scale, 0 for uninitialised)
+    # Running T1 estimates (log10 scale, 0 for uninitialised) — always present.
     t1_obs = [isnan(env.T1_est[i]) ? 0f0 :
               Float32(log10(clamp(env.T1_est[i], 1e-4, 10.0)))
               for i in 1:env.n_spheres]
 
-    # 3. Per-sphere relative uncertainty in log10 scale.
-    # log10(σ_T1 / T1_est), clamped to [-3, 0]. 0 means "fully uncertain"
-    # (relative σ ≥ 100%) and is the sentinel for "no estimate yet" — that
-    # way the channel encodes a coherent prior at episode start.
-    sig_obs = [_e2_sigma_channel(env.T1_sigma[i], env.T1_est[i])
-               for i in 1:env.n_spheres]
-
-    # 4. Budget state
+    # Budget state — always present.
     t_frac  = Float32(min(1.0, env.time_used_s / env.time_budget_s))
     n_frac  = Float32(env.n_blocks / env.max_blocks)
     bgt     = Float32[t_frac, n_frac, 1.0f0]
 
-    vcat(Float32.(img_norm), Float32.(t1_obs), Float32.(sig_obs), bgt)
+    parts = Vector{Vector{Float32}}()
+
+    # Optional flattened normalised magnitude image (E2_RERUN_PLAN §6.2).
+    if env.include_image
+        img_max = maximum(env.last_image_mag)
+        img_norm = img_max > 0f0 ? env.last_image_mag ./ img_max :
+                                    env.last_image_mag
+        push!(parts, Float32.(img_norm))
+    end
+
+    push!(parts, Float32.(t1_obs))
+
+    # Optional per-sphere relative-uncertainty channel (E2_RERUN_PLAN §6.3).
+    # log10(σ_T1 / T1_est), clamped to [-3, 0]; 0 = "fully uncertain / no
+    # estimate yet" — a coherent prior at episode start.
+    if env.include_sigma
+        sig_obs = [_e2_sigma_channel(env.T1_sigma[i], env.T1_est[i])
+                   for i in 1:env.n_spheres]
+        push!(parts, Float32.(sig_obs))
+    end
+
+    push!(parts, bgt)
+
+    vcat(parts...)
 end
 
 @inline function _e2_sigma_channel(σ::Float64, T1::Float64)
@@ -453,16 +389,6 @@ end
 
 function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
                             α_exc_deg::Real)
-    # KomaMRI multi-shot drift: per-shot signals start diverging from
-    # steady-state physics past ~70 s of total simulated time per
-    # `simulate()` call. See KOMA_BUG_REPRO.md §1.2.5. We warn rather than
-    # error because the cutoff is fuzzy and there are use cases (eg
-    # debug / one-shot diagnostics) where the user accepts the drift.
-    sim_time = Float64(TR) * env.Npe
-    if sim_time > 60.0
-        @warn "TR × Npe = $(round(sim_time, digits=1)) s exceeds KomaMRI safe zone (~60 s). Per-shot signals will drift; see KOMA_BUG_REPRO.md." maxlog = 1
-    end
-
     α_exc = deg2rad(Float64(α_exc_deg))
     seq = Suppressor.@suppress ir_se_2d_sequence(
         TI, TE, TR;
@@ -471,7 +397,9 @@ function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
         Nfe   = env.Nfe,
         Npe   = env.Npe,
     )
-    raw = Suppressor.@suppress simulate(env.phantom, seq, scanner_for_field(env.cfg_field))
+    raw = Suppressor.@suppress simulate(
+        env.phantom, seq, scanner_for_field(env.cfg_field);
+        sim_params = Dict{String,Any}("gpu" => env.use_gpu))
 
     ksp = raw_to_kspace(raw, env.Npe, env.Nfe)
 
@@ -614,6 +542,50 @@ function e2_step!(env::E2Env, action_vec)
     TR = max(TR, (TI + TE) / 0.90)
     TE = min(TE, TR * 0.30)
 
+    # Scan time for this block (Npe shots × TR per shot).
+    block_time = env.Npe * TR
+
+    # Scan-time budget + fitter-viability guard. End the episode WITHOUT
+    # simulating this block when either:
+    #  • it would overrun the budget — realised time must stay ≤ budget, else a
+    #    "160 s budget" silently becomes 160 s + one block; or
+    #  • it would be a lone first block with no room for a second. The F1+ fitter
+    #    needs ≥2 samples per sphere, so a single block yields no estimate —
+    #    simulating it would just waste a simulate() call (and, for a greedy
+    #    whole-budget first block, teaches the policy nothing).
+    # The discarded action is not executed; no simulate() call is made.
+    tr_floor     = e2_action_lo(env)[3]      # smallest commandable TR (action lower bound)
+    min_followup = env.Npe * tr_floor        # smallest possible next block
+    overruns   = env.time_used_s + block_time > env.time_budget_s
+    lone_first = env.n_blocks == 0 &&
+                 env.time_used_s + block_time + min_followup > env.time_budget_s
+    if overruns || lone_first
+        env.done = true
+        # No new measurement → estimates and MAPE unchanged from the last step.
+        final_mape = env.n_blocks >= 2 ? _e2_mape(env) : 1.0
+        reward = env.reward_mode === :delta_mape ? 0.0 :
+                 -(env.n_blocks >= 2 ? final_mape : 0.0)
+        if env.n_blocks >= 2 && final_mape < env.success_tol
+            reward += env.terminal_bonus
+        end
+        env.prev_mape = final_mape
+        info = Dict{String,Any}(
+            "mape"            => final_mape,
+            "T1_true"         => copy(env.T1_true),
+            "T1_est"          => copy(env.T1_est),
+            "sphere_indices"  => copy(env.sphere_indices),
+            "n_blocks"        => env.n_blocks,
+            "time_s"          => env.time_used_s,
+            "block_time"      => 0.0,            # block not executed
+            "TI"              => TI,
+            "TE"              => TE,
+            "TR"              => TR,
+            "alpha_deg"       => α_exc_deg,
+            "budget_exceeded" => true,           # diagnostic: action discarded
+        )
+        return (_e2_observation(env), reward, true, info)
+    end
+
     # Simulate and reconstruct
     image_mag, _ = _e2_simulate_step(env, TI, TE, TR, α_exc_deg)
 
@@ -621,8 +593,6 @@ function e2_step!(env::E2Env, action_vec)
     env.last_image_mag = vec(image_mag)
     _e2_update_t1_estimates!(env, image_mag, TI, TR, deg2rad(α_exc_deg))
 
-    # Scan time for this block (Npe shots × TR per shot)
-    block_time      = env.Npe * TR
     env.time_used_s += block_time
     env.n_blocks    += 1
 
@@ -640,8 +610,11 @@ function e2_step!(env::E2Env, action_vec)
     end
     env.prev_mape = mape
 
-    # Episode termination
-    if env.n_blocks >= env.max_blocks || env.time_used_s >= env.time_budget_s
+    # Episode termination. Beyond max_blocks, also stop once no further block
+    # could fit the remaining budget even at the TR floor (e2_action_lo), so we
+    # don't burn a step that the budget guard above would only reject.
+    if env.n_blocks >= env.max_blocks ||
+       env.time_used_s + min_followup > env.time_budget_s
         env.done = true
         if env.n_blocks >= 2 && _e2_mape(env) < env.success_tol
             reward += env.terminal_bonus
@@ -687,8 +660,8 @@ end
 
 Run a **dual acquisition** (two independent noise realisations of the same
 sequence) on the current episode phantom with the current `noise_sigma_abs`,
-and return a full `SNRReport`. Costs 2 simulator calls — intended to be
-called once per `diagnose_e2` run, not per step. Uses default reference
+and return a full `SNRReport`. Costs 1 simulator call; the clean k-space is
+cached and both noisy A/B images are generated from it. Uses default reference
 parameters (TI=0.5 s, TR=3.0 s, α=90°, TE=0.02 s) so the number is comparable
 across runs; override via kwargs if you want a different operating point.
 """
@@ -711,20 +684,17 @@ function e2_dual_acq_snr_report(env::E2Env;
     scanner = scanner_for_field(env.cfg_field)
     rng = MersenneTwister(Int(seed))
 
-    raw_a = Suppressor.@suppress simulate(env.phantom, seq, scanner)
-    ksp_a = raw_to_kspace(raw_a, env.Npe, env.Nfe)
-    add_noise!(ksp_a, env.noise_sigma_abs; rng = rng)
-    img_a = kspace_to_image(ksp_a; phase_sensitive = env.phase_sensitive)
+    raw = Suppressor.@suppress simulate(
+        env.phantom, seq, scanner;
+        sim_params = Dict{String,Any}("gpu" => env.use_gpu))
+    ksp_clean = raw_to_kspace(raw, env.Npe, env.Nfe)
 
-    snr_report(env.phantom, seq, scanner;
-               σ = env.noise_sigma_abs,
-               sphere_px = env.sphere_px,
-               bg_mask = env.background_mask,
-               ksp_a = ksp_a,
-               img_a = img_a,
-               rng = rng,
-               phase_sensitive = env.phase_sensitive,
-               roi_radius = Int(roi_radius))
+    snr_report_from_clean(ksp_clean, env.noise_sigma_abs;
+                          sphere_px = env.sphere_px,
+                          bg_mask = env.background_mask,
+                          rng = rng,
+                          phase_sensitive = env.phase_sensitive,
+                          roi_radius = Int(roi_radius))
 end
 
 # Aliases for juliacall (Python can't reach names ending in `!`)

@@ -25,6 +25,9 @@ Base.@kwdef struct PhantomConfig
     augment::AugmentConfig            = AugmentConfig()
     rng_seed::Int                     = 0
     custom_sphere_map::Dict{Symbol,Any} = Dict{Symbol,Any}()
+    keep_sphere_labels::Union{Nothing,Vector{Symbol}} = nothing
+    drop_sphere_labels::Vector{Symbol} = Symbol[]
+    custom_sphere_descriptors::Vector{SphereDescriptor} = SphereDescriptor[]
     # Z-slab mask: when slice_thickness_mm !== nothing, keep only spins with
     # |z_scanner − slice_center_mm·1e-3| ≤ slice_thickness_mm·1e-3 / 2. Applied
     # in scanner-frame, after pose transform. Set slice_center_mm to a plate's

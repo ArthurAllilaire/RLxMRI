@@ -22,9 +22,12 @@ import numpy as np
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv, SubprocVecEnv, VecNormalize,
+)
 
 from qalibremd_gym.env_e2 import QalibreMDE2Env
+from e2_config import add_e2_env_args, e2_env_kwargs
 
 
 def make_env(rank: int, train_seed: int, **env_kwargs):
@@ -62,6 +65,7 @@ class E2EvalCallback(BaseCallback):
     def __init__(self, eval_env: QalibreMDE2Env, every_n_steps: int,
                  n_eval_episodes: int, seed_offset: int,
                  log_path: Path, best_dir: Path | None = None,
+                 env_kwargs: dict | None = None,
                  verbose: int = 1):
         super().__init__(verbose)
         self.eval_env         = eval_env
@@ -70,6 +74,7 @@ class E2EvalCallback(BaseCallback):
         self.seed_offset      = seed_offset
         self.log_path         = log_path
         self.best_dir         = best_dir
+        self.env_kwargs       = env_kwargs or {}
         self._last_eval       = 0
         self.history          = (json.loads(log_path.read_text())
                                  if log_path.exists() else [])
@@ -131,6 +136,7 @@ class E2EvalCallback(BaseCallback):
                     "mape_pct": mape_mean,
                     "p90_pct": mape_p90,
                     "mean_time_s": mean_time,
+                    "env_kwargs": self.env_kwargs,
                 }, f, indent=2)
             if self.verbose:
                 print(f"[E2 eval]  → new best MAPE {mape_mean:.2f}% saved to "
@@ -138,77 +144,99 @@ class E2EvalCallback(BaseCallback):
         return True
 
 
+class ProgressETACallback(BaseCallback):
+    """Log a wall-clock ETA to completion at the end of each PPO rollout.
+
+    Uses an EMA of seconds-per-timestep (the per-step cost drifts as the policy
+    concentrates its TR distribution, since sim cost ∝ Npe·TR), and records
+    `time/eta_hours` so it shows up next to `time/fps` in the SB3 table.
+    """
+
+    def __init__(self, total_timesteps: int, ema_alpha: float = 0.3,
+                 verbose: int = 1):
+        super().__init__(verbose)
+        self.total_timesteps = total_timesteps
+        self.ema_alpha       = ema_alpha
+        self._last_t         = None
+        self._last_steps     = None
+        self._ema_spp        = None   # EMA seconds-per-timestep
+
+    def _on_training_start(self) -> None:
+        self._last_t     = time.time()
+        self._last_steps = self.num_timesteps
+
+    def _on_step(self) -> bool:
+        return True
+
+    def _on_rollout_end(self) -> None:
+        now   = time.time()
+        steps = self.num_timesteps
+        d_steps = steps - (self._last_steps or steps)
+        d_time  = now - (self._last_t or now)
+        self._last_t, self._last_steps = now, steps
+        if d_steps <= 0 or d_time <= 0:
+            return
+        spp = d_time / d_steps
+        self._ema_spp = spp if self._ema_spp is None else (
+            self.ema_alpha * spp + (1 - self.ema_alpha) * self._ema_spp)
+        remaining = max(0, self.total_timesteps - steps)
+        eta_s = remaining * self._ema_spp
+        self.logger.record("time/eta_hours", eta_s / 3600.0)
+        self.logger.record("time/sec_per_step", self._ema_spp)
+        if self.verbose:
+            print(f"[E2] ~{eta_s/3600.0:.1f}h remaining "
+                  f"({remaining} steps left @ {self._ema_spp:.2f}s/step)")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--timesteps",      type=int,   default=200_000)
     p.add_argument("--n-envs",         type=int,   default=1)
+    p.add_argument("--n-steps",        type=int,   default=2048,
+                   help="PPO rollout length per env. The ETA line prints once "
+                        "per rollout (every n_steps×n_envs timesteps), so lower "
+                        "it for a quick watch run.")
     p.add_argument("--eval-episodes",  type=int,   default=30)
     p.add_argument("--eval-interval",  type=int,   default=10_000)
     p.add_argument("--train-seed",     type=int,   default=0)
     p.add_argument("--eval-seed",      type=int,   default=500_000)
     p.add_argument("--out",            type=Path,  default=Path("runs/e2/ppo"))
-    p.add_argument("--field",          type=str,   default="T3",
-                   choices=["T3", "T15"])
-    p.add_argument("--max-blocks",     type=int,   default=15)
-    p.add_argument("--time-budget",    type=float, default=120.0,
-                   help="Episode scan-time budget in seconds.")
-    p.add_argument("--subset-size",    type=int,   default=None,
-                   help="Draw this many T1 spheres without replacement per "
-                        "episode. Omit for the full 14-sphere plate.")
-    p.add_argument("--noise",          type=float, default=0.005,
-                   help="Absolute complex-Gaussian σ on k-space (FIX_SIM_PLAN §2).")
-    p.add_argument("--reward-mode",    type=str,   default="neg_mape",
-                   choices=["neg_mape", "delta_mape"],
-                   help="neg_mape (legacy) | delta_mape (per-step progress)")
-    p.add_argument("--log-ti-action", action="store_true",
-                   help="Log-spaced TI action mapping (constant density per "
-                        "decade). See EXPERT_REPORT_TRAC §9.2.")
-    p.add_argument("--simplified-action", action="store_true",
-                   help="3-dim action [TI, TE, TR]; fixes α_exc=90° and "
-                        "drops the unused slice_z dim")
-    p.add_argument("--terminal-bonus", type=float, default=0.5,
-                   help="Set to 0.0 to disable (E1-style degenerate-policy "
-                        "driver — see EXPERT_REPORT §15)")
-    p.add_argument("--mape-alpha", type=float, default=1.0,
-                   help="MAPE aggregation: α·mean + (1−α)·max. "
-                        "1.0 = legacy mean; 0.5 = §16.4 Option A")
-    p.add_argument("--phase-sensitive", action="store_true",
-                   help="Use signed real-part image reconstruction instead "
-                        "of magnitude (cr_explainer.md §14, EXPERT_REPORT_E2_4 "
-                        "§15). Eliminates abs()-induced multimodal SSE in T1 "
-                        "fitting at the cost of assuming a known reference "
-                        "phase (sim-only by default).")
-    p.add_argument("--sigma-method", type=str, default="bootstrap",
-                   choices=["asymptotic", "profile_likelihood", "bootstrap"],
-                   help="σ_T1 estimation method (E2_5_PLAN.md §3 / §15). "
-                        "bootstrap (default) is best-calibrated on magnitude "
-                        "data; asymptotic reproduces V1–V5 behaviour.")
     p.add_argument("--checkpoint-interval", type=int, default=50_000,
                    help="Save a checkpoint every N timesteps (0 = disabled)")
     p.add_argument("--resume", action="store_true",
                    help="Resume from latest checkpoint in --out directory")
+    add_e2_env_args(p)   # shared env flags (incl. --Nfe/--Npe/--voxel-mm/--use-gpu)
     args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
 
-    env_kwargs = dict(
-        cfg_field         = args.field,
-        max_blocks        = args.max_blocks,
-        time_budget_s     = args.time_budget,
-        subset_size       = args.subset_size,
-        noise_sigma_abs   = args.noise,
-        reward_mode       = args.reward_mode,
-        simplified_action = args.simplified_action,
-        log_ti_action     = args.log_ti_action,
-        terminal_bonus    = args.terminal_bonus,
-        mape_alpha        = args.mape_alpha,
-        phase_sensitive   = args.phase_sensitive,
-        sigma_method      = args.sigma_method,
-    )
+    env_kwargs = e2_env_kwargs(args)
 
+    # Dump the full env config (Npe, voxel_size_mm, noise, field, …) + key
+    # training hyperparams alongside the policy, so a saved run is reproducible
+    # and self-describing without re-deriving the command from shell history.
+    run_config = {
+        "env_kwargs": env_kwargs,
+        "train": {
+            "timesteps":     args.timesteps,
+            "n_envs":        args.n_envs,
+            "train_seed":    args.train_seed,
+            "eval_seed":     args.eval_seed,
+            "eval_episodes": args.eval_episodes,
+            "eval_interval": args.eval_interval,
+        },
+    }
+    (args.out / "run_config.json").write_text(json.dumps(run_config, indent=2))
+
+    # SubprocVecEnv runs each env in its own OS process with its own in-process
+    # Julia, so rollouts parallelise across cores (DummyVecEnv is serial — one
+    # Julia, one core). Use it only when there's >1 env to avoid the subprocess
+    # + per-worker JIT-warmup overhead for the n_envs=1 case.
     print(f"[E2] Building train env (n_envs={args.n_envs}) …")
-    vec_env = DummyVecEnv([make_env(i, args.train_seed, **env_kwargs)
-                           for i in range(args.n_envs)])
+    env_fns = [make_env(i, args.train_seed, **env_kwargs)
+               for i in range(args.n_envs)]
+    vec_env = (SubprocVecEnv(env_fns, start_method="spawn")
+               if args.n_envs > 1 else DummyVecEnv(env_fns))
     vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True,
                            clip_obs=10.0, clip_reward=10.0)
 
@@ -240,7 +268,7 @@ def main():
         remaining = args.timesteps
         model = PPO(
             "MlpPolicy", vec_env,
-            n_steps       = 2048,    # longer rollouts → better advantage estimates
+            n_steps       = args.n_steps,  # longer rollouts → better advantage estimates
             batch_size    = 64,
             learning_rate = 1e-4,    # smaller steps → tame clip_fraction (was 0.5 at 3e-4)
             gamma         = 0.99,
@@ -261,6 +289,7 @@ def main():
             seed_offset     = args.eval_seed,
             log_path        = args.out / "eval_history.json",
             best_dir        = args.out / "best",
+            env_kwargs      = env_kwargs,
         ),
     ]
     if args.checkpoint_interval > 0:
@@ -269,6 +298,7 @@ def main():
             out_dir   = args.out,
             vec_env   = vec_env,
         ))
+    callbacks.append(ProgressETACallback(total_timesteps=remaining))
 
     t0 = time.time()
     model.learn(
