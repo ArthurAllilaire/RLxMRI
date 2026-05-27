@@ -51,9 +51,17 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
                         "(−final MAPE at episode end only)")
     p.add_argument("--time-penalty", type=float, default=0.0,
                    help="λ: subtract λ·(block_time/budget) from the per-step "
-                        "reward, on top of any --reward-mode. Makes scan time a "
-                        "first-class cost; sweep to trace the accuracy-vs-time "
-                        "Pareto front. Default 0.0 = legacy (time-blind) reward.")
+                        "reward, on top of any --reward-mode. Only applied with "
+                        "--allow-stop (under a fixed budget total time ≈ budget, "
+                        "so the term is a near-constant offset). Sweep to trace "
+                        "the accuracy-vs-time Pareto. Default 0.0.")
+    p.add_argument("--allow-stop", action="store_true",
+                   help="Expose a learned STOP decision: the action gains a stop "
+                        "gate (last dim) and the agent ends the episode when "
+                        "another block's accuracy gain no longer beats its scan "
+                        "time (pair with --time-penalty). Default off (fixed "
+                        "budget). Keep --max-blocks/--time-budget high as a safety "
+                        "cap so episodes stay bounded.")
     p.add_argument("--log-ti-action", action="store_true",
                    help="Log-spaced TI action mapping (constant density per "
                         "decade). See EXPERT_REPORT_TRAC §9.2.")
@@ -128,6 +136,7 @@ def e2_env_kwargs(args: argparse.Namespace) -> dict:
         noise_sigma_abs=args.noise,
         reward_mode=args.reward_mode,
         time_penalty_coef=args.time_penalty,
+        allow_stop=args.allow_stop,
         forward_model=args.forward_model,
         analytic_noise_sigma=args.analytic_noise,
         simplified_action=args.simplified_action,

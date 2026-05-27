@@ -852,10 +852,11 @@
 
     @testset "reward levers: time_penalty_coef subtracts λ·block_time/budget" begin
         # Same trajectory under λ=0 and λ>0 → the difference on each executed
-        # step is exactly λ·(block_time/budget).
+        # step is exactly λ·(block_time/budget). The penalty is gated on
+        # allow_stop, so both envs enable it.
         kw = (; subset_size = 4, forward_model = :analytic,
                 analytic_noise_sigma = 0.0, reward_mode = :delta_mape,
-                Npe = 8, max_blocks = 4, time_budget_s = 600.0)
+                allow_stop = true, Npe = 8, max_blocks = 4, time_budget_s = 600.0)
         λ = 0.7
         env0 = E2Env(; kw..., time_penalty_coef = 0.0)
         envλ = E2Env(; kw..., time_penalty_coef = λ)
@@ -866,6 +867,63 @@
         (_, rλ, _, _)     = e2_step!(envλ, a2)
         expected_gap = λ * info0["block_time"] / env0.time_budget_s
         @test isapprox(r0 - rλ, expected_gap; atol = 1e-10)
+    end
+
+    @testset "time penalty is gated off when allow_stop=false" begin
+        # With no stop action, λ must NOT affect the reward (fixed-budget total
+        # time ≈ budget, so the term is just clutter — dropped).
+        kw = (; subset_size = 4, forward_model = :analytic,
+                analytic_noise_sigma = 0.0, reward_mode = :delta_mape,
+                allow_stop = false, Npe = 8, max_blocks = 4, time_budget_s = 600.0)
+        env0 = E2Env(; kw..., time_penalty_coef = 0.0)
+        envλ = E2Env(; kw..., time_penalty_coef = 0.7)
+        e2_reset!(env0; rng_seed = 11); e2_reset!(envλ; rng_seed = 11)
+        a1 = [0.3, 0.02, 3.0, 90.0, 0.0]; a2 = [1.0, 0.02, 3.0, 90.0, 0.0]
+        e2_step!(env0, a1); e2_step!(envλ, a1)
+        (_, r0, _, _) = e2_step!(env0, a2)
+        (_, rλ, _, _) = e2_step!(envλ, a2)
+        @test isapprox(r0, rλ; atol = 1e-12)
+    end
+
+    @testset "allow_stop: a stop request ends the episode after the block" begin
+        # max_blocks/budget are high and non-binding; the stop flag is what ends
+        # the episode. The stopping block is still executed (n_blocks counts it).
+        env = E2Env(; subset_size = 4, forward_model = :analytic,
+                     analytic_noise_sigma = 0.0, reward_mode = :delta_log_mape,
+                     allow_stop = true, max_blocks = 15, time_budget_s = 600.0)
+        e2_reset!(env; rng_seed = 7)
+        (_, _, d1, i1) = e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0], false)
+        @test d1 == false
+        (_, _, d2, i2) = e2_step!(env, [1.0, 0.02, 3.0, 90.0, 0.0], true)
+        @test d2 == true                      # stop honoured
+        @test i2["stop_requested"] == true
+        @test i2["n_blocks"] == 2             # the stopping block was executed
+        @test env.time_used_s < env.time_budget_s   # stopped well short of cap
+    end
+
+    @testset "allow_stop: stop ignored when allow_stop=false" begin
+        env = E2Env(; subset_size = 4, forward_model = :analytic,
+                     analytic_noise_sigma = 0.0, reward_mode = :delta_log_mape,
+                     allow_stop = false, max_blocks = 15, time_budget_s = 600.0)
+        e2_reset!(env; rng_seed = 7)
+        e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0], false)
+        (_, _, d2, i2) = e2_step!(env, [1.0, 0.02, 3.0, 90.0, 0.0], true)
+        @test d2 == false                     # stop flag does nothing
+        @test i2["stop_requested"] == false
+    end
+
+    @testset "allow_stop: stopping before a valid fit yields mape=1.0" begin
+        # No n_blocks guard: a stop after a single block ends with full error,
+        # so the agent is penalised for stopping too early (learns to avoid it).
+        env = E2Env(; subset_size = 4, forward_model = :analytic,
+                     analytic_noise_sigma = 0.0, reward_mode = :terminal_only,
+                     allow_stop = true, max_blocks = 15, time_budget_s = 600.0)
+        e2_reset!(env; rng_seed = 4)
+        (_, r, done, info) = e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0], true)
+        @test done == true
+        @test info["n_blocks"] == 1
+        @test info["mape"] == 1.0
+        @test isapprox(r, -1.0; atol = 1e-12)   # terminal_only → −final_mape
     end
 
     @testset "reward levers: :terminal_only is zero until the terminal step" begin

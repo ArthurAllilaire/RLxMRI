@@ -6,6 +6,16 @@ Usage:
 The agent uses a continuous action space (5 parameters) normalised to [-1,1].
 Observations are VecNormalise-scaled. Eval MAPE is logged every
 --eval-interval steps.
+
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia \
+  PYTHONUNBUFFERED=1 python -u python/train_e2.py \
+    --out runs/e2/stop_check \
+    --forward-model analytic --fix-te --allow-stop --include-sigma \
+    --reward-mode delta_log_mape --time-penalty 0.3 \
+    --field T15 --time-budget 240 --max-blocks 15 \
+    --timesteps 20000 --n-steps 2048 --batch-size 256 \
+    --eval-interval 5000 --eval-episodes 16 --checkpoint-interval 0 \
+    2>&1 | tee runs/e2/stop_check/run.lo
 """
 
 from __future__ import annotations
@@ -210,8 +220,19 @@ def main():
                    help="Save a checkpoint every N timesteps (0 = disabled)")
     p.add_argument("--resume", action="store_true",
                    help="Resume from latest checkpoint in --out directory")
+    p.add_argument("--init-from", type=Path, default=None,
+                   help="Warm-start from another run's saved policy: loads "
+                        "policy.zip + vecnorm.pkl from this directory onto a "
+                        "FRESH env (e.g. train on --forward-model analytic then "
+                        "continue on bloch). Timestep count restarts from 0. The "
+                        "source run's obs/action layout must match (same "
+                        "--include-sigma/--fix-te/--learn-alpha/--allow-stop/"
+                        "--subset-size). Mutually exclusive with --resume.")
     add_e2_env_args(p)   # shared env flags (incl. --Nfe/--Npe/--voxel-mm/--use-gpu)
     args = p.parse_args()
+
+    if args.resume and args.init_from is not None:
+        raise ValueError("--resume and --init-from are mutually exclusive")
 
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -271,6 +292,18 @@ def main():
                          tensorboard_log=str(args.out / "tb"))
         print(f"[E2] Resumed from {latest.name} "
               f"({step_done} steps done, {remaining} remaining)")
+    elif args.init_from is not None:
+        # Warm-start: load weights + obs-normalisation stats from another run
+        # and keep training on THIS (freshly built) env. Used for the
+        # analytic→bloch curriculum. Timestep count restarts from 0.
+        remaining = args.timesteps
+        src = args.init_from
+        vec_env = VecNormalize.load(str(src / "vecnorm.pkl"), vec_env)
+        vec_env.training = True
+        model = PPO.load(str(src / "policy"), env=vec_env,
+                         tensorboard_log=str(args.out / "tb"))
+        print(f"[E2] Warm-started from {src} "
+              f"({args.timesteps} fresh steps on this env)")
     else:
         remaining = args.timesteps
         model = PPO(

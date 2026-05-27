@@ -151,8 +151,14 @@ class QalibreMDE2Env(gym.Env):
         # λ on scan time: subtracts time_penalty_coef·(block_time/budget) from the
         # per-step reward, on top of ANY reward_mode. Makes scan time a first-class
         # cost (the base reward is per-block and implicitly favours fat high-TR
-        # blocks). Default 0.0 reproduces the legacy reward exactly.
+        # blocks). Only applied when allow_stop is set (see allow_stop).
         time_penalty_coef: float = 0.0,
+        # Learned STOP decision (optimal stopping). When True, the action space
+        # gains one extra "stop gate" dim (the last component); a value > 0 ends
+        # the episode after the current block. Lets the agent choose when the
+        # accuracy gain from another block no longer justifies its scan time
+        # (paired with time_penalty_coef). Default False = fixed-budget episodes.
+        allow_stop: bool = False,
         project_dir: Optional[str] = None,
     ) -> None:
         super().__init__()
@@ -193,6 +199,7 @@ class QalibreMDE2Env(gym.Env):
             forward_model=jl.Symbol(forward_model),
             analytic_noise_sigma=float(analytic_noise_sigma),
             time_penalty_coef=float(time_penalty_coef),
+            allow_stop=bool(allow_stop),
         )
         if subset_size is not None:
             env_kwargs["subset_size"] = int(subset_size)
@@ -208,6 +215,7 @@ class QalibreMDE2Env(gym.Env):
         self._fix_te = bool(fix_te)
         self._learn_alpha = bool(learn_alpha)
         self._log_ti_action = bool(log_ti_action)
+        self._allow_stop = bool(allow_stop)
         if self._fix_te:
             # [TI, TR] (2-dim) or [TI, TR, α] (3-dim) — TE fixed at 20 ms.
             n_act = 3 if self._learn_alpha else 2
@@ -215,6 +223,10 @@ class QalibreMDE2Env(gym.Env):
             n_act = 3
         else:
             n_act = 5
+        # allow_stop appends one "stop gate" component (the LAST dim): the agent
+        # raw output > 0 ⇒ stop after this block. Peeled off in _denorm_action.
+        if self._allow_stop:
+            n_act += 1
         self.action_space = spaces.Box(
             low=-1.0, high=1.0, shape=(n_act,), dtype=np.float32
         )
@@ -241,9 +253,16 @@ class QalibreMDE2Env(gym.Env):
     _ALPHA_LO_DEG = 5.0
     _ALPHA_HI_DEG = 90.0
 
-    def _denorm_action(self, action: np.ndarray) -> np.ndarray:
-        """Map agent output in [-1, 1] to a physical 5-vector for Julia."""
+    def _denorm_action(self, action: np.ndarray) -> tuple[np.ndarray, bool]:
+        """Map agent output in [-1, 1] to a (physical 5-vector, stop) pair.
+
+        When allow_stop, the LAST action component is the stop gate (raw > 0 ⇒
+        stop) and is stripped before the physical mapping; otherwise stop=False."""
         a = np.clip(np.asarray(action, dtype=np.float32), -1.0, 1.0)
+        stop = False
+        if self._allow_stop:
+            stop = bool(a[-1] > 0.0)
+            a = a[:-1]
         u = (a + 1.0) / 2.0  # [0, 1]
         if self._fix_te:
             # [TI, TR] (α=90° fixed) or [TI, TR, α]; TE fixed, slice_z=0.
@@ -257,7 +276,7 @@ class QalibreMDE2Env(gym.Env):
             else:
                 full[3] = 90.0
             full[4] = 0.0
-            return full
+            return full, stop
         if self._simplified_action:
             full = np.zeros(5, dtype=np.float32)
             full[0] = self._map_ti(u[0], self._ACT_LO[0], self._ACT_HI[0])
@@ -265,10 +284,10 @@ class QalibreMDE2Env(gym.Env):
             full[2] = self._ACT_LO[2] + u[2] * (self._ACT_HI[2] - self._ACT_LO[2])
             full[3] = 90.0
             full[4] = 0.0
-            return full
+            return full, stop
         full = self._ACT_LO + u * (self._ACT_HI - self._ACT_LO)
         full[0] = self._map_ti(u[0], self._ACT_LO[0], self._ACT_HI[0])
-        return full.astype(np.float32)
+        return full.astype(np.float32), stop
 
     # ── Gymnasium API ──────────────────────────────────────────────────────
 
@@ -297,10 +316,11 @@ class QalibreMDE2Env(gym.Env):
         return obs, info
 
     def step(self, action):
-        phys = self._denorm_action(action)
+        phys, stop = self._denorm_action(action)
         obs, reward, done, info_dict = _env_mod._JL_QMD.e2_step_b(
             self._env,
             list(phys.astype(float)),
+            bool(stop),
         )
         obs = np.asarray(obs, dtype=np.float32)
         info = {}

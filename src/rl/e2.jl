@@ -158,10 +158,18 @@ mutable struct E2Env
                                             # reference operating point). Sweepable. Only used when
                                             # forward_model = :analytic.
     time_penalty_coef::Float64             # λ: subtract λ·(block_time / time_budget_s) from the
-                                            # per-step reward, on top of ANY reward_mode. Makes
-                                            # scan time a first-class cost (otherwise the reward is
-                                            # per-block and implicitly favours fat high-TR blocks).
-                                            # Default 0.0 reproduces the legacy reward exactly.
+                                            # per-step reward. ONLY applied when allow_stop is true
+                                            # (with a fixed budget total time ≈ budget, so the term
+                                            # is a near-constant offset and just clutters the reward).
+                                            # With a learned stop the episode length is variable and
+                                            # Σ λ·block_time/budget = λ·total_time/budget — a genuine
+                                            # accuracy-vs-time price. Default 0.0.
+    allow_stop::Bool                       # expose a learned STOP decision to the agent. When true,
+                                            # e2_step! takes a `stop` flag (the wrapper appends a
+                                            # thresholded gate to the action); a stop ends the episode
+                                            # after the current block. No n_blocks guard — a premature
+                                            # stop (<2 blocks) yields final_mape=1.0, so the agent
+                                            # learns to avoid it. Default false = legacy fixed-budget.
 
     # ── sphere pool info (fixed at construction) ──────────────────────────
     base_descs_pool::Vector{SphereDescriptor}       # full nominal T1 descriptor pool
@@ -242,7 +250,8 @@ function E2Env(;
     water_model::Symbol            = :bloch,           # :bloch | :cached_perline (water_cache.jl)
     forward_model::Symbol          = :bloch,           # :bloch | :analytic (fast surrogate)
     analytic_noise_sigma::Real     = 0.04,             # σ on analytic signal (≈ SNR 25)
-    time_penalty_coef::Real        = 0.0,              # λ on block_time/time_budget (default off)
+    time_penalty_coef::Real        = 0.0,              # λ on block_time/time_budget (only with allow_stop)
+    allow_stop::Bool               = false,            # learned STOP decision (optimal stopping)
 )
     cfg_field ∈ (:T3, :T15) || error("cfg_field must be :T3 or :T15")
     reward_mode ∈ (:neg_mape, :delta_mape, :neg_log_mape, :delta_log_mape, :terminal_only) ||
@@ -291,6 +300,7 @@ function E2Env(;
         forward_model,
         Float64(analytic_noise_sigma),
         Float64(time_penalty_coef),
+        Bool(allow_stop),
         base_descs,
         Int[], SphereDescriptor[],
         MersenneTwister(rng_seed),
@@ -641,7 +651,10 @@ Base term by `reward_mode`:
   :terminal_only  −mape on the terminal step, else 0      (sparse control)
 
 Then a uniform time cost `−time_penalty_coef · block_time / time_budget_s` is
-subtracted (λ=0 default → no change). The budget-exit path passes block_time=0
+subtracted, but ONLY when `allow_stop` is set: with a learned stop the episode
+length is variable so this sums to `λ·total_time/budget` (a real time price);
+under a fixed budget total time ≈ budget, so the term is a near-constant offset
+and is dropped to keep the reward clean. The budget-exit path passes block_time=0
 so the discarded block is not charged.
 """
 function _e2_reward(env::E2Env, mape::Float64, prev_mape::Float64,
@@ -653,7 +666,9 @@ function _e2_reward(env::E2Env, mape::Float64, prev_mape::Float64,
         env.reward_mode === :delta_log_mape ? _e2_lc(prev_mape) - _e2_lc(mape) :
         env.reward_mode === :terminal_only  ? (done ? -mape : 0.0) :
         error("unknown reward_mode $(env.reward_mode)")
-    base - env.time_penalty_coef * (block_time / env.time_budget_s)
+    time_cost = env.allow_stop ?
+        env.time_penalty_coef * (block_time / env.time_budget_s) : 0.0
+    base - time_cost
 end
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -717,13 +732,20 @@ function e2_reset!(env::E2Env; rng_seed::Union{Nothing,Integer} = nothing,
 end
 
 """
-    e2_step!(env, action_vec) → (obs, reward, done, info_dict)
+    e2_step!(env, action_vec, stop=false) → (obs, reward, done, info_dict)
 
 `action_vec` is a 5-element vector [TI_s, TE_s, TR_s, α_deg, slice_z_mm].
 All values should lie within `e2_action_lo`/`e2_action_hi`.
+
+`stop` is the learned STOP decision (only honoured when `env.allow_stop`): the
+current block is still executed and the fit updated, then the episode ends. There
+is no minimum-block guard — a stop before a valid fit (<2 blocks) ends the episode
+with `mape=1.0`, so the agent is penalised for stopping too early and learns to
+avoid it.
 """
-function e2_step!(env::E2Env, action_vec)
+function e2_step!(env::E2Env, action_vec, stop::Bool = false)
     env.done && error("Episode done; call e2_reset! first.")
+    stop_now = env.allow_stop && stop
 
     TI        = Float64(action_vec[1])
     TE        = Float64(action_vec[2])
@@ -770,6 +792,7 @@ function e2_step!(env::E2Env, action_vec)
             "TR"              => TR,
             "alpha_deg"       => α_exc_deg,
             "budget_exceeded" => true,
+            "stop_requested"  => stop_now,
         )
         return (_e2_observation(env), reward, true, info)
     end
@@ -790,7 +813,8 @@ function e2_step!(env::E2Env, action_vec)
     # further block could fit the remaining budget even at the TR floor
     # (e2_action_lo), so we don't burn a step the budget guard would reject.
     if env.n_blocks >= env.max_blocks ||
-       env.time_used_s + min_followup > env.time_budget_s
+       env.time_used_s + min_followup > env.time_budget_s ||
+       stop_now
         env.done = true
     end
 
@@ -809,6 +833,7 @@ function e2_step!(env::E2Env, action_vec)
         "TE"          => TE,
         "TR"          => TR,
         "alpha_deg"   => α_exc_deg,
+        "stop_requested" => stop_now,
     )
 
     obs = _e2_observation(env)
