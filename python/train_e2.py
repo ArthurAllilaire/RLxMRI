@@ -16,6 +16,17 @@ PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.
     --timesteps 20000 --n-steps 2048 --batch-size 256 \
     --eval-interval 5000 --eval-episodes 16 --checkpoint-interval 0 \
     2>&1 | tee runs/e2/stop_check/run.lo
+
+Run A — delta_log_mape, cached_perline water, α-DOF, T1.5, 200k steps:
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia \
+  PYTHONUNBUFFERED=1 python -u python/train_e2.py \
+    --out runs/e2/ppo_runA_deltamape \
+    --reward-mode delta_log_mape --mape-alpha 1.0 \
+    --water-model cached_perline \
+    --fix-te --learn-alpha \
+    --field T15 --time-budget 240 --max-blocks 20 \
+    --timesteps 200000 --n-steps 512 --batch-size 64 \
+    2>&1 | tee runs/e2/ppo_runA_deltamape/run.log
 """
 
 from __future__ import annotations
