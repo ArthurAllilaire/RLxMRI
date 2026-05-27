@@ -164,7 +164,7 @@ class QalibreMDE2Env(gym.Env):
         super().__init__()
         if bool(learn_alpha) and not bool(fix_te):
             raise ValueError("learn_alpha requires fix_te=True (Run A action mode)")
-        _ensure_julia(project_dir)
+        _ensure_julia(project_dir, use_gpu=bool(use_gpu))
 
         jl = _env_mod._JL
         qmd = _env_mod._JL_QMD

@@ -93,7 +93,8 @@ _JL: Any = None
 _JL_QMD: Any = None
 
 
-def _ensure_julia(project_dir: Optional[str] = None) -> None:
+def _ensure_julia(project_dir: Optional[str] = None,
+                  use_gpu: bool = False) -> None:
     """Boot Julia and import QalibreMDPhantom once per process.
 
     juliacall 0.9.31 requires Julia ≤ 1.11 (its bundled PythonCall does
@@ -102,6 +103,13 @@ def _ensure_julia(project_dir: Optional[str] = None) -> None:
     QalibreMDPhantom, resolved with a juliaup-installed 1.11. The main
     repo project can stay on 1.12 for direct Julia use (tests, E0,
     figure scripts).
+
+    When use_gpu is set, also `using CUDA` so KomaMRI registers the CUDA
+    backend — without a backend package loaded, sim_params["gpu"]=true
+    silently falls back to the CPU. Boot is once-per-process, so the
+    first env's use_gpu wins (all envs in a run share it). If CUDA is
+    unavailable we warn and continue on the CPU rather than crash, so the
+    same code runs on a CPU-only box.
     """
     global _JL, _JL_QMD
     if _JL is not None:
@@ -109,6 +117,16 @@ def _ensure_julia(project_dir: Optional[str] = None) -> None:
 
     from juliacall import Main as jl
     jl.seval("using QalibreMDPhantom")
+    if use_gpu:
+        try:
+            jl.seval("using CUDA")
+        except Exception as e:  # noqa: BLE001
+            import warnings
+            warnings.warn(
+                f"use_gpu=True but `using CUDA` failed ({e}); KomaMRI will "
+                "fall back to the CPU. Add CUDA to python/julia_runtime.",
+                RuntimeWarning,
+            )
     _JL = jl
     _JL_QMD = jl.QalibreMDPhantom
 

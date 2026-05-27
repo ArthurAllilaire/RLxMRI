@@ -8,7 +8,7 @@ development setup with more context, see `docs/GETTING_STARTED.md`.
 
 - `git`, `curl`, `bash`
 - `python3` (≥ 3.10) with `python3-venv`
-- A working internet connection (juliaup downloads Julia 1.11; pip pulls the
+- A working internet connection (juliaup downloads Julia; pip pulls the
   Python deps)
 
 GPU is **optional**. The KomaMRI Bloch simulator runs on CPU by default and
@@ -37,7 +37,7 @@ There are two setup scripts depending on what's already installed:
 
 | Script | Use when |
 |---|---|
-| `setup_full.sh` | Fresh box — installs juliaup + Julia 1.11, then sets everything up |
+| `setup_full.sh` | Fresh box — installs juliaup + Julia 1.11/1.12, then sets everything up |
 | `setup.sh` | juliaup + Julia 1.11 already present; just creates venv + instantiates |
 
 For a fresh remote box, use the full script:
@@ -50,10 +50,10 @@ Both scripts are **idempotent** — safe to re-run. `setup_full.sh` will:
 
 1. Install `juliaup` if not already present, then `export PATH` in-process
    (non-interactive shells don't source `~/.bashrc`, so this is required).
-2. Install Julia 1.11 via `juliaup add 1.11` if not already present.
+2. Install Julia 1.11 and 1.12 via `juliaup add` if not already present.
 3. Create `.venv/` and `pip install -r python/requirements.txt`.
-4. `Pkg.instantiate()` the main Julia project and the Python-bridge runtime
-   at `python/julia_runtime/`.
+4. `Pkg.instantiate()` the main Julia project with 1.12 and the Python-bridge
+   runtime at `python/julia_runtime/` with 1.11.
 5. Write `.envrc.local` with the env vars `juliacall` needs:
    `PYTHON_JULIAPKG_OFFLINE=yes` and `PYTHON_JULIAPKG_EXE=<julia-1.11 path>`.
 6. Smoke-test the Python ↔ Julia bridge (`obs_dim = 159`).
@@ -233,33 +233,50 @@ python python/diagnose_e2.py --policy runs/e2/optA_100k/policy.zip
 ## Manual fallback (skip `setup.sh`)
 
 If `setup.sh` keeps failing and you want to drive each step by hand, run
-these in order from the repo root. They are exactly what the script does,
-just without the conditionals — so you'll see immediately which step is
-the real problem.
+these in order from the repo root. Start with the juliaup path; if juliaup
+leaves a broken 1.11 install, use the direct release tarball fallback below.
 
-### 1. Install juliaup + Julia 1.11
+### 1. Install Julia 1.11 + 1.12
 
 ```bash
 curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel 1.11
 export PATH="$HOME/.juliaup/bin:$PATH"        # add to ~/.bashrc as well
 juliaup add 1.11
+juliaup add 1.12
 ```
 
-Resolve the absolute Julia binary path once (avoids juliaup launcher quirks
-in non-interactive shells):
+Resolve the absolute Julia binary paths once (avoids juliaup launcher quirks
+in non-interactive shells). The main project uses 1.12; the Python bridge
+runtime uses 1.11 because `juliacall` is pinned to Julia <= 1.11:
 
 ```bash
-JULIA_EXE="$(ls -d $HOME/.juliaup/julia-1.11.*/bin/julia | head -1)"
-echo "$JULIA_EXE"
-$JULIA_EXE --version                          # should print 1.11.x
+JULIA11="$(find "$HOME/.juliaup" "$HOME/.julia/juliaup" -name julia -path "*/julia-1.11*/bin/julia" 2>/dev/null | head -1)"
+JULIA12="$(find "$HOME/.juliaup" "$HOME/.julia/juliaup" -name julia -path "*/julia-1.12*/bin/julia" 2>/dev/null | head -1)"
+echo "$JULIA11"
+echo "$JULIA12"
+$JULIA11 --version                             # should print 1.11.x
+$JULIA12 --version                             # should print 1.12.x
 ```
 
-Verify Pkg loads. If it fails with a `MbedTLS_jll`-style "not installed"
-error, the Julia install is corrupt — see the troubleshooting section
-above for the hard-reinstall recipe.
+If the juliaup-managed 1.11 install is corrupt and `using Pkg` fails with a
+`MbedTLS_jll`-style "not installed" error, use the official Julia release
+tarball directly instead of the juliaup launcher:
 
 ```bash
-$JULIA_EXE -e 'using Pkg'                     # should print nothing
+REPO_ROOT="$PWD"
+mkdir -p "$HOME/julia-releases"
+cd "$HOME/julia-releases"
+curl -fL -o julia-1.11-linux-x86_64.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/1.11/julia-1.11-latest-linux-x86_64.tar.gz
+tar -xzf julia-1.11-linux-x86_64.tar.gz
+JULIA11="$(find "$HOME/julia-releases" -maxdepth 3 -path "*/julia-1.11*/bin/julia" -type f | sort | tail -1)"
+cd "$REPO_ROOT"
+```
+
+Verify both `Pkg` stdlibs load:
+
+```bash
+$JULIA11 -e 'using Pkg'                        # should print nothing
+$JULIA12 -e 'using Pkg'                        # should print nothing
 ```
 
 ### 2. Python venv + deps
@@ -274,8 +291,8 @@ pip install -r python/requirements.txt
 ### 3. Instantiate Julia projects
 
 ```bash
-$JULIA_EXE --project=. -e 'using Pkg; Pkg.instantiate()'
-$JULIA_EXE --project=python/julia_runtime -e 'using Pkg; Pkg.instantiate()'
+$JULIA12 --project=. -e 'using Pkg; Pkg.instantiate()'
+$JULIA11 --project=python/julia_runtime -e 'using Pkg; Pkg.instantiate()'
 ```
 
 First run takes 5–15 min (KomaMRI precompile). Subsequent runs are seconds.
@@ -290,7 +307,7 @@ automatically.
 ```bash
 cat > .envrc.local <<EOF
 export PYTHON_JULIAPKG_OFFLINE=yes
-export PYTHON_JULIAPKG_EXE="$JULIA_EXE"
+export PYTHON_JULIAPKG_EXE="$JULIA11"
 EOF
 source .envrc.local
 ```
@@ -314,7 +331,7 @@ If that prints `obs_dim = 159` you're fully set up — proceed to step 3
 | Symptom | Likely cause + fix |
 |---|---|
 | `Pkg.instantiate()` hangs > 5 min on a JLL | Network timeout. Ctrl-C, retry. JLL artifacts are downloaded one at a time. |
-| `MbedTLS_jll … is required but does not seem to be installed` | Julia install is corrupt. `juliaup remove 1.11 && rm -rf ~/.julia/juliaup/julia-1.11.* ~/.julia/compiled && juliaup add 1.11`. |
+| `MbedTLS_jll … is required but does not seem to be installed` | Julia install is corrupt. Try `juliaup remove 1.11 && rm -rf ~/.julia/juliaup/julia-1.11.* ~/.juliaup/julia-1.11.* ~/.julia/compiled/v1.11 && juliaup add 1.11`; if it still fails, use the official release tarball path above and set `JULIA11` to that binary. |
 | `ImportError: No module named qalibremd_gym` in step 5 | You forgot to `cd python` first — the package is at `python/qalibremd_gym/`. |
 | `juliacall.JuliaError: package KomaMRI not found` from Python | Step 3b skipped — re-run the `--project=python/julia_runtime` instantiate. |
 | `pip install` fails on `gymnasium[box2d]` or similar | Not needed for E2 — `python/requirements.txt` only pulls the core SB3 + gymnasium + juliacall. If you see this, you're using a different requirements file. |
