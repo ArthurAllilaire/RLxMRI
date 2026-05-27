@@ -192,10 +192,15 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--timesteps",      type=int,   default=200_000)
     p.add_argument("--n-envs",         type=int,   default=1)
-    p.add_argument("--n-steps",        type=int,   default=2048,
-                   help="PPO rollout length per env. The ETA line prints once "
-                        "per rollout (every n_steps×n_envs timesteps), so lower "
-                        "it for a quick watch run.")
+    p.add_argument("--n-steps",        type=int,   default=512,
+                   help="PPO rollout length PER ENV. Each env collects n_steps "
+                        "transitions before an update, so the rollout buffer the "
+                        "optimiser sees = n_steps×n_envs. The ETA line prints once "
+                        "per rollout (every n_steps×n_envs timesteps).")
+    p.add_argument("--batch-size",     type=int,   default=64,
+                   help="PPO minibatch size for the SGD epochs. The rollout "
+                        "(n_steps×n_envs) should be divisible by it, else SB3 "
+                        "warns about a ragged final minibatch.")
     p.add_argument("--eval-episodes",  type=int,   default=30)
     p.add_argument("--eval-interval",  type=int,   default=10_000)
     p.add_argument("--train-seed",     type=int,   default=0)
@@ -220,6 +225,8 @@ def main():
         "train": {
             "timesteps":     args.timesteps,
             "n_envs":        args.n_envs,
+            "n_steps":       args.n_steps,
+            "batch_size":    args.batch_size,
             "train_seed":    args.train_seed,
             "eval_seed":     args.eval_seed,
             "eval_episodes": args.eval_episodes,
@@ -269,7 +276,7 @@ def main():
         model = PPO(
             "MlpPolicy", vec_env,
             n_steps       = args.n_steps,  # longer rollouts → better advantage estimates
-            batch_size    = 64,
+            batch_size    = args.batch_size,
             learning_rate = 1e-4,    # smaller steps → tame clip_fraction (was 0.5 at 3e-4)
             gamma         = 0.99,
             gae_lambda    = 0.95,

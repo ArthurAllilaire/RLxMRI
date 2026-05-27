@@ -51,6 +51,9 @@ include("imaging.jl")
 # --- analytical forward models (phantom → predicted image) ----------------
 include("forward_model.jl")
 
+# --- cached-water model (analytic background-water k-space) ----------------
+include("water_cache.jl")
+
 # --- RL experiments -------------------------------------------------------
 include("rl/e1.jl")
 include("rl/e2.jl")
@@ -105,6 +108,9 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        raw_to_kspace, kspace_to_image, hamming_window_2d, roi_mean, phantom_occupancy,
        phys_to_pixel, phys_to_pixel_wrap,
        phantom_parameter_map, image_to_kspace,
+       # cached-water model
+       CachedWaterModel, build_cached_water_model, cached_water_ksp,
+       transient_mz_per_shot, build_dry_and_water,
        # analytical forward models
        central_crop, bandlimit_image, ir_se_theory_image, ir_se_theory_image_binned,
        add_noise!, add_noise, add_gaussian_noise!,

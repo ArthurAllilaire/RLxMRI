@@ -248,7 +248,8 @@ def render_kspace_baseline(ctx: RunContext, ksp_meas, ksp_theo, theo_label):
 
     def lmf(z): return np.log10(np.maximum(np.abs(z), np.abs(z).max() * 1e-4))
 
-    ncols = 2 if ksp_theo is not None else 1
+    # 3 panels when theory present (measured | theory | signed |k| diff), else 1.
+    ncols = 3 if ksp_theo is not None else 1
     fig, axes = plt.subplots(1, ncols, figsize=(7 * ncols, 6))
     if ncols == 1:
         axes = [axes]
@@ -265,6 +266,17 @@ def render_kspace_baseline(ctx: RunContext, ksp_meas, ksp_theo, theo_label):
         axes[1].set_title(theo_label)
         axes[1].set_xlabel("kx [1/m]"); axes[1].set_ylabel("ky [1/m]")
         plt.colorbar(im1, ax=axes[1], fraction=0.046, label="log10 |S|")
+
+        # Signed |k| difference (measured − theory) — surfaces the residual
+        # structure a log-magnitude side-by-side hides. Title carries L1 relerr.
+        diff = np.abs(ksp_meas) - np.abs(ksp_theo)
+        dmax = np.abs(diff).max() or 1.0
+        relerr = np.sum(np.abs(ksp_meas - ksp_theo)) / max(np.sum(np.abs(ksp_meas)), 1e-30)
+        im2 = axes[2].imshow(diff, cmap="bwr", origin="lower", extent=extent_k,
+                             aspect="auto", vmin=-dmax, vmax=dmax)
+        axes[2].set_title(f"|k| diff (meas − theory)\nL1 relerr = {relerr:.2e}")
+        axes[2].set_xlabel("kx [1/m]"); axes[2].set_ylabel("ky [1/m]")
+        plt.colorbar(im2, ax=axes[2], fraction=0.046, label="Δ|S|")
 
     fig.suptitle(f"k-space comparison  [{ctx.run_label}]", fontsize=11)
     plt.tight_layout()

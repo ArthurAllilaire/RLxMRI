@@ -34,6 +34,24 @@ if "PYTHON_JULIAPKG_EXE" not in os.environ:
     if _j11_candidates:
         os.environ["PYTHON_JULIAPKG_EXE"] = _j11_candidates[0]
 
+# juliacall's multithreading support is experimental and segfault-prone unless
+# Julia's signal handlers are disabled — running with JULIA_NUM_THREADS>1 (e.g. to
+# multithread the KomaMRI Bloch sim) otherwise crashes SubprocVecEnv workers with a
+# bare EOFError. juliacall reads PYTHON_JULIACALL_HANDLE_SIGNALS at import, so set it
+# here (before the juliacall import) when threads>1. setdefault → an explicit user
+# value still wins. Only enabled for threads>1 because the side effect is that
+# Python's Ctrl-C no longer raises KeyboardInterrupt.
+def _julia_num_threads() -> int:
+    v = os.environ.get("JULIA_NUM_THREADS", "1")
+    if v == "auto":
+        return os.cpu_count() or 1
+    try:                                  # may be "N" or "N,M" (compute,interactive)
+        return int(str(v).split(",")[0])
+    except ValueError:
+        return 1
+if _julia_num_threads() > 1:
+    os.environ.setdefault("PYTHON_JULIACALL_HANDLE_SIGNALS", "yes")
+
 # WSL2/Ubuntu's system libcrypto is too old for OpenSSL_jll ≥ 3.3 (libssl needs
 # OPENSSL_3.3.0 symbols not present in /lib/x86_64-linux-gnu/libcrypto.so.3).
 # glibc reads LD_LIBRARY_PATH at process exec time and caches it, so mutating

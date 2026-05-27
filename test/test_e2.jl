@@ -801,4 +801,99 @@
         @test length(e2_reset!(env_sig; rng_seed = 1)) == 2 * k + 3
     end
 
+    @testset "forward_model=:analytic builds no Koma phantom but steps + fits" begin
+        # The analytic surrogate must not construct a KomaMRI phantom (that is the
+        # whole speedup) yet still drive the obs/fit/reward pipeline normally.
+        env = E2Env(; subset_size = 4, forward_model = :analytic,
+                     max_blocks = 6, time_budget_s = 600.0,
+                     analytic_noise_sigma = 0.0)   # noiseless → exact recovery
+        obs = e2_reset!(env; rng_seed = 3)
+        @test env.phantom === nothing
+        @test env.background_mask === nothing
+        @test length(obs) == e2_obs_dim(env)       # T1-only obs: n_spheres + 3
+
+        # Two informative blocks at different TI → fit should recover T1 to the
+        # T1-grid floor (noiseless analytic == fitter's own forward model).
+        e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
+        _, _, _, info = e2_step!(env, [1.0, 0.02, 3.0, 90.0, 0.0])
+        @test info["n_blocks"] == 2
+        @test info["mape"] < 0.05                  # well under 5 % with no noise
+    end
+
+    @testset "analytic signal matches transient_mz_at_excite_npe (noiseless)" begin
+        env = E2Env(; subset_size = 3, forward_model = :analytic,
+                     analytic_noise_sigma = 0.0, Npe = 16)
+        e2_reset!(env; rng_seed = 9)
+        TI, TE, TR, α_deg = 0.4, 0.02, 2.5, 90.0
+        sig = QalibreMDPhantom._e2_analytic_signals(env, TI, TE, TR, α_deg)
+        for i in 1:env.n_spheres
+            base = env.active_base_descs[i]
+            T1_i = env.T1_true[i]
+            T2_i = T1_i * base.T2 / base.T1
+            mz = transient_mz_at_excite_npe(T1_i, TI, TR, π, deg2rad(α_deg);
+                                            Npe = env.Npe)
+            expect = abs(base.ρ * mz * sin(deg2rad(α_deg)) * exp(-TE / T2_i))
+            @test isapprox(sig[i], expect; atol = 1e-12)
+        end
+    end
+
+    @testset "reward levers: λ=0 + :neg_mape reproduces legacy reward" begin
+        # The centralised _e2_reward must be a no-op refactor for the legacy
+        # config: r_t = −clamp(MAPE,0,1), with no time penalty.
+        env = E2Env(; subset_size = 4, forward_model = :analytic,
+                     analytic_noise_sigma = 0.0, reward_mode = :neg_mape,
+                     time_penalty_coef = 0.0, max_blocks = 5,
+                     time_budget_s = 600.0)
+        e2_reset!(env; rng_seed = 5)
+        e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
+        _, r, _, info = e2_step!(env, [1.0, 0.02, 3.0, 90.0, 0.0])
+        @test isapprox(r, -clamp(info["mape"], 0.0, 1.0); atol = 1e-12)
+    end
+
+    @testset "reward levers: time_penalty_coef subtracts λ·block_time/budget" begin
+        # Same trajectory under λ=0 and λ>0 → the difference on each executed
+        # step is exactly λ·(block_time/budget).
+        kw = (; subset_size = 4, forward_model = :analytic,
+                analytic_noise_sigma = 0.0, reward_mode = :delta_mape,
+                Npe = 8, max_blocks = 4, time_budget_s = 600.0)
+        λ = 0.7
+        env0 = E2Env(; kw..., time_penalty_coef = 0.0)
+        envλ = E2Env(; kw..., time_penalty_coef = λ)
+        e2_reset!(env0; rng_seed = 11); e2_reset!(envλ; rng_seed = 11)
+        a1 = [0.3, 0.02, 3.0, 90.0, 0.0]; a2 = [1.0, 0.02, 3.0, 90.0, 0.0]
+        e2_step!(env0, a1); e2_step!(envλ, a1)
+        (_, r0, _, info0) = e2_step!(env0, a2)
+        (_, rλ, _, _)     = e2_step!(envλ, a2)
+        expected_gap = λ * info0["block_time"] / env0.time_budget_s
+        @test isapprox(r0 - rλ, expected_gap; atol = 1e-10)
+    end
+
+    @testset "reward levers: :terminal_only is zero until the terminal step" begin
+        env = E2Env(; subset_size = 4, forward_model = :analytic,
+                     analytic_noise_sigma = 0.0, reward_mode = :terminal_only,
+                     Npe = 8, max_blocks = 3, time_budget_s = 600.0)
+        e2_reset!(env; rng_seed = 2)
+        rewards = Float64[]
+        dones = Bool[]
+        for a in ([0.3, 0.02, 3.0, 90.0, 0.0], [1.0, 0.02, 3.0, 90.0, 0.0],
+                  [0.6, 0.02, 3.0, 90.0, 0.0])
+            _, r, done, info = e2_step!(env, a)
+            push!(rewards, r); push!(dones, done)
+            done && (@test isapprox(r, -clamp(info["mape"], 0.0, 1.0); atol = 1e-12))
+        end
+        # Every non-terminal step rewards exactly 0; the terminal one does not.
+        for (r, d) in zip(rewards, dones)
+            d || @test r == 0.0
+        end
+        @test any(dones)
+    end
+
+    @testset "e2_image_stats errors under forward_model=:analytic" begin
+        env = E2Env(; subset_size = 3, forward_model = :analytic)
+        e2_reset!(env; rng_seed = 1)
+        e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
+        @test_throws ErrorException e2_image_stats(env)
+        @test_throws ErrorException e2_dual_acq_snr_report(env)
+    end
+
 end

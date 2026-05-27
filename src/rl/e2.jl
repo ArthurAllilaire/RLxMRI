@@ -133,6 +133,35 @@ mutable struct E2Env
                                             # sim cost without the water background, or for
                                             # a spheres-only phantom (the T1 sphere spins
                                             # remain via custom_sphere_descriptors).
+    water_model::Symbol                    # :bloch (default) full-Bloch sims the water with
+                                            # the spheres every step. :cached_perline
+                                            # Bloch-sims only the spheres and adds the
+                                            # background water from a cached Koma template
+                                            # (CachedWaterModel) rescaled analytically per
+                                            # k-line — ~8× per-step, reproduces full sim to
+                                            # the T1-grid floor (src/water_cache.jl). Requires
+                                            # include_water. Cache scope follows include_image:
+                                            # global (one water sim, fixed pose) when the obs
+                                            # is T1-only, per-episode (rebuilt each reset, pose
+                                            # randomised) when the image is in the obs.
+    forward_model::Symbol                  # :bloch (default) full KomaMRI Bloch sim + 2D recon
+                                            # every step. :analytic skips Koma entirely and
+                                            # generates per-sphere magnitudes from the SAME closed
+                                            # form the fitter inverts (transient_mz_at_excite_npe),
+                                            # so steps are ~µs. Fits become noise-limited only
+                                            # (no water-bleed / B0σ / spatial recon cross-talk) —
+                                            # a fast surrogate for SCREENING reward behaviour, not
+                                            # for absolute MAPE. include_image/water_model are
+                                            # ignored under :analytic.
+    analytic_noise_sigma::Float64          # complex-Gaussian σ on the analytic per-sphere signal
+                                            # (signal scale is O(1); default 0.04 ≈ SNR 25 at the
+                                            # reference operating point). Sweepable. Only used when
+                                            # forward_model = :analytic.
+    time_penalty_coef::Float64             # λ: subtract λ·(block_time / time_budget_s) from the
+                                            # per-step reward, on top of ANY reward_mode. Makes
+                                            # scan time a first-class cost (otherwise the reward is
+                                            # per-block and implicitly favours fat high-TR blocks).
+                                            # Default 0.0 reproduces the legacy reward exactly.
 
     # ── sphere pool info (fixed at construction) ──────────────────────────
     base_descs_pool::Vector{SphereDescriptor}       # full nominal T1 descriptor pool
@@ -143,7 +172,12 @@ mutable struct E2Env
 
     # ── episode state ────────────────────────────────────────────────────────
     rng::MersenneTwister
-    phantom::Any                           # KomaMRI Phantom (cached per episode)
+    phantom::Any                           # KomaMRI Phantom Bloch-simulated each step.
+                                            # :bloch → spheres+water; :cached_perline → dry
+                                            # (spheres-only); the water is added analytically.
+    cached_water::Union{Nothing,CachedWaterModel}  # water template for :cached_perline.
+                                            # Built once (global scope) or per reset
+                                            # (per-episode scope); nothing under :bloch.
     T1_true::Vector{Float64}               # per-sphere true T1 this episode
     sphere_px::Vector{NTuple{2,Int}}       # (i_pe, i_fe) per sphere in image
     episode_rotation::NTuple{3,Float64}    # Euler XYZ [rad]
@@ -205,12 +239,23 @@ function E2Env(;
     include_image::Bool            = false,            # E2_RERUN_PLAN §6.2
     include_sigma::Bool            = false,            # E2_RERUN_PLAN §6.3
     include_water::Bool            = true,             # background-water spins on/off
+    water_model::Symbol            = :bloch,           # :bloch | :cached_perline (water_cache.jl)
+    forward_model::Symbol          = :bloch,           # :bloch | :analytic (fast surrogate)
+    analytic_noise_sigma::Real     = 0.04,             # σ on analytic signal (≈ SNR 25)
+    time_penalty_coef::Real        = 0.0,              # λ on block_time/time_budget (default off)
 )
     cfg_field ∈ (:T3, :T15) || error("cfg_field must be :T3 or :T15")
-    reward_mode ∈ (:neg_mape, :delta_mape) ||
-        error("reward_mode must be :neg_mape or :delta_mape")
+    reward_mode ∈ (:neg_mape, :delta_mape, :neg_log_mape, :delta_log_mape, :terminal_only) ||
+        error("reward_mode must be one of :neg_mape, :delta_mape, :neg_log_mape, " *
+              ":delta_log_mape, :terminal_only")
+    forward_model ∈ (:bloch, :analytic) ||
+        error("forward_model must be :bloch or :analytic")
     sigma_method ∈ (:asymptotic, :profile_likelihood, :bootstrap) ||
         error("sigma_method must be :asymptotic, :profile_likelihood, or :bootstrap")
+    water_model ∈ (:bloch, :cached_perline) ||
+        error("water_model must be :bloch or :cached_perline")
+    (water_model === :bloch || include_water) ||
+        error("water_model = :cached_perline requires include_water = true")
     0.0 <= Float64(mape_alpha) <= 1.0 ||
         error("mape_alpha must be in [0, 1]")
 
@@ -242,10 +287,15 @@ function E2Env(;
         Bool(include_image),
         Bool(include_sigma),
         Bool(include_water),
+        water_model,
+        forward_model,
+        Float64(analytic_noise_sigma),
+        Float64(time_penalty_coef),
         base_descs,
         Int[], SphereDescriptor[],
         MersenneTwister(rng_seed),
         nothing,                            # phantom (filled at reset)
+        nothing,                            # cached_water (filled at reset if cached)
         zeros(n_spheres), fill((1, 1), n_spheres),
         (0.0, 0.0, 0.0), (0.0, 0.0, 0.0),
         [Float64[] for _ in 1:n_spheres],   # block_TIs
@@ -310,9 +360,19 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
     # move spheres out of the constructed slab. In-plane rotation rz + translation
     # tx, ty still relocate every sphere on the image each episode — enough to stop
     # the agent memorising fixed pixel locations.
-    rz = env.rotation_sigma_rad * randn(rng_ep)
-    tx = env.translation_sigma_mm * randn(rng_ep)
-    ty = env.translation_sigma_mm * randn(rng_ep)
+    #
+    # Under :cached_perline with a T1-only observation (include_image=false) we cache
+    # the water template ONCE globally, which requires a fixed geometry — so the pose
+    # is pinned to zero. The agent never sees pixel positions in that mode, so fixing
+    # the pose costs no exploitable information. When the image IS in the obs, the
+    # pose is randomised as usual and the template is rebuilt each reset.
+    if _e2_cache_globally(env)
+        rz = tx = ty = 0.0
+    else
+        rz = env.rotation_sigma_rad * randn(rng_ep)
+        tx = env.translation_sigma_mm * randn(rng_ep)
+        ty = env.translation_sigma_mm * randn(rng_ep)
+    end
     rx = ry = 0.0
     tz = 0.0
 
@@ -330,8 +390,25 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
         slice_thickness_mm = env.voxel_size_mm,
         slice_center_mm = PLATE_Z_MM.T1,
     )
-    phantom = build_phantom(phantom_cfg)
-    phantom.name = "e2_subset"
+
+    # :bloch → simulate spheres+water together. :cached_perline → simulate only the
+    # spheres (dry, keeping B0σ) and add the cached water k-space; split the same cfg
+    # into its dry + water blocks via the library helper (exploits the
+    # [spheres…, water…] layout + KomaMRI's linearity in spins). The water template
+    # is built at B0σ=0 (per-spin off-resonance makes the cache TI-phase-dependent
+    # and is unrecoverable analytically); the Bloch-simulated spheres keep B0σ.
+    water_phantom = nothing
+    if env.forward_model === :analytic
+        # Analytic surrogate: signals come from the closed form in
+        # _e2_analytic_signals, so no Koma phantom is needed. Skip the build.
+        phantom = nothing
+    elseif env.water_model === :cached_perline
+        phantom, water_phantom = build_dry_and_water(phantom_cfg; water_B0_sigma_Hz = 0.0)
+        phantom.name = "e2_subset"
+    else
+        phantom = build_phantom(phantom_cfg)
+        phantom.name = "e2_subset"
+    end
 
     active_descs_scanner = transform_descriptors(active_descs,
                                                  episode_rotation,
@@ -339,9 +416,15 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
     sphere_px = sphere_descriptor_pixels(active_descs_scanner,
                                          env.Npe, env.Nfe, env.FOV)
 
-    phantom, T1_ep, sphere_px,
+    phantom, water_phantom, T1_ep, sphere_px,
     episode_rotation, episode_translation_m
 end
+
+"True when the water template should be cached once globally rather than rebuilt
+per episode: cached water model AND a T1-only observation (no image to exploit
+pose), so the geometry can be pinned and one water sim reused across episodes."
+_e2_cache_globally(env::E2Env) =
+    env.water_model === :cached_perline && !env.include_image
 
 function _e2_observation(env::E2Env)
     # Running T1 estimates (log10 scale, 0 for uninitialised) — always present.
@@ -403,6 +486,14 @@ function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
 
     ksp = raw_to_kspace(raw, env.Npe, env.Nfe)
 
+    # :cached_perline — env.phantom held only the spheres; add the background
+    # water from the cached Koma template (per-k-line transient + sin α + TE
+    # correction). Added on the clean k-space, before noise, exactly as a full
+    # water sim would contribute (KomaMRI is linear in spins). See water_cache.jl.
+    if env.water_model === :cached_perline
+        ksp .+= cached_water_ksp(env.cached_water, TI, TR, α_exc, TE)
+    end
+
     # Absolute complex Gaussian noise (FIX_SIM_PLAN §2). σ is hardware-set,
     # not scene-relative — same magnitude every step regardless of phantom.
     add_noise!(ksp, env.noise_sigma_abs; rng = env.rng)
@@ -416,7 +507,62 @@ function _e2_simulate_step(env::E2Env, TI::Real, TE::Real, TR::Real,
     image_mag, ksp
 end
 
-function _e2_update_t1_estimates!(env::E2Env, image_mag::Matrix{Float32},
+"""
+    _e2_sphere_signals(env, TI, TE, TR, α_exc_deg) -> Vector{Float64}
+
+Per-sphere reconstructed magnitude for one block. Dispatches on `forward_model`:
+`:bloch` runs the full KomaMRI sim + 2D recon and samples the sphere-centre
+pixels (and caches the image in `last_image_mag`); `:analytic` synthesises the
+signal directly from `transient_mz_at_excite_npe` — the same closed form the
+fitter inverts — with no Koma call.
+"""
+function _e2_sphere_signals(env::E2Env, TI::Real, TE::Real, TR::Real,
+                            α_exc_deg::Real)
+    if env.forward_model === :analytic
+        return _e2_analytic_signals(env, TI, TE, TR, α_exc_deg)
+    end
+    image_mag, _ = _e2_simulate_step(env, TI, TE, TR, α_exc_deg)
+    env.last_image_mag = vec(image_mag)
+    sig = Vector{Float64}(undef, env.n_spheres)
+    for i in 1:env.n_spheres
+        ipe, ife = env.sphere_px[i]
+        sig[i] = Float64(image_mag[ipe, ife])
+    end
+    sig
+end
+
+"""
+    _e2_analytic_signals(env, TI, TE, TR, α_exc_deg) -> Vector{Float64}
+
+Analytic surrogate for `_e2_sphere_signals`. For each sphere the clean signal is
+`ρ · Mz_at_excite · sin(α_exc) · exp(-TE/T2)` (units: fraction of M0, scale O(1)),
+where `Mz_at_excite = transient_mz_at_excite_npe(T1, TI, TR, π, α_exc; Npe)`.
+Complex Gaussian noise of σ = `analytic_noise_sigma` is added in real+imag, then
+`abs()` (or signed real part under `phase_sensitive`) — so the Rician/abs()
+multimodality at low SNR is reproduced. No image is produced (`last_image_mag`
+stays at its reset zeros; analytic mode is for T1-only observations).
+"""
+function _e2_analytic_signals(env::E2Env, TI::Real, TE::Real, TR::Real,
+                              α_exc_deg::Real)
+    α_exc = deg2rad(Float64(α_exc_deg))
+    sin_α = sin(α_exc)
+    σ     = env.analytic_noise_sigma
+    sig   = Vector{Float64}(undef, env.n_spheres)
+    for i in 1:env.n_spheres
+        base = env.active_base_descs[i]
+        T1_i = env.T1_true[i]
+        T2_i = T1_i * base.T2 / base.T1
+        mz   = transient_mz_at_excite_npe(T1_i, Float64(TI), Float64(TR),
+                                          π, α_exc; Npe = env.Npe)
+        clean = base.ρ * mz * sin_α * exp(-Float64(TE) / T2_i)
+        re    = clean + σ * randn(env.rng)
+        im    = σ * randn(env.rng)
+        sig[i] = env.phase_sensitive ? re : hypot(re, im)
+    end
+    sig
+end
+
+function _e2_update_t1_estimates!(env::E2Env, signals::AbstractVector{<:Real},
                                    TI::Real, TR::Real, α_exc::Real)
     # Excitation flip angle scales transverse signal by sin(α_exc) per shot.
     # The fitter uses a single amplitude A across all TIs, so we normalise
@@ -426,8 +572,7 @@ function _e2_update_t1_estimates!(env::E2Env, image_mag::Matrix{Float32},
     # is also passed through to the fitter via `α_excs`.
     sin_α = max(abs(sin(Float64(α_exc))), 1e-3)
     for i in 1:env.n_spheres
-        ipe, ife = env.sphere_px[i]
-        mag_i = Float64(image_mag[ipe, ife]) / sin_α
+        mag_i = Float64(signals[i]) / sin_α
         push!(env.block_TIs[i],     Float64(TI))
         push!(env.block_TRs[i],     Float64(TR))
         push!(env.block_α_excs[i],  Float64(α_exc))
@@ -436,9 +581,10 @@ function _e2_update_t1_estimates!(env::E2Env, image_mag::Matrix{Float32},
         if length(env.block_TIs[i]) >= 2
             # θ_inv = π for standard 180° inversion prep
             αs = fill(π, length(env.block_TIs[i]))
-            # Fitter noise floor = the same absolute σ injected on k-space
-            # (FIX_SIM_PLAN §2.2). Decoupled from per-sphere data RMS.
-            abs_noise = env.noise_sigma_abs
+            # Fitter noise floor = the absolute σ on the data: the k-space σ in
+            # :bloch (FIX_SIM_PLAN §2.2), the analytic-signal σ in :analytic.
+            abs_noise = env.forward_model === :analytic ?
+                        env.analytic_noise_sigma : env.noise_sigma_abs
             # F1+ (`E2_4_PLAN.md` §2.2): pass env.Npe so the fitter uses the
             # finite-Npe transient closed form that matches what
             # ir_se_2d_sequence actually feeds the simulator.
@@ -476,6 +622,40 @@ function _e2_mape(env::E2Env)
     α * mean(errs) + (1 - α) * maximum(errs)
 end
 
+# log-MAPE in [-3, 0] (floor at 1e-3 = 0.1 % error). More negative = smaller
+# error. The 1e-3 floor sets both the resolution and the neg_log offset below.
+@inline _e2_lc(m::Real) = log10(clamp(Float64(m), 1e-3, 1.0))
+
+"""
+    _e2_reward(env, mape, prev_mape, block_time, done) -> Float64
+
+Single source of truth for the per-step reward, called by both the normal-step
+and budget-exit paths of `e2_step!`. `mape`/`prev_mape` are already clamped to
+[0,1]; `done` is whether this step ends the episode.
+
+Base term by `reward_mode`:
+  :neg_mape       −mape                                   ∈ [-1, 0]
+  :delta_mape     prev_mape − mape                        (per-step progress)
+  :neg_log_mape   −log10(clamp(mape,1e-3,1)) − 3          ∈ [-3, 0] (low-MAPE gradient)
+  :delta_log_mape log10(prev) − log10(mape)               (per-step log-ratio progress)
+  :terminal_only  −mape on the terminal step, else 0      (sparse control)
+
+Then a uniform time cost `−time_penalty_coef · block_time / time_budget_s` is
+subtracted (λ=0 default → no change). The budget-exit path passes block_time=0
+so the discarded block is not charged.
+"""
+function _e2_reward(env::E2Env, mape::Float64, prev_mape::Float64,
+                    block_time::Float64, done::Bool)
+    base =
+        env.reward_mode === :neg_mape       ? -mape :
+        env.reward_mode === :delta_mape     ? prev_mape - mape :
+        env.reward_mode === :neg_log_mape   ? -_e2_lc(mape) - 3.0 :
+        env.reward_mode === :delta_log_mape ? _e2_lc(prev_mape) - _e2_lc(mape) :
+        env.reward_mode === :terminal_only  ? (done ? -mape : 0.0) :
+        error("unknown reward_mode $(env.reward_mode)")
+    base - env.time_penalty_coef * (block_time / env.time_budget_s)
+end
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 """
@@ -490,7 +670,7 @@ function e2_reset!(env::E2Env; rng_seed::Union{Nothing,Integer} = nothing,
     end
     ep_seed = rand(env.rng, 0:typemax(Int32))
 
-    phantom, T1_ep, sphere_px, rot, trans =
+    phantom, water_phantom, T1_ep, sphere_px, rot, trans =
         _e2_build_episode_phantom(env, ep_seed; forced_indices=forced_indices)
 
     env.phantom              = phantom
@@ -498,11 +678,26 @@ function e2_reset!(env::E2Env; rng_seed::Union{Nothing,Integer} = nothing,
     env.sphere_px            = sphere_px
     env.episode_rotation     = rot
     env.episode_translation_m = trans
+
+    # Cached-water template bank. Global scope (T1-only obs): build once on the
+    # first reset — the pose is pinned so it is valid for every episode.
+    # Per-episode scope (image in obs): rebuild each reset because the pose changes.
+    # The α grid spans the action's flip-angle range so any step α is interpolated
+    # (never extrapolated); a single fixed α would be wrong for learned-α runs.
+    if env.forward_model === :bloch && env.water_model === :cached_perline &&
+       (env.cached_water === nothing || !_e2_cache_globally(env))
+        α_grid = deg2rad.(e2_action_lo(env)[4]:5.0:e2_action_hi(env)[4])
+        env.cached_water = build_cached_water_model(
+            water_phantom, scanner_for_field(env.cfg_field);
+            FOV = env.FOV, Nfe = env.Nfe, Npe = env.Npe,
+            α_grid = α_grid, use_gpu = env.use_gpu)
+    end
     # Cache background pixel mask (zero-occupancy pixels, eroded by 1 px)
     # so per-step `e2_image_stats` and `e2_dual_acq_snr_report` don't
     # re-derive it on every call. Phantom is constant within an episode.
-    env.background_mask      = background_mask(phantom, env.Npe, env.Nfe,
-                                               env.FOV; erosion_px = 1)
+    # No image under :analytic → no mask.
+    env.background_mask      = phantom === nothing ? nothing :
+        background_mask(phantom, env.Npe, env.Nfe, env.FOV; erosion_px = 1)
 
     for i in 1:env.n_spheres
         empty!(env.block_TIs[i])
@@ -547,27 +742,20 @@ function e2_step!(env::E2Env, action_vec)
 
     # Scan-time budget + fitter-viability guard. End the episode WITHOUT
     # simulating this block when either:
-    #  • it would overrun the budget — realised time must stay ≤ budget, else a
-    #    "160 s budget" silently becomes 160 s + one block; or
-    #  • it would be a lone first block with no room for a second. The F1+ fitter
-    #    needs ≥2 samples per sphere, so a single block yields no estimate —
-    #    simulating it would just waste a simulate() call (and, for a greedy
-    #    whole-budget first block, teaches the policy nothing).
+    #  • it would overrun the budget; or
+    #  • it would be a lone first block with no room for a second (F1+ needs
+    #    ≥2 samples to fit T1 and A).
     # The discarded action is not executed; no simulate() call is made.
-    tr_floor     = e2_action_lo(env)[3]      # smallest commandable TR (action lower bound)
-    min_followup = env.Npe * tr_floor        # smallest possible next block
+    tr_floor     = e2_action_lo(env)[3]
+    min_followup = env.Npe * tr_floor
     overruns   = env.time_used_s + block_time > env.time_budget_s
     lone_first = env.n_blocks == 0 &&
                  env.time_used_s + block_time + min_followup > env.time_budget_s
     if overruns || lone_first
         env.done = true
-        # No new measurement → estimates and MAPE unchanged from the last step.
-        final_mape = env.n_blocks >= 2 ? _e2_mape(env) : 1.0
-        reward = env.reward_mode === :delta_mape ? 0.0 :
-                 -(env.n_blocks >= 2 ? final_mape : 0.0)
-        if env.n_blocks >= 2 && final_mape < env.success_tol
-            reward += env.terminal_bonus
-        end
+        final_mape = env.n_blocks >= 2 ? clamp(_e2_mape(env), 0.0, 1.0) : 1.0
+        # Discarded block is not executed → not charged scan time (block_time=0).
+        reward = _e2_reward(env, final_mape, env.prev_mape, 0.0, true)
         env.prev_mape = final_mape
         info = Dict{String,Any}(
             "mape"            => final_mape,
@@ -576,50 +764,38 @@ function e2_step!(env::E2Env, action_vec)
             "sphere_indices"  => copy(env.sphere_indices),
             "n_blocks"        => env.n_blocks,
             "time_s"          => env.time_used_s,
-            "block_time"      => 0.0,            # block not executed
+            "block_time"      => 0.0,
             "TI"              => TI,
             "TE"              => TE,
             "TR"              => TR,
             "alpha_deg"       => α_exc_deg,
-            "budget_exceeded" => true,           # diagnostic: action discarded
+            "budget_exceeded" => true,
         )
         return (_e2_observation(env), reward, true, info)
     end
 
-    # Simulate and reconstruct
-    image_mag, _ = _e2_simulate_step(env, TI, TE, TR, α_exc_deg)
-
-    # Store image and update T1 estimates
-    env.last_image_mag = vec(image_mag)
-    _e2_update_t1_estimates!(env, image_mag, TI, TR, deg2rad(α_exc_deg))
+    # Synthesise per-sphere signals (Koma sim + recon in :bloch, closed-form in
+    # :analytic) and update the running T1 estimates.
+    signals = _e2_sphere_signals(env, TI, TE, TR, α_exc_deg)
+    _e2_update_t1_estimates!(env, signals, TI, TR, deg2rad(α_exc_deg))
 
     env.time_used_s += block_time
     env.n_blocks    += 1
 
-    # Reward shaping
-    #   :neg_mape   → r_t = −MAPE_t                       (dense per-step level)
-    #   :delta_mape → r_t = MAPE_{t-1} − MAPE_t           (dense per-step progress)
-    # Per-step delta-MAPE rewards informational *progress* and assigns zero
-    # reward to redundant actions, breaking the E1-style degenerate-policy
-    # equilibrium where the agent collects the same uninformative samples.
-    mape = env.n_blocks >= 2 ? _e2_mape(env) : 1.0
-    if env.reward_mode === :delta_mape
-        reward = env.prev_mape - mape
-    else                          # :neg_mape (legacy E2 behaviour)
-        reward = -(env.n_blocks >= 2 ? mape : 0.0)
-    end
-    env.prev_mape = mape
+    # mape=1.0 until ≥2 samples (no valid fit yet); clamp to [0,1].
+    mape = env.n_blocks >= 2 ? clamp(_e2_mape(env), 0.0, 1.0) : 1.0
 
-    # Episode termination. Beyond max_blocks, also stop once no further block
-    # could fit the remaining budget even at the TR floor (e2_action_lo), so we
-    # don't burn a step that the budget guard above would only reject.
+    # Episode termination — determined BEFORE reward so :terminal_only knows
+    # whether this is the terminal step. Beyond max_blocks, also stop once no
+    # further block could fit the remaining budget even at the TR floor
+    # (e2_action_lo), so we don't burn a step the budget guard would reject.
     if env.n_blocks >= env.max_blocks ||
        env.time_used_s + min_followup > env.time_budget_s
         env.done = true
-        if env.n_blocks >= 2 && _e2_mape(env) < env.success_tol
-            reward += env.terminal_bonus
-        end
     end
+
+    reward = _e2_reward(env, mape, env.prev_mape, block_time, env.done)
+    env.prev_mape = mape
 
     info = Dict{String,Any}(
         "mape"        => mape,
@@ -648,6 +824,8 @@ since the last reset. See `nema_stats` for the returned fields and the
 `/0.6551` Rayleigh-correction convention.
 """
 function e2_image_stats(env::E2Env; roi_radius::Integer = 0)
+    env.forward_model === :analytic &&
+        error("e2_image_stats: no image under forward_model = :analytic")
     env.background_mask === nothing &&
         error("e2_image_stats: call e2_reset! first")
     img = reshape(env.last_image_mag, env.Npe, env.Nfe)
@@ -672,6 +850,8 @@ function e2_dual_acq_snr_report(env::E2Env;
                                  α_deg::Real = 90.0,
                                  roi_radius::Integer = 0,
                                  seed::Integer = 0)
+    env.forward_model === :analytic &&
+        error("e2_dual_acq_snr_report: no image under forward_model = :analytic")
     env.phantom === nothing && error("e2_dual_acq_snr_report: call e2_reset! first")
     env.background_mask === nothing &&
         error("e2_dual_acq_snr_report: missing background mask (call e2_reset!)")
@@ -688,6 +868,14 @@ function e2_dual_acq_snr_report(env::E2Env;
         env.phantom, seq, scanner;
         sim_params = Dict{String,Any}("gpu" => env.use_gpu))
     ksp_clean = raw_to_kspace(raw, env.Npe, env.Nfe)
+
+    # In :cached_perline, env.phantom is spheres-only — add the cached background
+    # water so the SNR reflects the same scene the training steps reconstruct.
+    if env.water_model === :cached_perline
+        ksp_clean = ksp_clean .+ cached_water_ksp(env.cached_water,
+                                                  Float64(TI), Float64(TR), α_exc,
+                                                  Float64(TE))
+    end
 
     snr_report_from_clean(ksp_clean, env.noise_sigma_abs;
                           sphere_px = env.sphere_px,

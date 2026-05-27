@@ -131,6 +131,28 @@ class QalibreMDE2Env(gym.Env):
         include_image: bool = False,
         include_sigma: bool = False,
         include_water: bool = True,
+        # Background-water simulation model (src/water_cache.jl):
+        #   "bloch"          — full-Bloch sim the water with the spheres every step.
+        #   "cached_perline" — Bloch-sim only the spheres; add the water from a cached
+        #                      Koma template rescaled analytically per k-line (~8×
+        #                      per-step, reproduces the full sim to the T1-grid floor).
+        #                      Requires include_water. Cache scope follows include_image
+        #                      (global when T1-only obs, per-episode when image-in-obs).
+        water_model: str = "bloch",
+        # Forward-model surrogate (src/rl/e2.jl). "bloch" (default) runs the full
+        # KomaMRI Bloch sim + 2D recon every step. "analytic" skips Koma and
+        # synthesises per-sphere magnitudes from the same closed form the fitter
+        # inverts (transient_mz_at_excite_npe) — ~µs/step, fits are noise-limited
+        # only. For fast reward SCREENING, not absolute MAPE. Forces a T1-only obs
+        # (no image). analytic_noise_sigma sets the signal-space σ (≈SNR at the
+        # reference operating point; default 0.04 ≈ SNR 25, sweepable).
+        forward_model: str = "bloch",
+        analytic_noise_sigma: float = 0.04,
+        # λ on scan time: subtracts time_penalty_coef·(block_time/budget) from the
+        # per-step reward, on top of ANY reward_mode. Makes scan time a first-class
+        # cost (the base reward is per-block and implicitly favours fat high-TR
+        # blocks). Default 0.0 reproduces the legacy reward exactly.
+        time_penalty_coef: float = 0.0,
         project_dir: Optional[str] = None,
     ) -> None:
         super().__init__()
@@ -167,6 +189,10 @@ class QalibreMDE2Env(gym.Env):
             include_image=bool(include_image),
             include_sigma=bool(include_sigma),
             include_water=bool(include_water),
+            water_model=jl.Symbol(water_model),
+            forward_model=jl.Symbol(forward_model),
+            analytic_noise_sigma=float(analytic_noise_sigma),
+            time_penalty_coef=float(time_penalty_coef),
         )
         if subset_size is not None:
             env_kwargs["subset_size"] = int(subset_size)

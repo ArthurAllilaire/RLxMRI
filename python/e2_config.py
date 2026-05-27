@@ -43,8 +43,17 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
                         "in the Julia runtime; no-op fallback to CPU otherwise.")
 
     p.add_argument("--reward-mode", type=str, default="neg_mape",
-                   choices=["neg_mape", "delta_mape"],
-                   help="neg_mape (legacy) | delta_mape (per-step progress)")
+                   choices=["neg_mape", "delta_mape", "neg_log_mape",
+                            "delta_log_mape", "terminal_only"],
+                   help="neg_mape (legacy level) | delta_mape (per-step progress) "
+                        "| neg_log_mape (log-level, sub-1%% gradient) | "
+                        "delta_log_mape (log-ratio progress) | terminal_only "
+                        "(−final MAPE at episode end only)")
+    p.add_argument("--time-penalty", type=float, default=0.0,
+                   help="λ: subtract λ·(block_time/budget) from the per-step "
+                        "reward, on top of any --reward-mode. Makes scan time a "
+                        "first-class cost; sweep to trace the accuracy-vs-time "
+                        "Pareto front. Default 0.0 = legacy (time-blind) reward.")
     p.add_argument("--log-ti-action", action="store_true",
                    help="Log-spaced TI action mapping (constant density per "
                         "decade). See EXPERT_REPORT_TRAC §9.2.")
@@ -58,7 +67,7 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--learn-alpha", action="store_true",
                    help="Add the excitation flip angle α∈[5°,90°] as a learned "
                         "action dim. Requires --fix-te (Run A).")
-    p.add_argument("--terminal-bonus", type=float, default=0.5,
+    p.add_argument("--terminal-bonus", type=float, default=0.0,
                    help="Set to 0.0 to disable (E1-style degenerate-policy "
                         "driver — see EXPERT_REPORT §15)")
     p.add_argument("--mape-alpha", type=float, default=1.0,
@@ -81,6 +90,24 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
                    help="Build the phantom WITHOUT background-water spins "
                         "(spheres only). Default keeps water. Mainly a bench "
                         "sweep knob — water dominates the spin count / sim cost.")
+    p.add_argument("--water-model", type=str, default="bloch",
+                   choices=["bloch", "cached_perline"],
+                   help="Water simulation model (src/water_cache.jl). bloch (default) "
+                        "full-Bloch sims water every step; cached_perline Bloch-sims "
+                        "only the spheres and adds water from a cached Koma template "
+                        "rescaled per k-line (~8× per-step, T1-grid-floor accurate). "
+                        "Requires water; cache scope follows --include-image.")
+    p.add_argument("--forward-model", type=str, default="bloch",
+                   choices=["bloch", "analytic"],
+                   help="bloch (default) full KomaMRI Bloch sim + 2D recon every "
+                        "step; analytic skips Koma and synthesises per-sphere "
+                        "signals from transient_mz_at_excite_npe (~µs/step, fits "
+                        "noise-limited only). Fast reward SCREENING surrogate — "
+                        "T1-only obs, not for absolute MAPE.")
+    p.add_argument("--analytic-noise", type=float, default=0.04,
+                   help="Signal-space σ for --forward-model analytic (signal scale "
+                        "O(1); default 0.04 ≈ SNR 25 at the reference operating "
+                        "point). Sweep to probe noise robustness.")
 
 
 def e2_env_kwargs(args: argparse.Namespace) -> dict:
@@ -90,25 +117,29 @@ def e2_env_kwargs(args: argparse.Namespace) -> dict:
     are the resolution/voxel/gpu perf knobs from `add_e2_env_args`.
     """
     return dict(
-        cfg_field         = args.field,
-        Nfe               = args.Nfe,
-        Npe               = args.Npe,
-        voxel_size_mm     = args.voxel_mm,
-        use_gpu           = args.use_gpu,
-        max_blocks        = args.max_blocks,
-        time_budget_s     = args.time_budget,
-        subset_size       = args.subset_size,
-        noise_sigma_abs   = args.noise,
-        reward_mode       = args.reward_mode,
-        simplified_action = args.simplified_action,
-        fix_te            = args.fix_te,
-        learn_alpha       = args.learn_alpha,
-        log_ti_action     = args.log_ti_action,
-        terminal_bonus    = args.terminal_bonus,
-        mape_alpha        = args.mape_alpha,
-        phase_sensitive   = args.phase_sensitive,
-        sigma_method      = args.sigma_method,
-        include_image     = args.include_image,
-        include_sigma     = args.include_sigma,
-        include_water     = args.include_water,
+        cfg_field=args.field,
+        Nfe=args.Nfe,
+        Npe=args.Npe,
+        voxel_size_mm=args.voxel_mm,
+        use_gpu=args.use_gpu,
+        max_blocks=args.max_blocks,
+        time_budget_s=args.time_budget,
+        subset_size=args.subset_size,
+        noise_sigma_abs=args.noise,
+        reward_mode=args.reward_mode,
+        time_penalty_coef=args.time_penalty,
+        forward_model=args.forward_model,
+        analytic_noise_sigma=args.analytic_noise,
+        simplified_action=args.simplified_action,
+        fix_te=args.fix_te,
+        learn_alpha=args.learn_alpha,
+        log_ti_action=args.log_ti_action,
+        terminal_bonus=args.terminal_bonus,
+        mape_alpha=args.mape_alpha,
+        phase_sensitive=args.phase_sensitive,
+        sigma_method=args.sigma_method,
+        include_image=args.include_image,
+        include_sigma=args.include_sigma,
+        include_water=args.include_water,
+        water_model=args.water_model,
     )

@@ -29,6 +29,10 @@ using QalibreMDPhantom, KomaMRI, Suppressor
 using DelimitedFiles, Random, Statistics, Printf, JSON, NPZ
 using FFTW: ifft, fftshift, ifftshift
 
+# Shared fit pipeline (accumulate_block_mags, fit_fleet, print_fit_table,
+# write_rundir, try_render, render_t1_figures).
+include(joinpath(@__DIR__, "t1_fit_lib.jl"))
+
 # ── Config (match E2Env defaults) ────────────────────────────────────────────
 const FOV           = 0.2      # m
 const VOXEL_MM      = 1.0
@@ -95,20 +99,6 @@ end
 # replace the dot (0.3 → "0p3"). Python's run_t1_fit_sweep mirrors this rule.
 σlabel(σ::Real) = isinteger(σ) ? string(Int(σ)) : replace(@sprintf("%g", σ), "." => "p")
 noise_tag(σ::Real) = σ > 0 ? "noise$(σlabel(σ))" : "nonoise"
-
-# ── Auto-render Python figures ───────────────────────────────────────────────
-# Cheap enough to always run; fail soft so the script still succeeds if the
-# venv / python isn't on PATH. Set PYTHON=.venv/bin/python to pick the venv.
-function try_render(script_name, args)
-    python = get(ENV, "PYTHON", "python")
-    cmd = `$python $(joinpath(@__DIR__, script_name)) $args`
-    try
-        run(cmd)
-        println("rendered via $(script_name)")
-    catch e
-        println("skipped $(script_name) ($e) — to render manually: $(cmd)")
-    end
-end
 
 # Run-label tags that don't depend on σ (the noise tag is appended per σ).
 budget_tag  = manual ? "bMANUAL" : (unlimited ? "bUNLIM" : "b$(round(Int, budget_s))s")
@@ -331,139 +321,48 @@ for σ in sigmas
                 "SNR report (block 1 reference)")
     end
 
-    block_mags = [Float64[] for _ in 1:n_spheres]
-    for blk in 1:n_blocks
-        ksp = copy(ksp_clean[blk])
-        add_noise!(ksp, σ; rng = rng)
-
-        img = clean_recon ?
-            kspace_to_image(ksp; pad_factor = img_pad, hamming = true,
-                                  phase_sensitive = phase_sensitive) :
-            kspace_to_image(ksp; phase_sensitive = phase_sensitive)
-
-        for i in 1:n_spheres
-            ipe, ife = sphere_px[i]
-            push!(block_mags[i], roi_mean(img, ipe, ife; r = roi_radius) / sin_α)
-        end
-    end
+    block_mags = accumulate_block_mags(ksp_clean, sphere_px, sin_α;
+        σ = σ, rng = rng, clean_recon = clean_recon, img_pad = img_pad,
+        roi_radius = roi_radius, phase_sensitive = phase_sensitive)
 
     # ── Fit T1 per sphere ────────────────────────────────────────────────────
     println("\nFitting T1 per sphere…")
-    T1_fit   = zeros(n_spheres)
-    T1_sigma = fill(NaN, n_spheres)
-    M0_fit   = zeros(n_spheres)
-    mapes    = zeros(n_spheres)
     abs_noise = σ > 0 ? σ : nothing
-    for i in 1:n_spheres
-        fit = fit_t1_generalized_ir(
-            block_TIs[i], α_inv_vec, block_mags[i];
-            TRs           = block_TRs[i],
-            α_excs        = block_α_excs[i],
-            Npe           = Npe,
-            T1_range      = (0.01, 3.0),
-            n_grid        = 500,
-            abs_noise_sigma = abs_noise,
-            sigma_method  = :profile_likelihood,
-            signed        = phase_sensitive,
-        )
-        T1_fit[i]   = fit.T1
-        T1_sigma[i] = fit.T1_sigma
-        M0_fit[i]   = fit.A
-        mapes[i]    = abs(fit.T1 - T1_true[i]) / T1_true[i] * 100
-    end
+    fit = fit_fleet(block_TIs, α_inv_vec, block_mags, T1_true, Npe;
+        block_TRs = block_TRs, block_α_excs = block_α_excs,
+        abs_noise = abs_noise, phase_sensitive = phase_sensitive,
+        T1_range = (0.01, 3.0), n_grid = 500, sigma_method = :profile_likelihood)
 
-    # ── Results table ──────────────────────────────────────────────────────────
-    println()
-    println("  sphere   T1_true [s]   T1_fit [s]   T1_σ [s]   MAPE [%]")
-    println("  " * "─"^58)
-    for i in 1:n_spheres
-        @printf("  %6s   %10.4f   %10.4f   %8.4f   %7.2f\n",
-                descs[i].label, T1_true[i], T1_fit[i],
-                isnan(T1_sigma[i]) ? 0.0 : T1_sigma[i], mapes[i])
-    end
-    println("  " * "─"^58)
-    @printf("  %6s   %10s   %10s   %8s   %7.2f\n", "MEAN", "", "", "", mean(mapes))
-    @printf("  %6s   %10s   %10s   %8s   %7.2f\n", "MAX", "", "", "", maximum(mapes))
+    print_fit_table(descs, T1_true, fit)
 
-    # ── Write run-dir ──────────────────────────────────────────────────────────
+    # ── Write run-dir (config + CSV + signals + recovery curves) ──────────────
     run_label = "$(budget_tag)_$(noise_tag(σ))$(grid_tag)$(ps_tag)$(clean_tag)$(spoil_tag)$(water_tag)"
     outdir    = joinpath(@__DIR__, "runs", "t1_fit_vs_true", run_label)
-    mkpath(outdir)
-
-    open(joinpath(outdir, "config.json"), "w") do io
-        cfg_dict = Dict{String,Any}(
-            "budget_s"        => budget_s,
-            "Npe"             => Npe,
-            "Nfe"             => Nfe,
-            "noise_sigma_abs" => σ,
-            "phase_sensitive" => phase_sensitive,
-            "clean_recon"     => clean_recon,
-            "spoil"           => spoil,
-            "water"           => water,
-            "slice_thickness_mm" => slice_thick,
-            "slice_center_mm"    => slice_center,
-            "unlimited"       => unlimited,
-            "manual"          => manual,
-            "n_blocks"        => n_blocks,
-            "scan_time_s"     => round(scan_time, digits=1),
-            "TIs_s"           => round.(TIs_opt, digits=4),
-            "TRs_s"           => round.(TRs_opt, digits=4),
-            "TR_eff_s"        => TR_eff,
-        )
-        if snr_rep !== nothing
-            cfg_dict["snr_report"] = snr_report_to_dict(snr_rep)
-        end
-        JSON.print(io, cfg_dict, 2)
-        println(io)
-    end
-
-    csv_path = joinpath(outdir, "t1_fit_vs_true.csv")
-    open(csv_path, "w") do io
-        println(io, "label,T1_true_s,T1_fit_s,T1_sigma_s,M0_fit,mape_pct,cx_m,cy_m")
-        for i in 1:n_spheres
-            cx, cy = centres[i][1], centres[i][2]
-            sig = isnan(T1_sigma[i]) ? 0.0 : T1_sigma[i]
-            println(io, "$(descs[i].label),$(T1_true[i]),$(T1_fit[i]),$sig,$(M0_fit[i]),$(mapes[i]),$cx,$cy")
-        end
-    end
-    println("\nWrote $csv_path")
-
-    # Per-block per-sphere observed magnitudes (what the fitter actually saw).
-    signals_path = joinpath(outdir, "block_signals.csv")
-    open(signals_path, "w") do io
-        println(io, "label,block,TI_s,TR_s,mag")
-        for i in 1:n_spheres
-            for k in 1:length(block_TIs[i])
-                println(io, "$(descs[i].label),$k,$(block_TIs[i][k]),$(block_TRs[i][k]),$(block_mags[i][k])")
-            end
-        end
-    end
-    println("Wrote $signals_path")
-
-    # Pre-computed dense recovery curves (per sphere, rows aligned with the CSV
-    # / descs order) so plot_recovery_curves_koma.py needs no Julia bridge.
-    y_true = Matrix{Float64}(undef, n_spheres, length(TI_dense))
-    y_fit  = Matrix{Float64}(undef, n_spheres, length(TI_dense))
-    for i in 1:n_spheres
-        for (k, ti) in enumerate(TI_dense)
-            y_true[i, k] = M0_fit[i] * abs(transient_mz_at_excite_npe(
-                T1_true[i], ti, TR_eff, π, α_exc; Npe = Npe))
-            y_fit[i, k]  = M0_fit[i] * abs(transient_mz_at_excite_npe(
-                T1_fit[i],  ti, TR_eff, π, α_exc; Npe = Npe))
-        end
-    end
-    npzwrite(joinpath(outdir, "recovery_curves.npz"), Dict(
-        "TI_dense" => collect(TI_dense),
-        "y_true"   => y_true,
-        "y_fit"    => y_fit,
-    ))
-    println("Wrote $(joinpath(outdir, "recovery_curves.npz"))")
+    cfg_dict  = Dict{String,Any}(
+        "budget_s"        => budget_s,
+        "Npe"             => Npe,
+        "Nfe"             => Nfe,
+        "noise_sigma_abs" => σ,
+        "phase_sensitive" => phase_sensitive,
+        "clean_recon"     => clean_recon,
+        "spoil"           => spoil,
+        "water"           => water,
+        "slice_thickness_mm" => slice_thick,
+        "slice_center_mm"    => slice_center,
+        "unlimited"       => unlimited,
+        "manual"          => manual,
+        "n_blocks"        => n_blocks,
+        "scan_time_s"     => round(scan_time, digits=1),
+        "TIs_s"           => round.(TIs_opt, digits=4),
+        "TRs_s"           => round.(TRs_opt, digits=4),
+        "TR_eff_s"        => TR_eff,
+    )
+    write_rundir(outdir, descs, T1_true, fit, centres,
+                 block_TIs, block_TRs, block_mags, cfg_dict, TI_dense, TR_eff,
+                 Npe, α_exc; snr_rep = snr_rep)
 
     # ── Auto-render figures (fail-soft) ──────────────────────────────────────
-    if !no_render
-        try_render("t1_fit_vs_true.py", ["--subdir", run_label])
-        try_render("plot_recovery_curves_koma.py", ["--run", run_label])
-    end
+    !no_render && render_t1_figures(run_label)
 end
 
 println("\nDone.")
