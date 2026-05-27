@@ -27,6 +27,21 @@ PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.
     --field T15 --time-budget 240 --max-blocks 20 \
     --timesteps 200000 --n-steps 512 --batch-size 64 \
     2>&1 | tee runs/e2/ppo_runA_deltamape/run.log
+
+Run A on GPU (T4) — ~3.7h vs ~12.5h for 4 CPU envs (benched). --use-gpu loads
+CUDA so the Bloch sim runs on the device; keep --n-envs 1 (one env saturates the
+GPU; multiple envs would just contend over the single device). Don't combine
+--use-gpu with --n-envs>1.
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia \
+  PYTHONUNBUFFERED=1 python -u python/train_e2.py \
+    --out runs/e2/ppo_runA_deltamape \
+    --reward-mode delta_log_mape --mape-alpha 1.0 \
+    --water-model cached_perline \
+    --fix-te --learn-alpha \
+    --use-gpu --n-envs 1 \
+    --field T15 --time-budget 240 --max-blocks 20 \
+    --timesteps 200000 --n-steps 512 --batch-size 64 \
+    2>&1 | tee runs/e2/ppo_runA_deltamape/run.log
 """
 
 from __future__ import annotations
