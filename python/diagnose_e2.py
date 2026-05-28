@@ -68,8 +68,9 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
         # number we cite in the report. Costs 2 extra simulate() calls;
         # acceptable as a one-time measurement since σ is fixed.
         if ep == 0 and snr_holder is not None and not snr_holder:
-            rep = qmd.e2_dual_acq_snr_report(raw_env._env)
-            snr_holder.update({
+            try:
+                rep = qmd.e2_dual_acq_snr_report(raw_env._env)
+                snr_holder.update({
                 "ksp_rms":               float(rep.ksp_rms),
                 "sigma_used":            float(rep.sigma_used),
                 "snr_ksp":               float(rep.snr_ksp),
@@ -86,12 +87,15 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
                 "snr_nema_peak_b":       float(rep.image.snr_nema_peak_b),
                 "snr_dual_per_sphere":   [float(v) for v in rep.image.snr_dual_per_sphere],
                 "snr_dual_peak":         float(rep.image.snr_dual_peak),
-            })
-            print(f"[diagnose] SNR report (NEMA MS-1 dual-acq):")
-            print(f"           σ = {snr_holder['sigma_used']:.4g}   "
-                  f"snr_ksp = {snr_holder['snr_ksp']:.2f}   "
-                  f"snr_nema_peak_a = {snr_holder['snr_nema_peak_a']:.2f}   "
-                  f"snr_dual_peak = {snr_holder['snr_dual_peak']:.2f}  ← report figure")
+                })
+                print(f"[diagnose] SNR report (NEMA MS-1 dual-acq):")
+                print(f"           σ = {snr_holder['sigma_used']:.4g}   "
+                      f"snr_ksp = {snr_holder['snr_ksp']:.2f}   "
+                      f"snr_nema_peak_a = {snr_holder['snr_nema_peak_a']:.2f}   "
+                      f"snr_dual_peak = {snr_holder['snr_dual_peak']:.2f}  ← report figure")
+            except Exception as _snr_err:
+                print(f"[diagnose] SNR report unavailable ({_snr_err.__class__.__name__}): {_snr_err}")
+                snr_holder.clear()
         ep_record = {
             "TI":            [],
             "TE":            [],
@@ -633,6 +637,17 @@ def main():
                    help="Episodes per all_long/all_short bucket (--stratified only).")
     p.add_argument("--mixed-target", type=int, default=100,
                    help="Episodes for the mixed bucket (--stratified only).")
+    p.add_argument("--water-model", type=str, default="bloch",
+                   choices=["bloch", "cached_perline", "analytic"],
+                   help="Must match training to keep obs distribution consistent.")
+    p.add_argument("--noise-sigma-abs", type=float, default=50.0)
+    p.add_argument("--reward-mode", type=str, default="neg_mape")
+    p.add_argument("--terminal-bonus", type=float, default=0.5)
+    p.add_argument("--mape-alpha", type=float, default=1.0)
+    p.add_argument("--allow-stop", action="store_true")
+    p.add_argument("--use-gpu", action="store_true")
+    p.add_argument("--nfe", type=int, default=None)
+    p.add_argument("--npe", type=int, default=None)
     args = p.parse_args()
 
     out_dir = args.out or (args.policy.parent / "diagnostics")
@@ -651,7 +666,18 @@ def main():
         log_ti_action=args.log_ti_action,
         include_image=args.include_image,
         include_sigma=args.include_sigma,
+        water_model=args.water_model,
+        noise_sigma_abs=args.noise_sigma_abs,
+        reward_mode=args.reward_mode,
+        terminal_bonus=args.terminal_bonus,
+        mape_alpha=args.mape_alpha,
+        allow_stop=args.allow_stop,
+        use_gpu=args.use_gpu,
     )
+    if args.nfe is not None:
+        env_kwargs["Nfe"] = args.nfe
+    if args.npe is not None:
+        env_kwargs["Npe"] = args.npe
     snr_measurement = {}
     if args.from_json is not None:
         print(f"[diagnose] Loading episodes from {args.from_json} (skipping Julia) …")

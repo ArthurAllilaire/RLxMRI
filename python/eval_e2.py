@@ -173,6 +173,16 @@ def main():
     p.add_argument("--include-sigma", action="store_true",
                    help="Required if the policy was trained with --include-sigma "
                         "(obs appends the per-sphere fitter-σ channel).")
+    p.add_argument("--water-model", type=str, default="bloch",
+                   choices=["bloch", "cached_perline", "analytic"])
+    p.add_argument("--noise-sigma-abs", type=float, default=50.0)
+    p.add_argument("--reward-mode", type=str, default="neg_mape")
+    p.add_argument("--terminal-bonus", type=float, default=0.5)
+    p.add_argument("--mape-alpha", type=float, default=1.0)
+    p.add_argument("--allow-stop", action="store_true")
+    p.add_argument("--use-gpu", action="store_true")
+    p.add_argument("--nfe", type=int, default=None)
+    p.add_argument("--npe", type=int, default=None)
     args = p.parse_args()
 
     env_kwargs = dict(cfg_field=args.field,
@@ -189,7 +199,18 @@ def main():
                        oracle_band=args.oracle_band,
                        fitter_n_grid=args.fitter_n_grid,
                        include_image=args.include_image,
-                       include_sigma=args.include_sigma)
+                       include_sigma=args.include_sigma,
+                       water_model=args.water_model,
+                       noise_sigma_abs=args.noise_sigma_abs,
+                       reward_mode=args.reward_mode,
+                       terminal_bonus=args.terminal_bonus,
+                       mape_alpha=args.mape_alpha,
+                       allow_stop=args.allow_stop,
+                       use_gpu=args.use_gpu)
+    if args.nfe is not None:
+        env_kwargs["Nfe"] = args.nfe
+    if args.npe is not None:
+        env_kwargs["Npe"] = args.npe
 
     print("=" * 60)
     print(f"E2 Evaluation — policy: {args.policy}")
