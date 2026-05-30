@@ -25,8 +25,24 @@
         @test_throws ErrorException fit_t2_se([1.0, 2.0], [1.0, 2.0])  # non-decaying
     end
 
-    @testset "fit_t1_ir rejects too few samples" begin
+    @testset "fit_t2_se drops non-positive samples (log fit) but needs ≥2 left" begin
+        # The log-linear fit can't take log of ≤0, so those points are dropped.
+        # A clean decay with a couple of corrupted (zero/negative) samples mixed
+        # in must still recover T2 from the survivors.
+        T2_true = 0.3
+        TEs  = [0.05, 0.1, 0.2, 0.4, 0.6, 0.8]
+        mags = [exp(-te / T2_true) for te in TEs]
+        mags[3] = 0.0      # dropped
+        mags[5] = -0.01    # dropped (e.g. noise pushed it below zero)
+        f = fit_t2_se(TEs, mags)
+        @test isapprox(f.T2, T2_true; rtol = 0.05)
+        # If dropping leaves < 2 positive samples, the fit must throw.
+        @test_throws ErrorException fit_t2_se([0.1, 0.2, 0.3], [1.0, 0.0, -1.0])
+    end
+
+    @testset "fit_t1_ir rejects too few samples and length mismatch" begin
         @test_throws ErrorException fit_t1_ir([1e-3, 1e-2], [0.1, 0.5])
+        @test_throws ErrorException fit_t1_ir([1e-3, 1e-2, 1e-1], [0.1, 0.5])
     end
 
     @testset "sequence builders" begin
@@ -35,6 +51,49 @@
         se = se_sequence(50e-3)
         @test length(se) == 5                   # 90, delay, 180, delay, ADC
         @test_throws ErrorException se_sequence(1e-5)  # TE shorter than RF
+    end
+
+    @testset "multi-echo spin echo (CPMG)" begin
+        @testset "mse_signal is mono-exponential" begin
+            T2 = 0.3; ESP = 0.02; n = 6
+            s = mse_signal(T2; ESP = ESP, n_echoes = n)
+            @test length(s) == n
+            @test all(isapprox.(s, [exp(-k*ESP/T2) for k in 1:n]; atol = 1e-12))
+            for k in 1:n-1                              # constant decay ratio
+                @test isapprox(s[k+1]/s[k], exp(-ESP/T2); rtol = 1e-12)
+            end
+            @test_throws ErrorException mse_signal(0.3; ESP = 0.02, n_echoes = 0)
+        end
+
+        @testset "mse_sequence builder: n ADC blocks; bad args throw" begin
+            ESP = 0.02; n = 5
+            seq = mse_sequence(ESP, n)
+            adc_blocks = [i for i in 1:length(seq) if seq[i].ADC[1].N > 0]
+            @test length(adc_blocks) == n              # one echo readout each
+            @test_throws ErrorException mse_sequence(1e-5, 4)   # ESP too short
+            @test_throws ErrorException mse_sequence(0.02, 0)   # n_echoes < 1
+        end
+
+        @testset "CPMG echoes match KomaMRI exp(-k·ESP/T2) and single SE" begin
+            # Single-spin CPMG: echo k magnitude tracks the analytic mono-exp,
+            # and the first echo equals a standalone SE at TE = ESP. Parallels
+            # the F1+/KomaMRI agreement test for IR.
+            T1, T2, ESP, n = 1.0, 0.12, 0.02, 6
+            mags = measure_mse_signal(; T1 = T1, T2 = T2, ESP = ESP, n_echoes = n)
+            ana  = mse_signal(T2; ESP = ESP, n_echoes = n)
+            @test all(isapprox.(mags, ana; rtol = 0.05, atol = 5e-3))
+            se1 = measure_se_signal(; T1 = T1, T2 = T2, TE = ESP)
+            @test isapprox(mags[1], se1; rtol = 0.05, atol = 5e-3)
+        end
+
+        @testset "measure_t2 :cpmg recovers T2 (one acquisition)" begin
+            for T2_true in (0.05, 0.2, 0.5)
+                r = measure_t2(3.0, T2_true; mode = :cpmg, T2_hint = T2_true)
+                @test isapprox(r.T2_est, T2_true; rtol = 0.05)
+                @test r.n_echoes == 12
+            end
+            @test_throws ErrorException measure_t2(3.0, 0.1; mode = :bogus)
+        end
     end
 
     @testset "single_spin_phantom" begin

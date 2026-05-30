@@ -70,6 +70,52 @@ function se_sequence(TE::Real;
 end
 
 """
+    mse_sequence(ESP, n_echoes; amp_T, n_adc, dur_adc)
+
+Multi-echo spin echo (CPMG): a single 90° excitation followed by a train of
+`n_echoes` 180° refocusing pulses, each with an ADC centred on its echo:
+
+    90° → [ESP/2 → 180° → ESP/2 → ADC]·n_echoes
+
+Echo `k` forms at `t = k·ESP` after the excitation, so the centre ADC sample
+of block `k` tracks `S0·exp(−k·ESP/T2)` for a Mz-equilibrium spin under perfect
+refocusing + transverse spoiling (the analytic `mse_signal`). This samples the
+whole T2 decay curve in **one TR**, versus one TE per shot for `se_sequence`.
+
+`n_echoes = 1` reproduces `se_sequence(ESP)` (one echo at TE = ESP). Errors if
+`ESP` is too short for the pulse/ADC durations. Imperfect 180° pulses introduce
+stimulated/indirect echoes that break the mono-exponential model (would need
+EPG); the digital twin uses exact 180°, so mono-exp holds — and exact 180°s mean
+no crusher pair is needed to keep the echo clean, so this block carries none
+(adding gradient crushers would have to be budgeted into the ESP delays).
+"""
+function mse_sequence(ESP::Real, n_echoes::Int;
+                      amp_T::Real   = 20e-6,
+                      n_adc::Int    = 1,
+                      dur_adc::Real = min(1e-3, ESP/4))
+    n_echoes >= 1 || error("n_echoes must be ≥ 1; got $n_echoes")
+    d90  = rf_duration(π/2; amp_T = amp_T)
+    d180 = rf_duration(π;   amp_T = amp_T)
+
+    # Centre-to-centre spacing is ESP between successive echoes (and the first
+    # 180° sits ESP/2 after the 90°). Convert to inter-block delays.
+    gap_first = ESP/2 - d90/2  - d180/2      # 90° centre → first 180° centre
+    gap_half  = ESP/2 - d180/2 - dur_adc/2   # 180° centre → echo, and echo → next 180°
+    gap_first <= 0 && error("ESP too short for 90°/180° pulse durations; got ESP=$ESP")
+    gap_half  <= 0 && error("ESP too short for 180° pulse + ADC window; got ESP=$ESP")
+
+    seq = Sequence()
+    seq += RF(amp_T, d90)
+    for k in 1:n_echoes
+        seq += Delay(k == 1 ? gap_first : gap_half)
+        seq += RF(amp_T, d180)
+        seq += Delay(gap_half)
+        seq += ADC(n_adc, dur_adc, 0.0)
+    end
+    seq
+end
+
+"""
     generalized_ir_signal(T1, T2; TI, α, n_adc = 64, dur_adc = 2e-3)
 
 Analytical (closed-form) magnitude readout of an IR-prep / 90°-excite /
@@ -93,6 +139,25 @@ function generalized_ir_signal(T1::Real, T2::Real;
     amp           = abs(Mz_at_excite)
     ts            = range(0, dur_adc; length = n_adc)
     Float64[amp * exp(-t / T2) for t in ts]
+end
+
+"""
+    mse_signal(T2; ESP, n_echoes)
+
+Analytical (closed-form) echo-train magnitudes for the CPMG `mse_sequence`.
+Under perfect 90°/180° pulses and transverse spoiling, echo `k` (at `t = k·ESP`
+after the excitation) has magnitude `exp(−k·ESP/T2)` for a unit-amplitude spin:
+
+    [exp(−k·ESP/T2)  for k in 1:n_echoes]
+
+So `mse_signal(T2; ESP, n) ./` an overall amplitude `A` is exactly what
+`fit_t2_se(ESP .* (1:n), mags)` inverts. Orders of magnitude faster than
+`simulate()` and equivalent in the single-spin limit — the training hot path and
+the test oracle, mirroring `generalized_ir_signal` for T1.
+"""
+function mse_signal(T2::Real; ESP::Real, n_echoes::Int)
+    n_echoes >= 1 || error("n_echoes must be ≥ 1; got $n_echoes")
+    Float64[exp(-k * Float64(ESP) / T2) for k in 1:n_echoes]
 end
 
 """
@@ -207,6 +272,167 @@ function ir_se_2d_sequence(TI::Real, TE::Real, TR::Real;
         seq += (ADC(Nfe, dur_adc), x=Grad(Gx_ro, dur_adc))                  # 8. readout
         seq = apply_spoiler(seq, spoiler)                                   # 9a. TR spoiler: kills residual Mxy
         tr_d > 1e-9 && (seq += Delay(tr_d))                                 # 9b. TR recovery
+    end
+    seq
+end
+
+"""
+    se_2d_sequence(TE, TR; α_exc, FOV, Nfe, Npe, amp_T, spoiler) → Sequence
+
+Multi-shot 2D Cartesian spin-echo sequence — `ir_se_2d_sequence` with the
+inversion + TI block dropped. Used for spatially-resolved **T2** mapping: sweep
+`TE` across acquisitions and fit `exp(−TE/T2)` per voxel. `Npe` shots, one
+`Nfe`-sample readout each; same gradient/k-space convention, pixel mapping, and
+reconstruction (`abs.(ifft(ksp, (1,2)))`) as `ir_se_2d_sequence`.
+
+The 180° refocus removes T2* (so the echo decays as the clean T2, not T2*);
+`TR ≫ T1` makes each shot start from a recovered M0 so the T1 weighting drops
+out and only the `exp(−TE/T2)` dependence remains.
+"""
+function se_2d_sequence(TE::Real, TR::Real;
+                        α_exc::Real             = π / 2,
+                        FOV::Real               = 0.2,
+                        Nfe::Int                = 16,
+                        Npe::Int                = 8,
+                        amp_T::Real             = 20e-6,
+                        spoiler::SpoilerConfig  = SpoilerConfig())
+    γ_Hz = 42.577e6   # proton gyromagnetic ratio [Hz/T], Koma convention
+
+    d_exc = rf_duration(α_exc; amp_T = amp_T)
+    d_ref = rf_duration(π;     amp_T = amp_T)
+
+    dur_adc = 1e-3            # readout window [s]
+    dur_pe  = dur_adc / 2     # prewinder / phase-encode duration [s]
+
+    kmax_x = Nfe / (2.0 * FOV)
+    Gx_pre = kmax_x / (γ_Hz * dur_pe)
+    Gx_ro  = 2.0 * kmax_x / (γ_Hz * dur_adc)
+
+    Δky      = 1.0 / FOV
+    ky_steps = [(k - 1 - Npe ÷ 2) * Δky for k in 1:Npe]
+
+    d_crush = spoiler.enabled ? spoiler.dur : 0.0
+
+    te1_d = max(TE / 2 - d_exc / 2 - dur_pe - d_crush - d_ref / 2, 0.0)
+    te2_d = max(TE / 2 - d_ref / 2 - d_crush - dur_adc / 2, 0.0)
+
+    shot_time = d_exc + dur_pe + te1_d +
+                d_crush + d_ref + d_crush + te2_d + dur_adc + d_crush
+    tr_d      = max(TR - shot_time, 0.0)
+
+    seq = Sequence()
+    @addblocks for k in 1:Npe
+        Gy_k = -ky_steps[k] / (γ_Hz * dur_pe)
+
+        seq += (RF(amp_T, d_exc),)                                          # 1. excitation
+        seq += (x=Grad(Gx_pre, dur_pe), y=Grad(Gy_k, dur_pe))               # 2. prewinder + PE
+        te1_d > 1e-9 && (seq += Delay(te1_d))                               # 3. TE/2
+        seq = apply_spoiler(seq, spoiler)                                   # 4a. pre-crusher
+        seq += (RF(amp_T, d_ref),)                                          # 4b. 180° refocus
+        seq = apply_spoiler(seq, spoiler)                                   # 4c. post-crusher
+        te2_d > 1e-9 && (seq += Delay(te2_d))                               # 5. TE/2 to echo
+        seq += (ADC(Nfe, dur_adc), x=Grad(Gx_ro, dur_adc))                  # 6. readout
+        seq = apply_spoiler(seq, spoiler)                                   # 7a. TR spoiler
+        tr_d > 1e-9 && (seq += Delay(tr_d))                                 # 7b. TR recovery
+    end
+    seq
+end
+
+"""
+    ir_tse_2d_sequence(TI, esp, TR; etl, α_exc, FOV, Nfe, Npe, amp_T, spoiler) → Sequence
+
+Inversion-recovery **turbo spin echo** (IR-TSE) — `ir_se_2d_sequence` with an
+echo train of length `etl` after each excitation. A single inversion + excitation
+is followed by `etl` 180° refocuses, each reading a *different* phase-encode line,
+so one shot fills `etl` rows of k-space and the whole image needs only `Npe ÷ etl`
+shots (≈`etl`× faster than the single-echo IR readout). `etl = 1` reproduces
+`ir_se_2d_sequence(TI, esp, TR)` (echo at `TE = esp`); `etl` must divide `Npe`.
+
+Echo `e` forms at `t = e·esp` after excitation. Phase-encode **view ordering is
+linear**: shot `s` acquires lines `(s−1)·etl+1 … s·etl`, so the acquisition order
+of ADC profiles equals the k-space line order and `raw_to_kspace` reconstructs
+unchanged. The per-echo `Gy` is a blip *after* the 180° (set directly to
+`+ky_steps[line]`) plus a rewind to `ky=0` *after* the readout — ADC always runs
+with `Gy=0` (clean Cartesian), and `ky=0` at every refocus so the echo train is
+undisturbed. `Gx` reuses the spin-echo convention: one positive prewinder; each
+180° conjugates `kx`, each positive readout sweeps `−kmax→+kmax`.
+
+T2 weighting varies across the echo train (later lines decay more), so the image
+carries an *effective TE* set by the echo that fills the central k line — the
+T2-blurring vs scan-time trade the agent can learn. Imperfect 180°s would add
+stimulated echoes (EPG territory); the digital twin's exact 180°s keep the train
+clean.
+"""
+function ir_tse_2d_sequence(TI::Real, esp::Real, TR::Real;
+                            etl::Int                = 2,
+                            α_exc::Real             = π / 2,
+                            FOV::Real               = 0.2,
+                            Nfe::Int                = 16,
+                            Npe::Int                = 8,
+                            amp_T::Real             = 20e-6,
+                            spoiler::SpoilerConfig  = SpoilerConfig())
+    etl >= 1 || error("etl must be ≥ 1; got $etl")
+    Npe % etl == 0 || error("etl ($etl) must divide Npe ($Npe)")
+    γ_Hz = 42.577e6
+
+    d_inv = rf_duration(π;     amp_T = amp_T)
+    d_exc = rf_duration(α_exc; amp_T = amp_T)
+    d_ref = rf_duration(π;     amp_T = amp_T)
+
+    dur_adc = 1e-3
+    dur_pe  = dur_adc / 2
+
+    kmax_x = Nfe / (2.0 * FOV)
+    Gx_pre = kmax_x / (γ_Hz * dur_pe)
+    Gx_ro  = 2.0 * kmax_x / (γ_Hz * dur_adc)
+
+    Δky      = 1.0 / FOV
+    ky_steps = [(k - 1 - Npe ÷ 2) * Δky for k in 1:Npe]
+
+    d_crush = spoiler.enabled ? spoiler.dur : 0.0
+
+    ti_d     = max(TI    - d_inv / 2 - d_exc / 2, 0.0)
+    # exc → first 180° (prewinder dur_pe sits between excitation and 180°).
+    te1_d    = max(esp/2 - d_exc/2 - dur_pe - d_crush - d_ref/2, 0.0)
+    # 180° → echo (PE blip dur_pe sits between 180° and readout).
+    te_mid_d = max(esp/2 - d_ref/2 - d_crush - dur_pe - dur_adc/2, 0.0)
+    # echo → next 180° (PE rewind dur_pe sits between readout and next 180°).
+    te_gap_d = max(esp/2 - dur_adc/2 - dur_pe - d_crush - d_ref/2, 0.0)
+    (esp/2 - d_exc/2 - dur_pe - d_crush - d_ref/2) > 0 ||
+        error("esp too short for excitation + prewinder + 180°; got esp=$esp")
+    (esp/2 - d_ref/2 - d_crush - dur_pe - dur_adc/2) > 0 ||
+        error("esp too short for 180° + PE blip + ADC; got esp=$esp")
+
+    n_shots = Npe ÷ etl
+    per_echo1 = te1_d    + d_crush + d_ref + d_crush + dur_pe + te_mid_d + dur_adc + dur_pe
+    per_echoN = te_gap_d + d_crush + d_ref + d_crush + dur_pe + te_mid_d + dur_adc + dur_pe
+    shot_time = d_inv + ti_d + d_exc + dur_pe + per_echo1 + (etl - 1) * per_echoN + d_crush
+    tr_d      = max(TR - shot_time, 0.0)
+
+    seq = Sequence()
+    @addblocks for s in 1:n_shots
+        seq += (RF(amp_T, d_inv),)                                          # 1. 180° inversion
+        ti_d > 1e-9 && (seq += Delay(ti_d))                                 # 2. TI
+        seq += (RF(amp_T, d_exc),)                                          # 3. excitation
+        seq += (x = Grad(Gx_pre, dur_pe),)                                  # 4. kx prewinder (once)
+        for e in 1:etl
+            line    = (s - 1) * etl + e
+            Gy_blip = ky_steps[line] / (γ_Hz * dur_pe)                      # +ky after the 180°
+            pre_d   = (e == 1) ? te1_d : te_gap_d
+            pre_d > 1e-9 && (seq += Delay(pre_d))                           # 5. TE/2 (exc/echo → 180°)
+            seq = apply_spoiler(seq, spoiler)                               # 6a. pre-crusher
+            # Meiboom–Gill: refocus about y (90° RF phase) while the excitation
+            # is about x. Without it, non-MG 180°ₓ pulses alternate the echo sign
+            # down the train → an alternating sign per ky line → half-FOV PE shift.
+            seq += (RF(complex(0.0, amp_T), d_ref),)                        # 6b. 180°_y refocus (MG)
+            seq = apply_spoiler(seq, spoiler)                               # 6c. post-crusher
+            seq += (y = Grad(Gy_blip, dur_pe),)                            # 7. PE blip → +ky_steps[line]
+            te_mid_d > 1e-9 && (seq += Delay(te_mid_d))                     # 8. 180° → echo
+            seq += (ADC(Nfe, dur_adc), x = Grad(Gx_ro, dur_adc))           # 9. readout (Gy = 0)
+            seq += (y = Grad(-Gy_blip, dur_pe),)                          # 10. PE rewind → ky = 0
+        end
+        seq = apply_spoiler(seq, spoiler)                                   # 11a. TR spoiler
+        tr_d > 1e-9 && (seq += Delay(tr_d))                                 # 11b. TR recovery
     end
     seq
 end

@@ -40,6 +40,27 @@ function measure_se_signal(; T1::Real, T2::Real, TE::Real,
 end
 
 """
+    measure_mse_signal(; T1, T2, ESP, n_echoes, amp_T = 20e-6, n_adc = 1, ...)
+
+Run a single CPMG (`mse_sequence`) simulation on a single-spin phantom and
+return the vector of `n_echoes` echo magnitudes — the centre sample of each
+echo's ADC block. Echo `k` sits at `TE = k·ESP`, so the result tracks
+`exp(−k·ESP/T2)`: the whole T2 decay curve from **one** acquisition.
+"""
+function measure_mse_signal(; T1::Real, T2::Real, ESP::Real, n_echoes::Int,
+                              amp_T::Real = 20e-6,
+                              n_adc::Int  = 1,
+                              dur_adc::Real = min(1e-3, ESP/4),
+                              scanner::Scanner = Scanner())
+    obj = single_spin_phantom(T1 = T1, T2 = T2)
+    seq = mse_sequence(ESP, n_echoes; amp_T = amp_T, n_adc = n_adc,
+                       dur_adc = dur_adc)
+    raw = Suppressor.@suppress simulate(obj, seq, scanner)
+    # One ADC block (profile) per echo; centre sample of each.
+    [abs(raw.profiles[k].data[n_adc ÷ 2 + 1, 1]) for k in 1:n_echoes]
+end
+
+"""
     adaptive_TI_schedule(T1_hint; n = 10, lo_factor = 1/20, hi_factor = 5)
 
 Log-spaced TI values tailored to a sphere with approximate T1 `T1_hint`.
@@ -92,19 +113,42 @@ function measure_t1(T1_true::Real, T2_true::Real;
 end
 
 """
-    measure_t2(T1_true, T2_true; TEs, T2_hint, kwargs...)
+    measure_t2(T1_true, T2_true; mode = :multishot, TEs, T2_hint, kwargs...)
 
-Run an SE sweep and fit T2. If `TEs` is not provided, builds one from
-`T2_hint` (defaults to `T2_true`) via `adaptive_TE_schedule`.
+Run a T2 sweep and fit T2. Two acquisition modes:
+
+- `:multishot` (default, conventional): one single-echo SE per TE in `TEs`
+  (`length(TEs)` separate TR-long shots). If `TEs` is not provided, builds one
+  from `T2_hint` (defaults to `T2_true`) via `adaptive_TE_schedule`.
+- `:cpmg`: a single multi-echo (`mse_sequence`) acquisition with `n_echoes`
+  echoes spaced `ESP` apart — the whole decay curve in one shot. Defaults derive
+  `ESP`/`n_echoes` from `T2_hint` so the train spans ~3·T2.
+
+Both fit the same mono-exponential `fit_t2_se` over the per-echo times. Returns
+`(T2_est, TEs, mags, fit)`; `:cpmg` additionally exposes `ESP`/`n_echoes`.
 """
 function measure_t2(T1_true::Real, T2_true::Real;
+                    mode::Symbol = :multishot,
                     T2_hint::Real = T2_true,
                     TEs::AbstractVector{<:Real} = adaptive_TE_schedule(T2_hint),
+                    n_echoes::Int = 12,
+                    ESP::Real = max(3e-3, 3 * T2_hint / n_echoes),
                     kwargs...)
-    mags = [measure_se_signal(; T1 = T1_true, T2 = T2_true, TE = TE,
-                               kwargs...) for TE in TEs]
-    fit = fit_t2_se(TEs, mags)
-    (T2_est = fit.T2, TEs = TEs, mags = mags, fit = fit)
+    if mode === :cpmg
+        TEs_cpmg = ESP .* (1:n_echoes)
+        mags = measure_mse_signal(; T1 = T1_true, T2 = T2_true,
+                                   ESP = ESP, n_echoes = n_echoes, kwargs...)
+        fit = fit_t2_se(collect(TEs_cpmg), mags)
+        return (T2_est = fit.T2, TEs = collect(TEs_cpmg), mags = mags,
+                fit = fit, ESP = ESP, n_echoes = n_echoes)
+    elseif mode === :multishot
+        mags = [measure_se_signal(; T1 = T1_true, T2 = T2_true, TE = TE,
+                                   kwargs...) for TE in TEs]
+        fit = fit_t2_se(TEs, mags)
+        return (T2_est = fit.T2, TEs = TEs, mags = mags, fit = fit)
+    else
+        error("measure_t2 mode must be :multishot or :cpmg; got :$mode")
+    end
 end
 
 """

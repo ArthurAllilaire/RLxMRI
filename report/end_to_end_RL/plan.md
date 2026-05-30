@@ -1,0 +1,1 @@
+Risky af - but get rid of fitters, just gradients, rf pulses and delays and a dream.

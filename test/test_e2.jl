@@ -52,6 +52,88 @@
         @test all(isapprox.(gy_amps, expected; atol = 1e-12))
     end
 
+    @testset "se_2d_sequence: no Gy during ADC; Npe ADC blocks" begin
+        # Spatial spin echo for T2 — same Cartesian-readout regression as the IR
+        # version (it shares the gradient code, just without the inversion+TI).
+        seq = se_2d_sequence(0.02, 2.0; FOV = 0.2, Nfe = 8, Npe = 4)
+        adc_blocks = [i for i in 1:length(seq) if seq[i].ADC[1].N > 0]
+        @test length(adc_blocks) == 4
+        for i in adc_blocks
+            b = seq[i]
+            @test isapprox(b.GR[2, 1].A, 0.0; atol = 1e-12)   # Gy = 0 during ADC
+            @test b.GR[1, 1].A > 0                            # Gx readout active
+        end
+    end
+
+    @testset "se_2d_sequence: echo carries exp(-TE/T2) weighting (single spin)" begin
+        # On a single spin at the origin the Gx readout doesn't dephase, so the
+        # centre readout sample tracks the echo magnitude. The ratio across two
+        # TEs must be the clean T2 decay exp(-(TE2-TE1)/T2) — pins the SE timing.
+        T2 = 0.1
+        obj = single_spin_phantom(T1 = 1.0, T2 = T2)
+        echo(TE) = begin
+            seq = se_2d_sequence(TE, 5.0; FOV = 0.2, Nfe = 8, Npe = 1)
+            raw = @suppress simulate(obj, seq, Scanner())
+            abs(raw.profiles[1].data[4 + 1, 1])   # centre of the 8-sample readout
+        end
+        TE1, TE2 = 0.02, 0.06
+        @test isapprox(echo(TE2) / echo(TE1), exp(-(TE2 - TE1) / T2);
+                       rtol = 0.06, atol = 5e-3)
+    end
+
+    @testset "ir_tse_2d_sequence: builder structure + guards" begin
+        seq = ir_tse_2d_sequence(0.5, 0.02, 2.0; etl = 2, FOV = 0.2, Nfe = 8, Npe = 4)
+        adc_blocks = [i for i in 1:length(seq) if seq[i].ADC[1].N > 0]
+        @test length(adc_blocks) == 4                      # Npe total readouts (2 shots × etl 2)
+        for i in adc_blocks
+            @test isapprox(seq[i].GR[2, 1].A, 0.0; atol = 1e-12)   # Gy = 0 during ADC
+            @test seq[i].GR[1, 1].A > 0                            # Gx readout active
+        end
+        @test_throws ErrorException ir_tse_2d_sequence(0.5, 0.02, 2.0; etl = 3, Npe = 4)  # 3∤4
+        @test_throws ErrorException ir_tse_2d_sequence(0.5, 0.02, 2.0; etl = 0, Npe = 4)
+        @test_throws ErrorException ir_tse_2d_sequence(0.5, 1e-5, 2.0; etl = 2, Npe = 4)  # esp too short
+    end
+
+    @testset "ir_tse_2d_sequence: etl=1 echo equals ir_se_2d (single spin)" begin
+        # etl=1 must reproduce the single-echo IR readout; on a single spin the
+        # gradients don't dephase so the centre readout sample is the echo.
+        T1, T2, TI, esp = 1.0, 0.1, 0.5, 0.02
+        obj = single_spin_phantom(T1 = T1, T2 = T2)
+        ctr(seq) = abs((@suppress simulate(obj, seq, Scanner())).profiles[1].data[5, 1])
+        s_se  = ir_se_2d_sequence(TI, esp, 5.0; FOV = 0.2, Nfe = 8, Npe = 1)
+        s_tse = ir_tse_2d_sequence(TI, esp, 5.0; etl = 1, FOV = 0.2, Nfe = 8, Npe = 1)
+        @test isapprox(ctr(s_se), ctr(s_tse); rtol = 0.02, atol = 5e-3)
+    end
+
+    @testset "ir_tse_2d_sequence: echo train decays as exp(-e·esp/T2)" begin
+        T1, T2, TI, esp = 1.0, 0.12, 0.5, 0.02
+        obj = single_spin_phantom(T1 = T1, T2 = T2)
+        seq = ir_tse_2d_sequence(TI, esp, 5.0; etl = 4, FOV = 0.2, Nfe = 8, Npe = 4)
+        raw = @suppress simulate(obj, seq, Scanner())
+        echoes = [abs(raw.profiles[e].data[5, 1]) for e in 1:4]
+        for e in 1:3                                        # Meiboom–Gill: clean mono-exp
+            @test isapprox(echoes[e+1] / echoes[e], exp(-esp / T2); rtol = 0.06, atol = 5e-3)
+        end
+    end
+
+    @testset "ir_tse_2d_sequence: etl=2 places spins in same PE rows as IR (ky order)" begin
+        # T2 ≫ etl·esp so the train barely decays → the TSE recon must resolve
+        # the same phase-encode rows as the single-echo IR. A ky-blip-sign or
+        # view-ordering bug shifts the rows by half-FOV (the non-Meiboom–Gill bug
+        # this guards against).
+        TI, esp, TR, FOV, Nfe, Npe = 0.5, 0.02, 5.0, 0.2, 8, 4
+        obj = Phantom(x = [0.0, 0.0], y = [0.0, 0.05],
+                      T1 = [1.0, 1.0], T2 = [10.0, 10.0], ρ = [1.0, 1.0])
+        recon(seq) = kspace_to_image(raw_to_kspace(
+            (@suppress simulate(obj, seq, Scanner())), Npe, Nfe))
+        img_se  = recon(ir_se_2d_sequence(TI, esp, TR; FOV = FOV, Nfe = Nfe, Npe = Npe))
+        img_tse = recon(ir_tse_2d_sequence(TI, esp, TR; etl = 2, FOV = FOV, Nfe = Nfe, Npe = Npe))
+        row_energy(img) = vec(sum(abs2, img; dims = 2))
+        top2(img) = sort(partialsortperm(row_energy(img), 1:2; rev = true))
+        @test top2(img_tse) == top2(img_se)                 # spins in the same PE rows
+        @test isapprox(maximum(img_tse), maximum(img_se); rtol = 0.2)   # no gross scale bug
+    end
+
     @testset "fit_t1_generalized_ir: α_exc-scaled magnitudes need correction" begin
         # Regression for the excitation-flip-angle scaling fix in e2.jl.
         # The fitter has a single amplitude A, so when α_exc varies between
@@ -698,6 +780,277 @@
                                            TRs = TRs, α_excs = αes, Npe = 8,
                                            signed = true)
         @test isapprox(f_mag.T1, f_signed.T1; rtol = 0.01)
+    end
+
+    # ── joint T1/T2 fit (IR-TSE multiparametric) ─────────────────────────────
+    @testset "fit_t1_t2_generalized_ir: joint recovery + reduction limits" begin
+        # (TI, TE) grid constrains T1 (via TI) and T2 (via TE). Data from the
+        # joint forward model |A·Mz(T1)·exp(-TE/T2)|, A = 1.
+        Npe = 8
+        TIs_base = [0.05, 0.2, 0.5, 1.0]
+        TEs_base = [0.02, 0.06, 0.12, 0.20]
+        TIs = repeat(TIs_base, inner = length(TEs_base))
+        TEs = repeat(TEs_base, outer = length(TIs_base))
+        n   = length(TIs)
+        αs  = fill(π, n); αes = fill(π/2, n); TRs = fill(3.0, n)
+        gen(T1, T2) = [abs(transient_mz_at_excite_npe(T1, TIs[k], TRs[k], π, π/2;
+                                                       Npe = Npe)) *
+                       exp(-TEs[k] / T2) for k in 1:n]
+
+        @testset "noiseless joint recovery of T1 and T2" begin
+            for (T1, T2) in [(0.5, 0.1), (0.2, 0.05), (1.0, 0.2)]
+                f = fit_t1_t2_generalized_ir(TIs, αs, TEs, gen(T1, T2);
+                        TRs = TRs, α_excs = αes, Npe = Npe,
+                        T1_range = (0.02, 3.0), T2_range = (0.01, 1.0),
+                        n_grid_t1 = 200, n_grid_t2 = 150, abs_noise_sigma = 0.01)
+                @test isapprox(f.T1, T1; rtol = 0.05)
+                @test isapprox(f.T2, T2; rtol = 0.05)
+                @test isfinite(f.T1_sigma) && f.T1_sigma < 0.3 * T1
+                @test isfinite(f.T2_sigma) && f.T2_sigma < 0.3 * T2
+            end
+        end
+
+        @testset "constant TE ⇒ T2 unidentifiable; T1 matches the T1-only fit" begin
+            # With TE fixed, exp(-TE/T2) is a constant the amplitude A absorbs, so
+            # T2 is unconstrained (wide σ) and T1* must agree with the T1-only fit.
+            T1, T2 = 0.5, 0.1
+            TEc  = fill(0.05, n)
+            mags = [abs(transient_mz_at_excite_npe(T1, TIs[k], TRs[k], π, π/2;
+                                                   Npe = Npe)) * exp(-TEc[k]/T2)
+                    for k in 1:n]
+            fj = fit_t1_t2_generalized_ir(TIs, αs, TEc, mags; TRs = TRs,
+                    α_excs = αes, Npe = Npe, T1_range = (0.02, 3.0),
+                    T2_range = (0.01, 1.0), n_grid_t1 = 200, n_grid_t2 = 150,
+                    abs_noise_sigma = 0.01)
+            f1 = fit_t1_generalized_ir(TIs, αs, mags; TRs = TRs, α_excs = αes,
+                    Npe = Npe, T1_range = (0.02, 3.0), n_grid = 200,
+                    abs_noise_sigma = 0.01)
+            @test isapprox(fj.T1, f1.T1; rtol = 0.05)
+            @test fj.T2_sigma > 0.5 * fj.T2          # T2 wide (unconstrained)
+        end
+
+        @testset "input validation throws" begin
+            @test_throws ErrorException fit_t1_t2_generalized_ir(TIs, αs,
+                                            TEs[1:end-1], gen(0.5, 0.1))
+            @test_throws ErrorException fit_t1_t2_generalized_ir([0.1], [π],
+                                            [0.02], [0.5])
+            @test_throws ErrorException fit_t1_t2_generalized_ir(TIs, αs, TEs,
+                                            gen(0.5, 0.1); Npe = 0)
+        end
+    end
+
+    # ── σ calibration (Monte-Carlo) ──────────────────────────────────────────
+    # The existing σ tests are all *qualitative* (wide-vs-narrow, finite-vs-NaN,
+    # point-estimate-unchanged). These pin the *magnitude* of T1_sigma against
+    # the estimator's own frequentist sampling distribution: fix T1_true + a
+    # well-determined schedule, draw many Gaussian-noise realisations at a known
+    # abs_noise_sigma, refit each, and compare the reported σ to the actual
+    # spread of T1*. Two distinct references (see the σ method's own claim):
+    #   - :asymptotic / :bootstrap  → MC std of T1*   (they return a std)
+    #   - :profile_likelihood       → 68 % coverage    (it's a CI half-width)
+    # Run ONLY on a single-basin fit and inject Gaussian noise of exactly the σ
+    # the fitter is told about, so the test isolates variance-calibration from
+    # (a) estimator bias on multimodal data and (b) noise-model mismatch.
+    #
+    # A well-determined schedule for T1 = 0.5 s: TIs spread through the
+    # informative window (around the null at TI ≈ T1·ln2 ≈ 0.35 s).
+    σ_cal_T1   = 0.5
+    σ_cal_Npe  = 8
+    σ_cal_TIs  = [0.05, 0.1, 0.2, 0.35, 0.5, 0.7, 1.0, 1.5]
+    σ_cal_TRs  = fill(3.0, length(σ_cal_TIs))
+    σ_cal_αs   = fill(π,   length(σ_cal_TIs))
+    σ_cal_αes  = fill(π/2, length(σ_cal_TIs))
+    σ_cal_noise = 0.01
+    σ_cal_clean = [abs(transient_mz_at_excite_npe(σ_cal_T1, σ_cal_TIs[i],
+                                                   σ_cal_TRs[i], π, π/2;
+                                                   Npe = σ_cal_Npe))
+                   for i in eachindex(σ_cal_TIs)]
+    σ_cal_N = 400
+    # One reusable Monte-Carlo run: returns (T1 estimates, reported σ's).
+    σ_cal_run = function (method::Symbol; seed::Int)
+        rng = MersenneTwister(seed)
+        T1s = Float64[]; σs = Float64[]
+        for _ in 1:σ_cal_N
+            mags = σ_cal_clean .+ σ_cal_noise .* randn(rng, length(σ_cal_clean))
+            f = fit_t1_generalized_ir(σ_cal_TIs, σ_cal_αs, mags;
+                                       TRs = σ_cal_TRs, α_excs = σ_cal_αes,
+                                       Npe = σ_cal_Npe,
+                                       abs_noise_sigma = σ_cal_noise,
+                                       n_grid = 500,
+                                       sigma_method = method,
+                                       n_bootstrap = 100)
+            isfinite(f.T1) || continue
+            push!(T1s, f.T1)
+            isfinite(f.T1_sigma) && push!(σs, f.T1_sigma)
+        end
+        return (T1s = T1s, σs = σs)
+    end
+
+    @testset "σ calibration: point estimate is unbiased under noise" begin
+        # Variance calibration is only meaningful where the estimator is
+        # unbiased — pin that first. Mean of T1* over realisations must sit on
+        # the truth to well within the MC standard error of the mean.
+        r = σ_cal_run(:asymptotic; seed = 1)
+        @test length(r.T1s) > 0.95 * σ_cal_N            # almost all fits finite
+        μ   = sum(r.T1s) / length(r.T1s)
+        sd  = sqrt(sum((x - μ)^2 for x in r.T1s) / (length(r.T1s) - 1))
+        sem = sd / sqrt(length(r.T1s))
+        @info "σ calibration bias" T1_true=σ_cal_T1 mean_T1=μ mc_std=sd
+        @test abs(μ - σ_cal_T1) < 5 * sem               # bias ≪ MC scatter
+        @test abs(μ - σ_cal_T1) < 0.03 * σ_cal_T1       # and small in absolute terms
+    end
+
+    @testset "σ calibration: asymptotic σ matches the MC standard error" begin
+        # The reported asymptotic σ (CRLB from the local Jacobian) should equal
+        # the actual across-realisation std of T1* — on a single-basin fit the
+        # estimator is efficient, so these match within a small factor.
+        r = σ_cal_run(:asymptotic; seed = 2)
+        μ        = sum(r.T1s) / length(r.T1s)
+        mc_std   = sqrt(sum((x - μ)^2 for x in r.T1s) / (length(r.T1s) - 1))
+        mean_rep = sum(r.σs) / length(r.σs)
+        ratio    = mean_rep / mc_std
+        @info "σ calibration asymptotic" mc_std mean_reported=mean_rep ratio
+        @test 0.5 < ratio < 2.0                         # within a factor of 2
+    end
+
+    @testset "σ calibration: bootstrap σ matches the MC standard error" begin
+        # Bootstrap estimates the same sampling std by resampling residuals.
+        r = σ_cal_run(:bootstrap; seed = 3)
+        μ        = sum(r.T1s) / length(r.T1s)
+        mc_std   = sqrt(sum((x - μ)^2 for x in r.T1s) / (length(r.T1s) - 1))
+        mean_rep = sum(r.σs) / length(r.σs)
+        ratio    = mean_rep / mc_std
+        @info "σ calibration bootstrap" mc_std mean_reported=mean_rep ratio
+        @test 0.5 < ratio < 2.0
+    end
+
+    @testset "σ calibration: profile-likelihood interval covers truth at ~68 %" begin
+        # Profile σ is a 68.3 % CI half-width, NOT a std — so the right check is
+        # empirical coverage of T1_true ∈ [T1* − σ, T1* + σ], which should land
+        # near 0.683 on this well-determined, unbiased fit.
+        #
+        # The grid must be fine relative to σ for this to mean anything: the
+        # interval is `(T1_hi − T1_lo)/2` over passing grid points, so if the
+        # log-grid spacing exceeds the basin half-width (~0.004 s here) the
+        # half-width quantises toward 0 and the interval *under-covers*
+        # (empirically ~0.20 at the default range/n_grid=500). Narrow the range
+        # and refine the grid so spacing ≪ σ.
+        rng = MersenneTwister(4)
+        covered = 0; total = 0
+        for _ in 1:σ_cal_N
+            mags = σ_cal_clean .+ σ_cal_noise .* randn(rng, length(σ_cal_clean))
+            f = fit_t1_generalized_ir(σ_cal_TIs, σ_cal_αs, mags;
+                                       TRs = σ_cal_TRs, α_excs = σ_cal_αes,
+                                       Npe = σ_cal_Npe,
+                                       abs_noise_sigma = σ_cal_noise,
+                                       T1_range = (0.2, 1.2), n_grid = 2000,
+                                       sigma_method = :profile_likelihood)
+            (isfinite(f.T1) && isfinite(f.T1_sigma)) || continue
+            total += 1
+            abs(f.T1 - σ_cal_T1) <= f.T1_sigma && (covered += 1)
+        end
+        frac = covered / total
+        @info "σ calibration profile coverage" covered total frac
+        @test 0.55 < frac < 0.85                        # ~0.683 ± grid/MC slack
+    end
+
+    # ── untested branches: error paths, oracle grid, n-gate boundary ─────────
+    @testset "fit_t1_generalized_ir input-validation throws" begin
+        TIs = [0.1, 0.3, 1.0]; αs = fill(π, 3); mags = [0.5, 0.6, 0.7]
+        # length mismatches on the optional per-sample vectors
+        @test_throws ErrorException fit_t1_generalized_ir(TIs, αs, mags;
+                                                          TRs = [1.0, 2.0])
+        @test_throws ErrorException fit_t1_generalized_ir(TIs, αs, mags;
+                                                          α_excs = [π/2, π/2])
+        # Npe must be ≥ 1
+        @test_throws ErrorException fit_t1_generalized_ir(TIs, αs, mags; Npe = 0)
+        # unknown sigma_method symbol
+        @test_throws ErrorException fit_t1_generalized_ir(TIs, αs, mags;
+                                                          sigma_method = :bogus)
+        # core arity guards (mismatched αs, and < 2 samples)
+        @test_throws ErrorException fit_t1_generalized_ir(TIs, [π, π], mags)
+        @test_throws ErrorException fit_t1_generalized_ir([0.1], [π], [0.5])
+    end
+
+    @testset "T1_oracle narrows the grid and still recovers; bad band throws" begin
+        # The oracle band is a diagnostic that collapses the search to a log-band
+        # around a supplied truth. Pin: (a) it still recovers T1 when the band
+        # brackets the truth, (b) its error guards fire.
+        T1_true = 0.5; Npe = 8
+        TIs = [0.05, 0.1, 0.2, 0.35, 0.5, 0.7, 1.0, 1.5]
+        TRs = fill(3.0, length(TIs)); αs = fill(π, length(TIs))
+        αes = fill(π/2, length(TIs))
+        mags = [abs(transient_mz_at_excite_npe(T1_true, TIs[i], TRs[i], π, π/2;
+                                                Npe = Npe)) for i in eachindex(TIs)]
+        f = fit_t1_generalized_ir(TIs, αs, mags; TRs = TRs, α_excs = αes,
+                                   Npe = Npe, T1_oracle = T1_true,
+                                   oracle_band = 1.5, n_grid = 300)
+        @test isapprox(f.T1, T1_true; rtol = 0.05)
+        # Oracle restricts the grid to [T1/band, T1·band]; with a tight band the
+        # estimate cannot escape that window even if the global range is wide.
+        f_tight = fit_t1_generalized_ir(TIs, αs, mags; TRs = TRs, α_excs = αes,
+                                         Npe = Npe, T1_oracle = T1_true,
+                                         oracle_band = 1.2,
+                                         T1_range = (0.01, 5.0), n_grid = 300)
+        @test T1_true / 1.2 - 1e-9 <= f_tight.T1 <= T1_true * 1.2 + 1e-9
+        # Error guards
+        @test_throws ErrorException fit_t1_generalized_ir(TIs, αs, mags;
+                                        T1_oracle = -1.0)
+        @test_throws ErrorException fit_t1_generalized_ir(TIs, αs, mags;
+                                        T1_oracle = T1_true, oracle_band = 1.0)
+    end
+
+    @testset "σ Fix A n-gate boundary: n=4 uses floor, n=5 uses residual" begin
+        # The gate is `n > 4` (fits.jl). Pin the off-by-one at the boundary:
+        # at n=4 σ²_resid has no power so σ²_eff is the floor; at n=5 it can use
+        # best_sse/(n-2). On clean data the residual variance is ~0, so the
+        # n=5/no-floor fit should give a *much smaller* σ than the n=4/no-floor
+        # one (which, with no floor, is NaN/∞ under Fix A).
+        T1 = 1.0; Npe = 8
+        mk(TIs) = [abs(transient_mz_at_excite_npe(T1, ti, 2.0, π, π/2; Npe = Npe))
+                   for ti in TIs]
+        TIs4 = [0.05, 0.3, 1.0, 2.0]
+        TIs5 = [0.05, 0.3, 0.7, 1.0, 2.0]
+        αs4 = fill(π, 4); αes4 = fill(π/2, 4)
+        αs5 = fill(π, 5); αes5 = fill(π/2, 5)
+        TRs4 = fill(2.0, 4); TRs5 = fill(2.0, 5)
+
+        # No floor: n=4 → σ undefined (Inf/NaN); n=5 on clean data → tiny σ.
+        f4 = fit_t1_generalized_ir(TIs4, αs4, mk(TIs4); TRs = TRs4,
+                                    α_excs = αes4, Npe = Npe, n_grid = 400)
+        f5 = fit_t1_generalized_ir(TIs5, αs5, mk(TIs5); TRs = TRs5,
+                                    α_excs = αes5, Npe = Npe, n_grid = 400)
+        @test !isfinite(f4.T1_sigma) || f4.T1_sigma > 1e9
+        @test isfinite(f5.T1_sigma) && f5.T1_sigma < 0.1 * T1
+
+        # With an explicit floor: n=4 falls back to the floor (finite), and the
+        # gate change at n=5 must not make σ blow up.
+        f4f = fit_t1_generalized_ir(TIs4, αs4, mk(TIs4); TRs = TRs4,
+                                     α_excs = αes4, Npe = Npe,
+                                     abs_noise_sigma = 0.01, n_grid = 400)
+        @test isfinite(f4f.T1_sigma) && f4f.T1_sigma > 0
+    end
+
+    @testset "bootstrap σ is reproducible (seeded) and seed-sensitive" begin
+        # _sigma_bootstrap draws from a seeded MersenneTwister, so the reported
+        # σ must be bit-identical across calls with the same bootstrap_seed and
+        # differ (modestly) for a different seed. Guards against an accidental
+        # global-RNG regression.
+        T1_true = 0.023; Npe = 8       # saturated → bootstrap σ is non-trivial
+        TIs = [0.5, 1.0, 1.5, 2.0, 0.7, 1.2, 1.8, 2.5]
+        TRs = fill(3.0, length(TIs)); αs = fill(π, length(TIs))
+        αes = fill(π/2, length(TIs))
+        rng = MersenneTwister(99)
+        mags = [abs(transient_mz_at_excite_npe(T1_true, TIs[i], TRs[i], π, π/2;
+                                                Npe = Npe)) + 0.02 * randn(rng)
+                for i in eachindex(TIs)]
+        call(seed) = fit_t1_generalized_ir(TIs, αs, mags; TRs = TRs,
+                            α_excs = αes, Npe = Npe, abs_noise_sigma = 0.02,
+                            sigma_method = :bootstrap, n_bootstrap = 200,
+                            bootstrap_seed = seed).T1_sigma
+        s0a = call(0); s0b = call(0); s1 = call(1)
+        @test s0a == s0b                 # same seed → identical
+        @test s0a != s1                  # different seed → different draw
     end
 
     @testset "e2_step!: TR lifts to honour TI (no silent TI cap)" begin

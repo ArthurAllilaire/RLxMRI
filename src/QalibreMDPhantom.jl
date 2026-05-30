@@ -77,14 +77,15 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        FIDUCIAL_PROPS, BACKGROUND_WATER, Relax,
        PLATE_Z_MM, CONTRAST_RADIUS_M, FIDUCIAL_RADIUS_M, HOUSING_RADIUS_M,
        # sequences
-       rf_duration, ir_sequence, se_sequence, ir_se_2d_sequence,
-       gre_2d_sequence,
+       rf_duration, ir_sequence, se_sequence, mse_sequence, ir_se_2d_sequence,
+       ir_tse_2d_sequence, se_2d_sequence, gre_2d_sequence,
        SpoilerConfig, apply_spoiler,
+       mse_signal,
        single_spin_phantom,
        # fitting
        fit_t1_ir, fit_t2_se,
        # E0 baseline
-       measure_ir_signal, measure_se_signal,
+       measure_ir_signal, measure_se_signal, measure_mse_signal,
        measure_t1, measure_t2,
        default_TI_schedule, default_TE_schedule,
        adaptive_TI_schedule, adaptive_TE_schedule,
@@ -97,7 +98,8 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        cr_T1_variance_alpha, cr_fleet_objective_alpha,
        cr_optimize_alpha, cr_optimize_sweep_alpha,
        # generalized IR
-       generalized_ir_signal, fit_t1_generalized_ir, steady_state_mz_at_excite,
+       generalized_ir_signal, fit_t1_generalized_ir, fit_t1_t2_generalized_ir,
+       steady_state_mz_at_excite,
        transient_mz_at_excite_npe,
        # E1 environment
        E1Env, e1_reset!, e1_step!, e1_n_actions, e1_obs_dim, e1_action_table,
