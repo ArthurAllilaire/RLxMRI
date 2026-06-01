@@ -117,6 +117,9 @@ def _ensure_julia(project_dir: Optional[str] = None,
 
     from juliacall import Main as jl
     jl.seval("using MRISystemPhantom")
+    # Load RL environments (research-layer, not part of the library).
+    _rl_boot = str(_repo_root / "julia" / "rl_boot.jl")
+    jl.seval(f'include("{_rl_boot}")')
     if use_gpu:
         try:
             jl.seval("using CUDA")
@@ -128,7 +131,7 @@ def _ensure_julia(project_dir: Optional[str] = None,
                 RuntimeWarning,
             )
     _JL = jl
-    _JL_QMD = jl.MRISystemPhantom
+    _JL_QMD = jl.Main
 
 
 class QalibreMDE1Env(gym.Env):
