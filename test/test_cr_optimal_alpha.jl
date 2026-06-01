@@ -6,11 +6,11 @@
 
 using Test
 using Random
-using QalibreMDPhantom
+using MRISystemPhantom
 
 # Internal refinement helper (not exported), reached the same way
 # test_e2_imaging.jl reaches _e2_simulate_step.
-const _refine_alpha = QalibreMDPhantom.refine_coordinate_descent_alpha
+const _refine_alpha = MRISystemPhantom.refine_coordinate_descent_alpha
 
 @testset "α-aware CR-optimal + Ernst" begin
 

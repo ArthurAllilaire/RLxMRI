@@ -3,7 +3,7 @@
 # scripts/hybrid_water_validation.jl) without duplicating it.
 #
 # Assumes the including script has already done:
-#   using QalibreMDPhantom, KomaMRI
+#   using MRISystemPhantom, KomaMRI
 # (for raw_to_kspace, kspace_to_image, add_noise!, roi_mean,
 #  fit_t1_generalized_ir, transient_mz_at_excite_npe, snr_report_to_dict).
 

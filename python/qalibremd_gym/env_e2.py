@@ -131,6 +131,7 @@ class QalibreMDE2Env(gym.Env):
         include_image: bool = False,
         include_sigma: bool = False,
         include_water: bool = True,
+        water_voxel_size_mm: Optional[float] = None,
         # Background-water simulation model (src/water_cache.jl):
         #   "bloch"          — full-Bloch sim the water with the spheres every step.
         #   "cached_perline" — Bloch-sim only the spheres; add the water from a cached
@@ -201,6 +202,8 @@ class QalibreMDE2Env(gym.Env):
             time_penalty_coef=float(time_penalty_coef),
             allow_stop=bool(allow_stop),
         )
+        if water_voxel_size_mm is not None:
+            env_kwargs["water_voxel_size_mm"] = float(water_voxel_size_mm)
         if subset_size is not None:
             env_kwargs["subset_size"] = int(subset_size)
         self._env = qmd.E2Env(**env_kwargs)

@@ -6,8 +6,8 @@
 
 using Statistics
 
-const _RAY = QalibreMDPhantom.RAYLEIGH_FACTOR
-const _roi_pixels_jl = QalibreMDPhantom._roi_pixels
+const _RAY = MRISystemPhantom.RAYLEIGH_FACTOR
+const _roi_pixels_jl = MRISystemPhantom._roi_pixels
 
 "Synthesise a magnitude image: per-sphere constant signal + magnitude of
 zero-mean complex Gaussian noise (Rayleigh background). Returns

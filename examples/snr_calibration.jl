@@ -15,7 +15,7 @@
 # This eliminates Rayleigh bias and structured background artefacts, making it
 # the gold standard for reproducible SNR measurement (NEMA MS-1 2014).
 
-using QalibreMDPhantom, KomaMRI, Random
+using MRISystemPhantom, KomaMRI, Random
 
 # ## Build the phantom and sequence
 

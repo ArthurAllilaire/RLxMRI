@@ -24,7 +24,7 @@
 #   julia --project=. scripts/hybrid_water_run.jl --alpha 30 --b0-sigma 5 --label a30_b0
 #   julia --project=. scripts/hybrid_water_run.jl --npe 64 --nfe 128
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using Random, Statistics, Printf, JSON, NPZ
 include(joinpath(@__DIR__, "t1_fit_lib.jl"))
 
@@ -67,7 +67,7 @@ println("hybrid_water_run  label=$label  α=$(α_deg)°  B0σ=$(b0_sigma) Hz  Np
 println("="^64)
 
 # ── Phantoms: full, spheres-only (dry); derive the water spins exactly ────────
-slice_center = QalibreMDPhantom.PLATE_Z_MM.T1
+slice_center = MRISystemPhantom.PLATE_Z_MM.T1
 augment = AugmentConfig(B0_sigma_Hz = b0_sigma)
 cfg_kw  = (field = field, voxel_size_mm = VOXEL,
            slice_thickness_mm = VOXEL, slice_center_mm = slice_center, augment = augment)
@@ -114,7 +114,7 @@ relerr(a,b) = sum(abs.(a .- b)) / max(sum(abs.(b)), eps())
 # this harness and the E2 env exercise one implementation; the scalar variant is
 # kept inline as the comparison baseline. The single-α grid here matches this run's
 # α_exc (the env uses a multi-α bank for learned-α; see water_cache.jl header).
-const T1_WATER = QalibreMDPhantom.BACKGROUND_WATER[field].T1
+const T1_WATER = MRISystemPhantom.BACKGROUND_WATER[field].T1
 mw(TI,TR; α=α_exc) = transient_mz_at_excite_npe(T1_WATER, TI, TR, π, α; Npe=Npe) * sin(α)
 
 ksp_water_ref = sim_ksp(water, TI0_REF, TR0_REF)            # one sim per geometry

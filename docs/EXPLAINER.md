@@ -27,8 +27,8 @@ and gets a `KomaMRI.Phantom` it can feed to `simulate`.
 ## 2. Repo map
 
 ```
-src/                       — the QalibreMDPhantom Julia package
-├── QalibreMDPhantom.jl    — module, `include`s everything else, exports API
+src/                       — the MRISystemPhantom Julia package
+├── MRISystemPhantom.jl    — module, `include`s everything else, exports API
 ├── config.jl              — `PhantomConfig`, `AugmentConfig`  (RL contract)
 ├── builder.jl             — `SphereDescriptor`, `build_*`, `build_phantom`
 ├── augment.jl             — rotation, translation, per-spin jitter
@@ -105,10 +105,10 @@ The single most counterintuitive bit: **arrays are column-major, 1-indexed**.
 
 ## 4. Reading the package top-to-bottom
 
-### 4.1 `src/QalibreMDPhantom.jl`
+### 4.1 `src/MRISystemPhantom.jl`
 
 ```julia
-module QalibreMDPhantom
+module MRISystemPhantom
 
 using KomaMRI
 using Random
@@ -131,7 +131,7 @@ first. Later includes can depend on any earlier ones. This is just
 lexical splicing.
 
 The module exports a public API via `export`. Anything not exported
-lives in `QalibreMDPhantom.foo` and is fair game internally but marks
+lives in `MRISystemPhantom.foo` and is fair game internally but marks
 a boundary with downstream code.
 
 ### 4.2 `config.jl` — the RL contract
@@ -501,10 +501,10 @@ Julia environment pinned to 1.11, with:
 ```toml
 [deps]
 PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
-QalibreMDPhantom = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
+MRISystemPhantom = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
 ```
 
-The `QalibreMDPhantom` entry is **dev-pathed** to the repo root
+The `MRISystemPhantom` entry is **dev-pathed** to the repo root
 (`Pkg.develop(path=".")` when bootstrapping), so any edit to
 `src/*.jl` is picked up by the Python layer without a reinstall.
 
@@ -524,7 +524,7 @@ def _ensure_julia(project_dir=None):
     os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", runtime_proj)
 
     from juliacall import Main as jl
-    jl.seval("using QalibreMDPhantom")
+    jl.seval("using MRISystemPhantom")
 ```
 
 The three env vars:
@@ -593,7 +593,7 @@ DummyVecEnv  ─ [QalibreMDE1Env worker]
     │         juliacall → Julia 1.11 runtime
     │                │
     │                ▼
-    │         QalibreMDPhantom.e1_step_b(env, action)
+    │         MRISystemPhantom.e1_step_b(env, action)
     │                │
     │                ▼
     │         generalized_ir_signal (closed-form, ~μs)

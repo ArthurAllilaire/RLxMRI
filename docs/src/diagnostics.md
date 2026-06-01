@@ -41,7 +41,7 @@ high SNR).
 ## Quick usage
 
 ```julia
-using QalibreMDPhantom, KomaMRI, Random
+using MRISystemPhantom, KomaMRI, Random
 
 cfg = PhantomConfig(field = :T3, voxel_size_mm = 2.0,
     include_plates = [:T1, :water],

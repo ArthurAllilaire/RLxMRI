@@ -8,7 +8,7 @@
 #   julia --project=. scripts/pixel_grid_overlay.jl --npe 32 --nfe 64 --voxel-mm 1.0
 #   julia --project=. scripts/pixel_grid_overlay.jl --npe 32 --nfe 64 --voxel-mm 1.0 --ti 0.1 --spoil 
 #   julia --project=. scripts/pixel_grid_overlay.jl --npe 64 --nfe 128 --voxel-mm 1.0 --ti 0.5 --spoil --water
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using JSON, NPZ, Random
 
 # ── Defaults (match scripts/t1_fit_vs_true.jl) ────────────────────────────────
@@ -82,7 +82,7 @@ println("="^60)
 # one voxel so spins and recon agree on a single in-plane slice. Both values
 # are forwarded to PhantomConfig so the builder applies the z-mask — we don't
 # post-filter phantom.z ourselves.
-slice_center_mm = isnan(SLICE_CENTER_MM) ? QalibreMDPhantom.PLATE_Z_MM.T1 : SLICE_CENTER_MM
+slice_center_mm = isnan(SLICE_CENTER_MM) ? MRISystemPhantom.PLATE_Z_MM.T1 : SLICE_CENTER_MM
 slice_thick_mm  = SLICE_MM > 0 ? SLICE_MM : VOXEL_MM
 
 include_plates = WATER ? [PLATE, :water] : [PLATE]

@@ -1,13 +1,13 @@
 # Sweep TR (and hence total sim time) and dump per-TR WAPE / Pearson /
 # energy-on-support against the T1-plate phantom.
 #
-# Uses QalibreMDPhantom's raw_to_kspace / kspace_to_image / phantom_occupancy
+# Uses MRISystemPhantom's raw_to_kspace / kspace_to_image / phantom_occupancy
 # (the same code path as E2Env._e2_simulate_step) so the sweep reflects
 # real training conditions.
 #
 # Writes to scripts/accurate/ — run scripts/wape_vs_simtime.py to plot.
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using DelimitedFiles
 
 const FOV = 0.2

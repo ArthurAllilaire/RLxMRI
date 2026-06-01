@@ -4,7 +4,7 @@
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/arthuraa/QalibreMDPhantom.jl")
+Pkg.add(url = "https://github.com/ArthurAllilaire/MRISystemPhantom.jl")
 ```
 
 The package depends on [KomaMRI.jl](https://github.com/JuliaHealth/KomaMRI.jl)
@@ -15,7 +15,7 @@ which will be installed automatically.
 The three-line path to a simulated IR signal:
 
 ```julia
-using QalibreMDPhantom, KomaMRI
+using MRISystemPhantom, KomaMRI
 
 # 1. Build the phantom (3 T, 2 mm voxels, T1 plate only)
 cfg = PhantomConfig(

@@ -1,6 +1,6 @@
 # Locate the exact leaked-B1 sample at shot 9's refocus pulse.
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 const KomaMRIBase = KomaMRI.KomaMRIBase
 using KomaMRI: Grad
 

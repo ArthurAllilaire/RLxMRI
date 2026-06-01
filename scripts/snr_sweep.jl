@@ -63,7 +63,7 @@
 
 # TODO: LOOK AT HOW CLEAN RECON CHANGES NOISE VALUES
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using DelimitedFiles, Random, Statistics, Printf, JSON, NPZ
 using FFTW: ifft, fftshift, ifftshift
 
@@ -232,7 +232,7 @@ function run_one(σ::Float64; seed::Int, cfg::SweepConfig,
         imgs_a = Vector{Matrix{Float32}}(undef, n_blocks)
         imgs_b = Vector{Matrix{Float32}}(undef, n_blocks)
         for b in 1:n_blocks
-            ab = QalibreMDPhantom._make_ab_images(ksp_clean[b], σ; rng = rng,
+            ab = MRISystemPhantom._make_ab_images(ksp_clean[b], σ; rng = rng,
                                                   phase_sensitive = false)
             imgs_a[b] = Float32.(ab.img_a)
             imgs_b[b] = Float32.(ab.img_b)
@@ -305,7 +305,7 @@ function main()
     # to one voxel so spins and recon agree on a single in-plane slice. Both
     # values are forwarded to PhantomConfig so the builder applies the z-mask —
     # we don't post-filter phantom.z ourselves.
-    slice_center = isnan(cfg.slice_center_mm) ? QalibreMDPhantom.PLATE_Z_MM.T1 : cfg.slice_center_mm
+    slice_center = isnan(cfg.slice_center_mm) ? MRISystemPhantom.PLATE_Z_MM.T1 : cfg.slice_center_mm
     slice_thick  = cfg.slice_mm > 0 ? cfg.slice_mm : cfg.voxel_mm
     pcfg     = PhantomConfig(field = cfg.field, voxel_size_mm = cfg.voxel_mm,
                               include_plates     = cfg.water ? [:T1, :water] : [:T1],

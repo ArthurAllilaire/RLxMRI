@@ -2,7 +2,7 @@
 # artefact of our coarser 5e-5 stepping? Single-voxel, identical shots,
 # scan TR and Δt_rf jointly.
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using KomaMRI: Grad
 
 const FOV = 0.2

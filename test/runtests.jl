@@ -1,9 +1,9 @@
 using Test
 using Random
-using QalibreMDPhantom
+using MRISystemPhantom
 using KomaMRI
 
-@testset "QalibreMDPhantom" begin
+@testset "MRISystemPhantom" begin
     include("test_materials.jl")
     include("test_geometry.jl")
     include("test_imaging.jl")

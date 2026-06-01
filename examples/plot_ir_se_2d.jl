@@ -1,5 +1,5 @@
 using KomaMRI
-using QalibreMDPhantom
+using MRISystemPhantom
 
 # Grab PlotlyJS from KomaMRI's namespace (same trick as plot_phantom.jl)
 const PlotlyJS = parentmodule(typeof(plot_phantom_map(

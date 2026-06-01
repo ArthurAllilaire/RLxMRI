@@ -17,13 +17,13 @@
 using Test
 using Random
 using FFTW
-using QalibreMDPhantom
+using MRISystemPhantom
 using KomaMRI
 
 # Reach into the package for the internal recon helper. We intentionally
 # bypass `e2_step!` here to test the recon in isolation, without the time-
 # budget / reward bookkeeping.
-const _sim_step = QalibreMDPhantom._e2_simulate_step
+const _sim_step = MRISystemPhantom._e2_simulate_step
 
 "Build a single-sphere E2Env with no noise and no pose augmentation."
 function _single_sphere_env(; centre::NTuple{3,Float64} = (0.0, 0.0, 0.0),

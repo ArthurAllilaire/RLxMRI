@@ -22,7 +22,7 @@
 #   julia --project=. scripts/hybrid_water_validation.jl --b0-sigma 5 --overlay-ti 0.5
 #   PYTHON=.venv/bin/python PYTHON_JULIAPKG_OFFLINE=yes julia --project=. scripts/hybrid_water_validation.jl
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using Random, Statistics, Printf, JSON, NPZ
 include(joinpath(@__DIR__, "t1_fit_lib.jl"))
 
@@ -66,7 +66,7 @@ println("hybrid-water validation   Npe=$Npe Nfe=$Nfe  B0σ=$(b0_sigma) Hz  " *
 println("="^64)
 
 # ── Phantoms: spheres-only (dry), full (spheres+water); derive water ──────────
-slice_center = QalibreMDPhantom.PLATE_Z_MM.T1
+slice_center = MRISystemPhantom.PLATE_Z_MM.T1
 slice_thick  = VOXEL_MM
 augment      = AugmentConfig(B0_sigma_Hz = b0_sigma)
 cfg_common   = (field = :T15, voxel_size_mm = VOXEL_MM,
@@ -130,7 +130,7 @@ relerr(a, b) = sum(abs.(a .- b)) / max(sum(abs.(b)), eps())
 # returns and the rescale should weight each k-line by its own shot's transient
 # (recoverable from transient_mz_at_excite_npe via finite differences of the
 # cumulative mean — no new recurrence). Revisit when sweeping α.
-const T1_WATER = QalibreMDPhantom.BACKGROUND_WATER[:T15].T1
+const T1_WATER = MRISystemPhantom.BACKGROUND_WATER[:T15].T1
 const TI0_REF  = 0.10
 const TR0_REF  = 5.0
 mw(TI, TR; α = α_exc) =

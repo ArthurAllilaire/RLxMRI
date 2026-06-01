@@ -17,12 +17,12 @@ import Statistics: mean, std
 @testset "forward model" begin
     @testset "central_crop centring + bounds" begin
         A = reshape(collect(1:64), 8, 8) .|> Float64
-        c = QalibreMDPhantom.central_crop(A, 4, 4)
+        c = MRISystemPhantom.central_crop(A, 4, 4)
         @test size(c) == (4, 4)
         # DC of an 8-grid is index 5; a symmetric 4-crop keeps 3:6 (DC lands at
         # the crop's own DC index 4÷2+1 = 3).
         @test c == A[3:6, 3:6]
-        @test_throws ErrorException QalibreMDPhantom.central_crop(A, 10, 4)
+        @test_throws ErrorException MRISystemPhantom.central_crop(A, 10, 4)
     end
 
     @testset "bandlimit_image: identity + intensity + realness" begin
@@ -59,7 +59,7 @@ import Statistics: mean, std
         cfg = PhantomConfig(field = :T15, voxel_size_mm = 1.0,
                             include_plates = [:water],
                             slice_thickness_mm = 1.0,
-                            slice_center_mm = (0.0, 0.0, QalibreMDPhantom.PLATE_Z_MM.T1))
+                            slice_center_mm = (0.0, 0.0, MRISystemPhantom.PLATE_Z_MM.T1))
         phantom = build_phantom(cfg)
         FOV, Npe, Nfe = 0.2, 32, 64
         kw = (TI = 0.1, TR = 5.0, α_exc = π/2, θ_inv = π, FOV = FOV,

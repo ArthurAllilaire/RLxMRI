@@ -1178,7 +1178,7 @@
                      analytic_noise_sigma = 0.0, Npe = 16)
         e2_reset!(env; rng_seed = 9)
         TI, TE, TR, α_deg = 0.4, 0.02, 2.5, 90.0
-        sig = QalibreMDPhantom._e2_analytic_signals(env, TI, TE, TR, α_deg)
+        sig = MRISystemPhantom._e2_analytic_signals(env, TI, TE, TR, α_deg)
         for i in 1:env.n_spheres
             base = env.active_base_descs[i]
             T1_i = env.T1_true[i]

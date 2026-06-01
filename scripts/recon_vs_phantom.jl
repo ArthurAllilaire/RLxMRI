@@ -1,6 +1,6 @@
 # Side-by-side comparison: input phantom geometry vs reconstructed image.
 #
-# Uses QalibreMDPhantom's raw_to_kspace / kspace_to_image / phantom_occupancy
+# Uses MRISystemPhantom's raw_to_kspace / kspace_to_image / phantom_occupancy
 # (the same code path as E2Env._e2_simulate_step) to ensure the diagnostic
 # reflects real training conditions.
 #
@@ -10,7 +10,7 @@
 # Usage:
 #   julia --project=. scripts/recon_vs_phantom.jl
 #   julia --project=. scripts/recon_vs_phantom.jl --nfe 128 --npe 64 --fov 0.2 --voxel-mm 3.0
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using JSON, NPZ
 
 # ── Defaults ─────────────────────────────────────────────────────────────────

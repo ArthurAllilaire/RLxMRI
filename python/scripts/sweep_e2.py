@@ -37,11 +37,12 @@ from e2_config import add_e2_env_args, e2_env_kwargs
 from _bench_io import git_meta, append_result, RUNS_DIR
 
 _MARKER = "@@SWEEP_JSON@@"
-_CHEAP = ("npe", "voxel", "water")
+_CHEAP = ("npe", "voxel", "water", "water_voxel")
 _DEFAULT_VALUES = {
     "npe": "16,32,64",
     "voxel": "1.0,1.5,2.0,3.0",
     "water": "on,off",
+    "water_voxel": "1.0,2.0,3.0",
     "nthreads": "1,2,4",
     "n-envs": "1,2",
 }
@@ -52,7 +53,7 @@ def _parse_values(axis: str, values: str | None):
     items = [v.strip() for v in raw.split(",") if v.strip()]
     if axis == "npe":
         return [int(v) for v in items]
-    if axis == "voxel":
+    if axis in ("voxel", "water_voxel"):
         return [float(v) for v in items]
     if axis in ("nthreads", "n-envs"):
         return [int(v) for v in items]
@@ -70,6 +71,9 @@ def _override(axis: str, value, base_kwargs: dict) -> dict:
         kw["voxel_size_mm"] = float(value)
     elif axis == "water":
         kw["include_water"] = bool(value)
+    elif axis == "water_voxel":
+        kw["water_voxel_size_mm"] = float(value)
+        kw["include_water"] = True
     return kw
 
 
@@ -78,9 +82,9 @@ def _override(axis: str, value, base_kwargs: dict) -> dict:
 _PROBE_SETUP = '''
 using KomaMRI
 function _sweep_probe(eobj, repeats::Int)
-    seq = QalibreMDPhantom.ir_se_2d_sequence(0.8, 0.02, 3.0;
+    seq = MRISystemPhantom.ir_se_2d_sequence(0.8, 0.02, 3.0;
             α_exc = deg2rad(90.0), FOV = eobj.FOV, Nfe = eobj.Nfe, Npe = eobj.Npe)
-    scn = QalibreMDPhantom.scanner_for_field(eobj.cfg_field)
+    scn = MRISystemPhantom.scanner_for_field(eobj.cfg_field)
     sp  = Dict{String,Any}("gpu" => false)   # Nthreads defaults to nthreads()
     redirect_stdout(devnull) do
         redirect_stderr(devnull) do
@@ -118,8 +122,9 @@ def _run_worker(args) -> None:
             nthreads = int(jl.seval("Threads.nthreads()"))
         n_spins = int(len(env._env.phantom.x))
         sim_s = float(jl._sweep_probe(env._env, args.repeats))
-        label = "on" if (args.axis == "water" and value) else \
-                ("off" if args.axis == "water" else value)
+        label = ("on" if (args.axis == "water" and value) else
+                 "off" if args.axis == "water" else
+                 f"{value:.1f}mm" if args.axis == "water_voxel" else value)
         records.append({
             "axis": args.axis, "value": label, "metric": "sim_s",
             "metric_value": sim_s, "n_spins": n_spins, "nthreads": nthreads,
@@ -183,7 +188,7 @@ def _passthrough_args(argv: list[str]) -> list[str]:
 
 
 def _orchestrate(args, argv: list[str]) -> None:
-    axes = [a for a in ("npe", "voxel", "water", "nthreads", "n-envs")] \
+    axes = [a for a in ("npe", "voxel", "water", "water_voxel", "nthreads", "n-envs")] \
         if args.axis == "all" else [args.axis]
     base_kwargs = e2_env_kwargs(args)
     passthrough = _passthrough_args(argv)
@@ -263,7 +268,7 @@ def main() -> None:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--axis", required=True,
-                   choices=["npe", "voxel", "water", "nthreads", "n-envs", "all"])
+                   choices=["npe", "voxel", "water", "water_voxel", "nthreads", "n-envs", "all"])
     p.add_argument("--values", type=str, default=None,
                    help="Comma-separated axis values; per-axis defaults if omitted.")
     p.add_argument("--repeats", type=int, default=3,

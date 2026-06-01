@@ -7,7 +7,7 @@
 # a non-spatial measurement — orders of magnitude faster than a
 # voxelised sphere, matching the `01-FID.jl` pattern.
 
-using QalibreMDPhantom
+using MRISystemPhantom
 using Printf
 
 function print_table(header, rows)

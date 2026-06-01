@@ -8,7 +8,7 @@
 # Setup: TR=2s, Npe=150 → 300 s of cumulative sim time. Same z-line phantom.
 # Look at the per-shot |peak| trajectory and locate all step events.
 
-using KomaMRI, QalibreMDPhantom, Suppressor, Printf
+using KomaMRI, MRISystemPhantom, Suppressor, Printf
 
 n_z      = 21
 zs       = collect(LinRange(-1e-3, 1e-3, n_z))

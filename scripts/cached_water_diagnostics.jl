@@ -32,11 +32,11 @@
 #       B0σ=5). The cache then approximates a coherent-water scene; validate against
 #       Bloch(spheres B0=5 + water B0=0), not against B0=5 water.
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using Printf, Statistics, JSON, NPZ
 
 field=:T15; FOV=0.2; Npe=32; Nfe=64; voxel=1.0; TE=0.02; TR=5.0
-slice_c=QalibreMDPhantom.PLATE_Z_MM.T1
+slice_c=MRISystemPhantom.PLATE_Z_MM.T1
 mkcfg(b0)=PhantomConfig(field=field, voxel_size_mm=voxel, include_plates=[:T1,:water],
                         augment=AugmentConfig(B0_sigma_Hz=b0),
                         slice_thickness_mm=voxel, slice_center_mm=slice_c)

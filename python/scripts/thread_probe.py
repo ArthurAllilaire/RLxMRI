@@ -65,9 +65,9 @@ def main() -> None:
     print("n_spins =", jl.seval("length(eobj.phantom.x)"))
 
     jl.seval('''
-    seq = QalibreMDPhantom.ir_se_2d_sequence(0.8, 0.02, 3.0;
+    seq = MRISystemPhantom.ir_se_2d_sequence(0.8, 0.02, 3.0;
             α_exc=deg2rad(90.0), FOV=eobj.FOV, Nfe=eobj.Nfe, Npe=eobj.Npe)
-    scn = QalibreMDPhantom.scanner_for_field(eobj.cfg_field)
+    scn = MRISystemPhantom.scanner_for_field(eobj.cfg_field)
     function probe_time(sp)
         redirect_stdout(devnull) do
             redirect_stderr(devnull) do

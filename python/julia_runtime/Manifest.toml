@@ -1255,10 +1255,10 @@ git-tree-sha1 = "77d0d5f446d544beaa568b837fade390d9d38721"
 uuid = "2bec176e-9e8c-4764-a62f-295118d1ec05"
 version = "1.0.1"
 
-[[deps.QalibreMDPhantom]]
-deps = ["DisplayAs", "FFTW", "JSON", "KomaMRI", "KomaMRIBase", "LinearAlgebra", "MRIReco", "NPZ", "Random", "Statistics", "Suppressor"]
+[[deps.MRISystemPhantom]]
+deps = ["FFTW", "KomaMRI", "KomaMRIBase", "LinearAlgebra", "MRIReco", "Random", "Statistics", "Suppressor"]
 path = "../.."
-uuid = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
+uuid = "550e846d-fc88-42d8-908f-a9f76e72de14"
 version = "0.1.0"
 
 [[deps.REPL]]

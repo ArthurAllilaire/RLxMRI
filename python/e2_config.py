@@ -37,6 +37,10 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--voxel-mm", type=float, default=1.0,
                    help="Phantom voxel size [mm]. Smaller = more spins (∝ 1/voxel² "
                         "in-slab); 1 mm matches the σ*=50 SNR calibration.")
+    p.add_argument("--water-voxel-mm", type=float, default=None,
+                   help="Optional background-water-only voxel size [mm]. Omit to "
+                        "use --voxel-mm for water as well. Coarser water keeps "
+                        "sphere voxels unchanged while reducing water spin count.")
     p.add_argument("--use-gpu", action="store_true",
                    help="Run KomaMRI's Bloch simulation on the GPU "
                         "(sim_params['gpu']=true). Requires a CUDA backend loaded "
@@ -129,6 +133,7 @@ def e2_env_kwargs(args: argparse.Namespace) -> dict:
         Nfe=args.Nfe,
         Npe=args.Npe,
         voxel_size_mm=args.voxel_mm,
+        water_voxel_size_mm=args.water_voxel_mm,
         use_gpu=args.use_gpu,
         max_blocks=args.max_blocks,
         time_budget_s=args.time_budget,

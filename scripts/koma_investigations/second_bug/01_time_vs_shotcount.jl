@@ -18,7 +18,7 @@
 # as a side reference but isn't the focus here (it had separate Koma issues last
 # time — we'll come back to it in a later experiment).
 
-using KomaMRI, QalibreMDPhantom, Suppressor, Printf
+using KomaMRI, MRISystemPhantom, Suppressor, Printf
 
 n_z      = 21
 zs       = collect(LinRange(-1e-3, 1e-3, n_z))

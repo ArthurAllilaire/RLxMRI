@@ -20,7 +20,7 @@
 # Sequence: same IR-SE backbone (180° → TI → 90° → TE/2 → 180° → TE/2 → ADC → TR delay),
 # only the gradient overlays differ between levels.
 
-using KomaMRI, QalibreMDPhantom, Suppressor, Printf
+using KomaMRI, MRISystemPhantom, Suppressor, Printf
 
 # Single off-origin spin.
 phantom = Phantom(

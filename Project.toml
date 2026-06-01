@@ -1,7 +1,7 @@
-name = "QalibreMDPhantom"
-uuid = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
+name = "MRISystemPhantom"
+uuid = "550e846d-fc88-42d8-908f-a9f76e72de14"
 version = "0.1.0"
-authors = ["Arthur"]
+authors = ["Arthur Allilaire"]
 
 [deps]
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"

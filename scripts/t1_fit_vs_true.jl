@@ -25,7 +25,7 @@
 #   julia --project=. scripts/t1_fit_vs_true.jl --manual --sigmas 0
 #   julia --project=. scripts/t1_fit_vs_true.jl --budget 160 --npe 64 --nfe 128 --clean-recon
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using DelimitedFiles, Random, Statistics, Printf, JSON, NPZ
 using FFTW: ifft, fftshift, ifftshift
 
@@ -119,7 +119,7 @@ println("="^60)
 # one voxel so spins and recon agree on a single in-plane slice. Both values
 # are forwarded to PhantomConfig so the builder applies the z-mask — we don't
 # post-filter phantom.z ourselves.
-slice_center = isnan(slice_center_mm) ? QalibreMDPhantom.PLATE_Z_MM.T1 : slice_center_mm
+slice_center = isnan(slice_center_mm) ? MRISystemPhantom.PLATE_Z_MM.T1 : slice_center_mm
 slice_thick  = slice_mm > 0 ? slice_mm : VOXEL_MM
 cfg     = PhantomConfig(field = :T15, voxel_size_mm = VOXEL_MM,
                         include_plates     = water ? [:T1, :water] : [:T1],

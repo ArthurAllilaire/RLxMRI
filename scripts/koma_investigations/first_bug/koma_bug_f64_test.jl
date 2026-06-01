@@ -3,7 +3,7 @@
 # sequence (seq.t cumulative time + Δt) losing resolution once total sim time
 # exceeds ~70 s. If f64 fixes it, that's the root cause.
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using KomaMRI: Grad
 
 const FOV = 0.2

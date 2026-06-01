@@ -1,7 +1,7 @@
 """Gymnasium ↔ Julia bridge for E1.
 
 One Julia subinterpreter is spun up per Python process (lazily, at first
-env construction). `reset`/`step` proxy into `QalibreMDPhantom.e1_reset!`
+env construction). `reset`/`step` proxy into `MRISystemPhantom.e1_reset!`
 / `e1_step!`. juliacall handles NumPy ↔ Julia array conversion; we force
 `np.float32` on the way out because Stable-Baselines3 expects that dtype
 for Box observation spaces.
@@ -17,7 +17,7 @@ from typing import Any, Optional
 # ── juliapkg env vars must be set before importing juliacall ──────────────────
 # juliacall triggers juliapkg on import. If PYTHON_JULIAPKG_PROJECT is not set
 # first, juliapkg creates a fresh env at .venv/julia_env/ with just PythonCall
-# and QalibreMDPhantom is not found. Setting it here ensures our pre-instantiated
+# and MRISystemPhantom is not found. Setting it here ensures our pre-instantiated
 # python/julia_runtime/ project is used regardless of import order.
 #
 # These are set with setdefault so run_e2.sh (which sources .envrc.local first)
@@ -95,12 +95,12 @@ _JL_QMD: Any = None
 
 def _ensure_julia(project_dir: Optional[str] = None,
                   use_gpu: bool = False) -> None:
-    """Boot Julia and import QalibreMDPhantom once per process.
+    """Boot Julia and import MRISystemPhantom once per process.
 
     juliacall 0.9.31 requires Julia ≤ 1.11 (its bundled PythonCall does
     not yet load on 1.12). We run it against a dedicated Julia project
     at `python/julia_runtime/` that dev-depends on the repo's
-    QalibreMDPhantom, resolved with a juliaup-installed 1.11. The main
+    MRISystemPhantom, resolved with a juliaup-installed 1.11. The main
     repo project can stay on 1.12 for direct Julia use (tests, E0,
     figure scripts).
 
@@ -116,7 +116,7 @@ def _ensure_julia(project_dir: Optional[str] = None,
         return
 
     from juliacall import Main as jl
-    jl.seval("using QalibreMDPhantom")
+    jl.seval("using MRISystemPhantom")
     if use_gpu:
         try:
             jl.seval("using CUDA")
@@ -128,7 +128,7 @@ def _ensure_julia(project_dir: Optional[str] = None,
                 RuntimeWarning,
             )
     _JL = jl
-    _JL_QMD = jl.QalibreMDPhantom
+    _JL_QMD = jl.MRISystemPhantom
 
 
 class QalibreMDE1Env(gym.Env):

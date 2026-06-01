@@ -14,7 +14,7 @@
 #   julia --project=. scripts/probe_residual_mxy.jl
 #   julia --project=. scripts/probe_residual_mxy.jl --TI 2.8 --TR 5.0 --Ks 1,4,16,32
 # TODO: add this check whenever I do run ir se 2d as will want to know per sphere what the error is saying
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using Random, Statistics, Printf
 
 const FOV      = 0.2

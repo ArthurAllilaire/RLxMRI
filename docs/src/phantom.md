@@ -39,7 +39,7 @@ Set `slice_thickness_mm` and `slice_center_mm`; spins outside the slab are
 dropped before simulation.
 
 ```julia
-using QalibreMDPhantom: PLATE_Z_MM
+using MRISystemPhantom: PLATE_Z_MM
 
 # 10 mm slab centred on the T1 plate
 cfg = PhantomConfig(

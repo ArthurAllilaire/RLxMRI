@@ -1,6 +1,6 @@
 using Documenter
 using Literate
-using QalibreMDPhantom
+using MRISystemPhantom
 
 # Generate example pages from scripts in examples/
 examples_src = joinpath(@__DIR__, "..", "examples")
@@ -12,12 +12,12 @@ Literate.markdown(joinpath(examples_src, "snr_calibration.jl"), examples_out;
                   execute = false, flavor = Literate.CommonMarkFlavor())
 
 makedocs(
-    sitename = "QalibreMDPhantom.jl",
+    sitename = "MRISystemPhantom.jl",
     authors  = "Arthur Allilaire",
-    modules  = [QalibreMDPhantom],
+    modules  = [MRISystemPhantom],
     format   = Documenter.HTML(
         prettyurls       = get(ENV, "CI", nothing) == "true",
-        canonical        = "https://arthurallilaire.github.io/QalibreMDPhantom.jl",
+        canonical        = "https://arthurallilaire.github.io/MRISystemPhantom.jl",
         edit_link        = "main",
         assets           = String[],
     ),
@@ -40,7 +40,7 @@ makedocs(
 )
 
 deploydocs(
-    repo   = "github.com/arthurallilaire/QalibreMDPhantom.jl.git",
+    repo   = "github.com/ArthurAllilaire/MRISystemPhantom.jl.git",
     branch = "gh-pages",
     push_preview = true,
 )

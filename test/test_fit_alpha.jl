@@ -9,7 +9,7 @@
 
 using Test
 using Random
-using QalibreMDPhantom
+using MRISystemPhantom
 
 @testset "fitter at non-90° α" begin
 

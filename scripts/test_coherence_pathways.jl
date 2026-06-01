@@ -28,7 +28,7 @@
 # Run with:
 #   julia --project=. scripts/test_coherence_pathways.jl
 
-using KomaMRI, QalibreMDPhantom, Suppressor, Printf
+using KomaMRI, MRISystemPhantom, Suppressor, Printf
 
 # ── Phantom: line of 21 spins along z at fixed (x,y) ─────────────────────────
 # z extent matches the slice thickness our 2D sequence implicitly relies on.

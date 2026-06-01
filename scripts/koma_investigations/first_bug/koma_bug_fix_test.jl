@@ -5,7 +5,7 @@
 # rounding in the time vector. Those "leaked" RF samples get added to the
 # excitation block by `get_sim_ranges`, corrupting subsequent magnetisation.
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 const KomaMRICore = KomaMRI.KomaMRICore
 using KomaMRI: Grad
 

@@ -39,7 +39,7 @@
 #   julia --project=. scripts/cached_water_validation.jl
 #   julia --project=. scripts/cached_water_validation.jl --alphas 90,60,30,17,5 --label e2val
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 using Random, Statistics, Printf, JSON, NPZ
 include(joinpath(@__DIR__, "t1_fit_lib.jl"))
 
@@ -68,7 +68,7 @@ run_dir=joinpath(@__DIR__,"runs","cached_water_e2",label)
 arr=joinpath(run_dir,"arrays"); mkpath(arr); mkpath(joinpath(run_dir,"figures"))
 println("="^64); println("cached_water_validation  label=$label  Npe=$Npe Nfe=$Nfe voxel=$voxel  α=$alphas"); println("="^64)
 
-slice_c=QalibreMDPhantom.PLATE_Z_MM.T1
+slice_c=MRISystemPhantom.PLATE_Z_MM.T1
 cfg5=PhantomConfig(field=field, voxel_size_mm=voxel, include_plates=[:T1,:water],
                    augment=AugmentConfig(B0_sigma_Hz=B0_SPHERES),
                    slice_thickness_mm=voxel, slice_center_mm=slice_c)

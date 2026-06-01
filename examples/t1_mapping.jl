@@ -4,7 +4,7 @@
 # simulates a multi-TI inversion-recovery spin-echo acquisition at 3 T, and
 # fits T1 per sphere — reproducing the core E0 pipeline.
 
-using QalibreMDPhantom, KomaMRI
+using MRISystemPhantom, KomaMRI
 
 # ## Build the phantom
 #

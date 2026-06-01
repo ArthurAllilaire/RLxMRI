@@ -1,4 +1,4 @@
-# QalibreMDPhantom.jl
+# MRISystemPhantom.jl
 
 A programmatic, parameterised **digital twin** of the
 [QalibreMD NIST/ISMRM System Standard Model 130](https://www.qalibremd.com/)
@@ -12,7 +12,7 @@ and per-spin noise in a single call.
 ## Quick example
 
 ```julia
-using QalibreMDPhantom, KomaMRI
+using MRISystemPhantom, KomaMRI
 
 # Build the phantom at 3 T, 2 mm isotropic voxels
 cfg = PhantomConfig(field = :T3, voxel_size_mm = 2.0)
@@ -50,13 +50,13 @@ This package is not yet registered. Add it directly from GitHub:
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/arthuraa/QalibreMDPhantom.jl")
+Pkg.add(url = "https://github.com/ArthurAllilaire/MRISystemPhantom.jl")
 ```
 
 Or, in the Julia REPL package mode (`]`):
 
 ```
-pkg> add https://github.com/arthuraa/QalibreMDPhantom.jl
+pkg> add https://github.com/ArthurAllilaire/MRISystemPhantom.jl
 ```
 
 ## Navigation

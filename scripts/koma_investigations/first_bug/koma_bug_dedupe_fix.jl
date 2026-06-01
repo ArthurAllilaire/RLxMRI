@@ -13,7 +13,7 @@
 #
 # Candidate fix: collapse near-duplicate times after sort with a tolerance.
 
-using QalibreMDPhantom, KomaMRI, Suppressor
+using MRISystemPhantom, KomaMRI, Suppressor
 const KomaMRIBase = KomaMRI.KomaMRIBase
 using KomaMRI: Grad
 

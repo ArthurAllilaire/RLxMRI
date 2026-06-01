@@ -10,4 +10,5 @@ Contents:
  - water_cache.md
  - runA.md
  - benchmarks.md
+ - multi_fidelity.md
 - e1_runs (pending work)

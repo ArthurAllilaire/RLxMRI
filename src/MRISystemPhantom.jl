@@ -1,5 +1,5 @@
 """
-    QalibreMDPhantom
+    MRISystemPhantom
 
 Programmatic, parameterised digital twin of the **QalibreMD NIST/ISMRM
 System Standard Model 130** phantom. Builds a `KomaMRI.Phantom` from a
@@ -7,10 +7,10 @@ single `PhantomConfig` so an RL training loop can sample field strength,
 rotation, voxel size, per-property jitter, etc. without touching library
 code.
 
-    using QalibreMDPhantom
+    using MRISystemPhantom
     obj = build_phantom(PhantomConfig(field = :T3, voxel_size_mm = 2.0))
 """
-module QalibreMDPhantom
+module MRISystemPhantom
 
 using KomaMRI
 using FFTW

@@ -12,7 +12,7 @@
 # geometry readable.
 
 using KomaMRI
-using QalibreMDPhantom
+using MRISystemPhantom
 
 const PlotlyJS = parentmodule(typeof(plot_phantom_map(
     Phantom(x = [0.0]), :T1; height = 10)))
