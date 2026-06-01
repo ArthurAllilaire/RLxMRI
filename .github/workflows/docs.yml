@@ -30,6 +30,9 @@ jobs:
           julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path = pwd()))
+            Pkg.add(url="https://github.com/ArthurAllilaire/KomaMRI.jl.git",
+                    subdir="KomaMRIBase",
+                    rev="fix/grad-fp")
             Pkg.instantiate()
           '
 
