@@ -25,19 +25,18 @@ jobs:
 
       - uses: julia-actions/cache@v2
 
+      - name: Instantiate main project (populates fork into package cache)
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
+
       - name: Install docs dependencies
         run: |
           julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path = pwd()))
-            Pkg.add(url="https://github.com/ArthurAllilaire/KomaMRI.jl.git",
-                    subdir="KomaMRIBase",
-                    rev="fix/grad-fp")
             Pkg.instantiate()
           '
 
       - name: Build and deploy docs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
         run: julia --project=docs docs/make.jl
