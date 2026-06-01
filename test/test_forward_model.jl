@@ -59,7 +59,7 @@ import Statistics: mean, std
         cfg = PhantomConfig(field = :T15, voxel_size_mm = 1.0,
                             include_plates = [:water],
                             slice_thickness_mm = 1.0,
-                            slice_center_mm = QalibreMDPhantom.PLATE_Z_MM.T1)
+                            slice_center_mm = (0.0, 0.0, QalibreMDPhantom.PLATE_Z_MM.T1))
         phantom = build_phantom(cfg)
         FOV, Npe, Nfe = 0.2, 32, 64
         kw = (TI = 0.1, TR = 5.0, α_exc = π/2, θ_inv = π, FOV = FOV,

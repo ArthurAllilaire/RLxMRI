@@ -1,4 +1,6 @@
 # Minimal duck-typed phantom for occupancy tests — avoids a full KomaMRI build.
+using LinearAlgebra: dot, norm
+
 struct _MockPhantom
     x::Vector{Float64}
     y::Vector{Float64}
@@ -28,6 +30,62 @@ end
         # Non-centred sphere returns the same count (invariance under translation)
         xs3, _, _ = voxelise_sphere((0.1, -0.05, 0.03), r, delta_x)
         @test length(xs3) == length(xs)
+    end
+
+    @testset "oriented slice plane helpers" begin
+        n, u, v = slice_basis((1.0, 2.0, 3.0))
+        @test isapprox(norm(collect(n)), 1.0; atol = 1e-12)
+        @test isapprox(norm(collect(u)), 1.0; atol = 1e-12)
+        @test isapprox(norm(collect(v)), 1.0; atol = 1e-12)
+        @test isapprox(dot(collect(n), collect(u)), 0.0; atol = 1e-12)
+        @test isapprox(dot(collect(n), collect(v)), 0.0; atol = 1e-12)
+        @test isapprox(dot(collect(u), collect(v)), 0.0; atol = 1e-12)
+        @test_throws ErrorException slice_basis((0.0, 0.0, 0.0))
+
+        centre = (0.0, 0.0, 0.0565)
+        @test signed_distance(0.0, 0.0, 0.0570, centre, (0.0, 0.0, 1.0)) ≈ 0.5e-3
+
+        oblique_centre = (0.02 * n[1], 0.02 * n[2], 0.02 * n[3])
+        p_on_plane = (
+            oblique_centre[1] + 0.01 * u[1] - 0.03 * v[1],
+            oblique_centre[2] + 0.01 * u[2] - 0.03 * v[2],
+            oblique_centre[3] + 0.01 * u[3] - 0.03 * v[3],
+        )
+        @test isapprox(signed_distance(p_on_plane..., oblique_centre, n), 0.0; atol = 1e-12)
+    end
+
+    @testset "voxelise_plane footprint" begin
+        R = 0.100
+        dx = 0.003
+        centre = (0.0, 0.0, PLATE_Z_MM.T1 * 1e-3)
+        n, u, v = slice_basis((0.0, 0.0, 1.0))
+        xs, ys, zs = voxelise_plane(centre, n, u, v, dx, R)
+        @test length(xs) > 0
+        @test all(isapprox.(zs, centre[3]; atol = 1e-12))
+        @test all(@.(xs^2 + ys^2 + zs^2) .<= R^2 + 1e-12)
+        r_plane = sqrt(R^2 - centre[3]^2)
+        @test maximum(sqrt.(xs.^2 .+ ys.^2)) <= r_plane + dx
+
+        xs_empty, ys_empty, zs_empty = voxelise_plane((0.0, 0.0, 0.110), n, u, v, dx, R)
+        @test isempty(xs_empty) && isempty(ys_empty) && isempty(zs_empty)
+
+        n2, u2, v2 = slice_basis((1.0, 2.0, 3.0))
+        centre2 = (0.02 * n2[1], 0.02 * n2[2], 0.02 * n2[3])
+        xo, yo, zo = voxelise_plane(centre2, n2, u2, v2, dx, R)
+        @test length(xo) > 0
+        @test all(abs.(signed_distance.(xo, yo, zo, Ref(centre2), Ref(n2))) .< 1e-12)
+        @test all(@.(xo^2 + yo^2 + zo^2) .<= R^2 + 1e-12)
+
+        shifted_centre = (
+            centre2[1] + dx * u2[1],
+            centre2[2] + dx * u2[2],
+            centre2[3] + dx * u2[3],
+        )
+        xa, ya, za = voxelise_plane(shifted_centre, n2, u2, v2, dx, R)
+        anchor_dist = @. (xa - shifted_centre[1])^2 +
+                         (ya - shifted_centre[2])^2 +
+                         (za - shifted_centre[3])^2
+        @test minimum(anchor_dist) < 1e-24
     end
 
     @testset "contrast plate layout" begin

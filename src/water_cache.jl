@@ -63,29 +63,6 @@ struct CachedWaterModel
     TE_ref   :: Float64
 end
 
-"""
-    transient_mz_per_shot(T1, TI, TR, θ_inv, α_exc, Npe) -> Vector{Float64}
-
-Per-shot longitudinal magnetisation at excitation for the `Npe` shots of an IR
-block starting from thermal equilibrium. Recovered from the existing
-[`transient_mz_at_excite_npe`](@ref) (which returns the *mean* over shots) by
-finite-differencing its cumulative mean:
-
-    Mz[k] = k·mean(1:k) − (k−1)·mean(1:k−1)
-
-so no separate recurrence is maintained. `Mz[k]` weights k-space row `k`.
-"""
-function transient_mz_per_shot(T1::Real, TI::Real, TR::Real, θ_inv::Real,
-                               α_exc::Real, Npe::Int)
-    out  = Vector{Float64}(undef, Npe)
-    prev = 0.0
-    for k in 1:Npe
-        cum = k * transient_mz_at_excite_npe(T1, TI, TR, θ_inv, α_exc; Npe = k)
-        out[k] = cum - prev
-        prev = cum
-    end
-    out
-end
 
 """
     build_cached_water_model(water_phantom, scanner; FOV, Nfe, Npe,

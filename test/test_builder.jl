@@ -147,7 +147,7 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
                                          include_plates = [:water],
                                          custom_sphere_descriptors = [custom],
                                          slice_thickness_mm = 3.0,
-                                         slice_center_mm = 0.0)
+                                         slice_center_mm = (0.0, 0.0, 0.0))
         obj_custom_water = build_phantom(cfg_custom_water)
         @test length(obj_custom_water.x) > length(obj_custom.x)
         @test any(obj_custom_water.T1 .== 0.42)
@@ -163,7 +163,7 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
             include_plates = [:T1, :water],
             keep_sphere_labels = [kept.label],
             slice_thickness_mm = 2.0,
-            slice_center_mm = PLATE_Z_MM.T1)
+            slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
         water = build_background_water(cfg_keep_water)
 
         inside_kept = @. ((water.x - kept.centre[1])^2 +
@@ -177,12 +177,12 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
         @test any(inside_omitted)
     end
 
-    @testset "slice_thickness_mm — z-slab mask" begin
+    @testset "slice_thickness_mm — phantom-attached slab mask" begin
         # Slab centred on T1 plate keeps only T1-plate spins.
         cfgS = PhantomConfig(voxel_size_mm = 0.5,
                              include_plates = [:T1, :T2, :PD],
                              slice_thickness_mm = 1.0,
-                             slice_center_mm    = PLATE_Z_MM.T1)
+                             slice_center_mm    = (0.0, 0.0, PLATE_Z_MM.T1))
         obj = build_phantom(cfgS)
         @test length(obj.x) > 0
         @test all(abs.(obj.z .- PLATE_Z_MM.T1 * 1e-3) .<= 0.5e-3 + 1e-12)
@@ -194,22 +194,27 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
         cfgEmpty = PhantomConfig(voxel_size_mm = 0.5,
                                  include_plates = [:T2, :PD],
                                  slice_thickness_mm = 1.0,
-                                 slice_center_mm    = PLATE_Z_MM.T1)
+                                 slice_center_mm    = (0.0, 0.0, PLATE_Z_MM.T1))
         @test length(build_phantom(cfgEmpty).x) == 0
 
         # Default (nothing) reproduces the full phantom z-extent.
         full = build_phantom(PhantomConfig(voxel_size_mm = 3.0))
         @test maximum(abs.(full.z)) > 1e-2   # ≫ 1 mm
 
-        # Scanner-frame semantics: rotating the phantom does not tilt the slab.
+        # Phantom-attached semantics: rotating the phantom rotates the slab.
         cfgRot = PhantomConfig(voxel_size_mm = 1.0,
                                include_plates = [:water],
                                slice_thickness_mm = 1.0,
-                               slice_center_mm    = 0.0,
+                               slice_center_mm    = (0.0, 0.0, 0.0),
                                rotation           = (deg2rad(20.0), 0.0, 0.0))
         objRot = build_phantom(cfgRot)
         @test length(objRot.x) > 0
-        @test all(abs.(objRot.z) .<= 0.5e-3 + 1e-12)
+        R = rotation_matrix(cfgRot.rotation...)
+        n_scanner = R * [0.0, 0.0, 1.0]
+        dists = @. objRot.x * n_scanner[1] + objRot.y * n_scanner[2] +
+                   objRot.z * n_scanner[3]
+        @test all(abs.(dists) .<= 0.5e-3 + 1e-9)
+        @test maximum(abs.(objRot.z)) > 0.5e-3
     end
 
     @testset "slice mask — float tolerance at slab boundary" begin
@@ -224,7 +229,7 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
         cfg = PhantomConfig(voxel_size_mm = 1.0,
                             include_plates = [:T1, :water],
                             slice_thickness_mm = 1.0,
-                            slice_center_mm    = PLATE_Z_MM.T1)
+                            slice_center_mm    = (0.0, 0.0, PLATE_Z_MM.T1))
         obj = build_phantom(cfg)
         @test length(obj.x) > 0
         # Boundary layers (56 and 57 mm) should be present, not silently dropped.
@@ -244,5 +249,158 @@ _one_t1_descriptor() = sphere_descriptors(:T1, PhantomConfig())[1]
             dz = water.z .- d.centre[3]
             @test !any(@.(dx^2 + dy^2 + dz^2) .<= d.radius^2 - 1e-12)
         end
+    end
+
+    @testset "coarse sliced water uses weighted plane sampling" begin
+        cfg_fine = PhantomConfig(voxel_size_mm = 1.0,
+                                 include_plates = [:water],
+                                 water_voxel_size_mm = 1.0,
+                                 slice_thickness_mm = 1.0,
+                                 slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
+        cfg_coarse = PhantomConfig(voxel_size_mm = 1.0,
+                                   include_plates = [:water],
+                                   water_voxel_size_mm = 3.0,
+                                   slice_thickness_mm = 1.0,
+                                   slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
+        fine = build_background_water(cfg_fine)
+        coarse = build_background_water(cfg_coarse)
+        @test isapprox(length(coarse.x) / length(fine.x), 1 / 9; rtol = 0.25)
+        @test isapprox(sum(coarse.ρ), sum(fine.ρ); rtol = 0.10)
+        @test all(coarse.ρ .== BACKGROUND_WATER[cfg_coarse.field].ρ * 9.0)
+    end
+
+    @testset "sliced water can use stacked through-plane sheets" begin
+        cfg_single = PhantomConfig(voxel_size_mm = 1.0,
+                                   include_plates = [:water],
+                                   water_voxel_size_mm = 3.0,
+                                   slice_thickness_mm = 3.0,
+                                   slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
+        cfg_stack = PhantomConfig(voxel_size_mm = 1.0,
+                                  include_plates = [:water],
+                                  water_voxel_size_mm = 3.0,
+                                  water_throughplane_voxel_size_mm = 1.0,
+                                  slice_thickness_mm = 3.0,
+                                  slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
+        single = build_background_water(cfg_single)
+        stack = build_background_water(cfg_stack)
+        @test length(stack.x) > length(single.x)
+        @test isapprox(sum(stack.ρ), sum(single.ρ); rtol = 0.10)
+        @test sort(unique(round.(stack.z .* 1000; digits = 6))) == [55.5, 56.5, 57.5]
+        @test all(stack.ρ .== BACKGROUND_WATER[cfg_stack.field].ρ * 9.0)
+    end
+
+    @testset "sliced water stack edge sheets are thickness weighted" begin
+        cfg = PhantomConfig(voxel_size_mm = 1.0,
+                            include_plates = [:water],
+                            water_voxel_size_mm = 3.0,
+                            water_throughplane_voxel_size_mm = 2.0,
+                            slice_thickness_mm = 3.0,
+                            slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
+        water = build_background_water(cfg)
+        z_mm = round.(water.z .* 1000; digits = 6)
+        @test sort(unique(z_mm)) == [56.0, 57.5]
+        @test Set(unique(water.ρ)) == Set(BACKGROUND_WATER[cfg.field].ρ .* [9.0, 18.0])
+    end
+
+    @testset "coarse water preserves sphere prefix" begin
+        dry_cfg = PhantomConfig(voxel_size_mm = 1.0,
+                                include_plates = [:T1],
+                                slice_thickness_mm = 1.0,
+                                slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
+        full_cfg = PhantomConfig(voxel_size_mm = 1.0,
+                                 include_plates = [:T1, :water],
+                                 water_voxel_size_mm = 3.0,
+                                 slice_thickness_mm = 1.0,
+                                 slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
+        dry = build_phantom(dry_cfg)
+        full = build_phantom(full_cfg)
+        n_dry = length(dry.x)
+        @test n_dry > 0
+        @test length(full.x) > n_dry
+        @test full.x[1:n_dry] ≈ dry.x
+        @test full.y[1:n_dry] ≈ dry.y
+        @test full.z[1:n_dry] ≈ dry.z
+        @test full.ρ[1:n_dry] == dry.ρ
+    end
+
+    @testset "coarse water survives oblique pose on transformed plane" begin
+        cfg = PhantomConfig(voxel_size_mm = 1.0,
+                            include_plates = [:water],
+                            water_voxel_size_mm = 3.0,
+                            slice_thickness_mm = 1.0,
+                            slice_normal = (0.0, 1.0, 1.0),
+                            slice_center_mm = (0.0, 20.0 / sqrt(2), 20.0 / sqrt(2)),
+                            rotation = (deg2rad(20.0), 0.0, deg2rad(10.0)),
+                            translation_mm = (3.0, -2.0, 5.0))
+        obj = build_phantom(cfg)
+        @test length(obj.x) > 0
+        n_p, _, _ = slice_basis(cfg.slice_normal)
+        p_p = cfg.slice_center_mm .* 1e-3
+        R = rotation_matrix(cfg.rotation...)
+        t = collect(cfg.translation_mm .* 1e-3)
+        p_s = R * collect(p_p) + t
+        n_s = R * collect(n_p)
+        dists = @. (obj.x - p_s[1]) * n_s[1] +
+                   (obj.y - p_s[2]) * n_s[2] +
+                   (obj.z - p_s[3]) * n_s[3]
+        @test all(abs.(dists) .< 1e-9)
+    end
+
+    @testset "non-sliced coarse water is 3D weighted" begin
+        cfg_fine = PhantomConfig(voxel_size_mm = 4.0,
+                                 include_plates = [:water],
+                                 water_voxel_size_mm = 4.0)
+        cfg_coarse = PhantomConfig(voxel_size_mm = 4.0,
+                                   include_plates = [:water],
+                                   water_voxel_size_mm = 8.0)
+        fine = build_background_water(cfg_fine)
+        coarse = build_background_water(cfg_coarse)
+        @test isapprox(length(coarse.x) / length(fine.x), 1 / 8; rtol = 0.25)
+        @test isapprox(sum(coarse.ρ), sum(fine.ρ); rtol = 0.15)
+        @test all(coarse.ρ .== BACKGROUND_WATER[cfg_coarse.field].ρ * 8.0)
+    end
+
+    @testset "coarse water validation and finer water" begin
+        cfg_finer = PhantomConfig(voxel_size_mm = 3.0,
+                                  include_plates = [:water],
+                                  water_voxel_size_mm = 1.5,
+                                  slice_thickness_mm = 3.0,
+                                  slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1))
+        finer = build_background_water(cfg_finer)
+        @test length(finer.x) > 0
+        @test all(finer.ρ .== BACKGROUND_WATER[cfg_finer.field].ρ * 0.25)
+
+        cfg_bad_water = PhantomConfig(voxel_size_mm = 1.0,
+                                      include_plates = [:water],
+                                      water_voxel_size_mm = 0.0)
+        @test_throws ErrorException build_background_water(cfg_bad_water)
+
+        cfg_bad_through = PhantomConfig(voxel_size_mm = 1.0,
+                                        include_plates = [:water],
+                                        slice_thickness_mm = 1.0,
+                                        water_throughplane_voxel_size_mm = 0.0)
+        @test_throws ErrorException build_background_water(cfg_bad_through)
+
+        cfg_bad_normal = PhantomConfig(voxel_size_mm = 1.0,
+                                       include_plates = [:water],
+                                       slice_thickness_mm = 1.0,
+                                       slice_normal = (0.0, 0.0, 0.0))
+        @test_throws ErrorException build_phantom(cfg_bad_normal)
+    end
+
+    @testset "PD jitter respects coarse-water weights" begin
+        cfg = PhantomConfig(voxel_size_mm = 1.0,
+                            include_plates = [:water],
+                            water_voxel_size_mm = 3.0,
+                            slice_thickness_mm = 1.0,
+                            slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1),
+                            augment = AugmentConfig(PD_sigma_abs = 2.0),
+                            rng_seed = 7)
+        obj = build_phantom(cfg)
+        weight = 9.0
+        material_ρ = obj.ρ ./ weight
+        @test all((0.0 .<= material_ρ) .& (material_ρ .<= 1.0))
+        @test maximum(obj.ρ) <= weight + 1e-12
+        @test any(obj.ρ .> 1.0)
     end
 end

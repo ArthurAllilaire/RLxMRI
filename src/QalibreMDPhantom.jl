@@ -28,6 +28,7 @@ include("materials/t2_array.jl")
 include("materials/pd_array.jl")    # uses BACKGROUND_WATER
 
 # --- geometry primitives --------------------------------------------------
+include("geometry/plane.jl")
 include("geometry/sphere.jl")
 include("geometry/plate_layouts.jl")
 include("geometry/projection.jl")
@@ -69,6 +70,7 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        transform_descriptor, transform_descriptors,
        sphere_descriptor_pixel, sphere_descriptor_pixels,
        voxelise_sphere, sphere_volume,
+       Slab, slice_basis, signed_distance, voxelise_plane,
        contrast_plate_centres, fiducial_grid_centres,
        rotation_matrix, apply_transform!, apply_per_spin_noise!,
        T1_ARRAY, T2_OF_T1_ARRAY, T1_ARRAY_LEGACY,
@@ -100,7 +102,7 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        # generalized IR
        generalized_ir_signal, fit_t1_generalized_ir, fit_t1_t2_generalized_ir,
        steady_state_mz_at_excite,
-       transient_mz_at_excite_npe,
+       transient_mz_at_excite_npe, transient_mz_per_shot,
        # E1 environment
        E1Env, e1_reset!, e1_step!, e1_n_actions, e1_obs_dim, e1_action_table,
        # E2 environment
@@ -112,7 +114,7 @@ export PhantomConfig, AugmentConfig, SphereDescriptor, scanner_for_field,
        phantom_parameter_map, image_to_kspace,
        # cached-water model
        CachedWaterModel, build_cached_water_model, cached_water_ksp,
-       transient_mz_per_shot, build_dry_and_water,
+       build_dry_and_water,
        # analytical forward models
        central_crop, bandlimit_image, ir_se_theory_image, ir_se_theory_image_binned,
        add_noise!, add_noise, add_gaussian_noise!,

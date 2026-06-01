@@ -1,3 +1,20 @@
+"""
+    AugmentConfig
+
+Per-spin noise and sphere dropout applied after voxelisation. All fields
+default to zero (no augmentation). Pass a non-zero `AugmentConfig` as the
+`augment` field of [`PhantomConfig`](@ref) to enable domain randomisation
+for RL training.
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `T1_sigma_rel` | 0.0 | fractional Gaussian jitter on T1 (e.g. 0.05 → ±5%) |
+| `T2_sigma_rel` | 0.0 | fractional Gaussian jitter on T2 |
+| `PD_sigma_abs` | 0.0 | absolute Gaussian jitter on proton density ρ |
+| `position_sigma_mm` | 0.0 | per-spin position noise standard deviation (mm) |
+| `B0_sigma_Hz` | 0.0 | per-spin off-resonance standard deviation (Hz) |
+| `drop_sphere_p` | 0.0 | Bernoulli probability of dropping each sphere |
+"""
 Base.@kwdef struct AugmentConfig
     T1_sigma_rel::Float64       = 0.0   # fractional Gaussian jitter on T1
     T2_sigma_rel::Float64       = 0.0   # fractional Gaussian jitter on T2
@@ -28,13 +45,21 @@ Base.@kwdef struct PhantomConfig
     keep_sphere_labels::Union{Nothing,Vector{Symbol}} = nothing
     drop_sphere_labels::Vector{Symbol} = Symbol[]
     custom_sphere_descriptors::Vector{SphereDescriptor} = SphereDescriptor[]
-    # Z-slab mask: when slice_thickness_mm !== nothing, keep only spins with
-    # |z_scanner − slice_center_mm·1e-3| ≤ slice_thickness_mm·1e-3 / 2. Applied
-    # in scanner-frame, after pose transform. Set slice_center_mm to a plate's
-    # PLATE_Z_MM entry (e.g. PLATE_Z_MM.T1 = 56.5) to isolate that plate.
+    # Optional water-only voxel size. When provided, background water uses this
+    # spacing and spin ρ is reweighted to conserve total water signal.
+    water_voxel_size_mm::Union{Nothing,Float64} = nothing
+    # Optional through-plane spacing for sliced water plane stacks. When
+    # nothing, a sliced water slab is represented by one weighted centre plane.
+    water_throughplane_voxel_size_mm::Union{Nothing,Float64} = nothing
+    # Phantom-attached slab mask: when slice_thickness_mm !== nothing, keep only
+    # spins whose signed distance from the phantom-frame plane is within half
+    # the slab thickness. The plane passes through slice_center_mm and has
+    # normal slice_normal. With the default normal, setting slice_center_mm to
+    # (0, 0, PLATE_Z_MM.T1) isolates the T1 plate as before.
     # If slice_thickness_mm < voxel_size_mm the slab may end up empty.
     slice_thickness_mm::Union{Nothing,Float64} = nothing
-    slice_center_mm::Float64                   = 0.0
+    slice_center_mm::NTuple{3,Float64}         = (0.0, 0.0, 0.0)
+    slice_normal::NTuple{3,Float64}            = (0.0, 0.0, 1.0)
 end
 
 """

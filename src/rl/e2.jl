@@ -77,6 +77,7 @@ mutable struct E2Env
     # ── static config ────────────────────────────────────────────────────────
     cfg_field::Symbol                      # :T3 or :T15
     voxel_size_mm::Float64                 # phantom voxelisation
+    water_voxel_size_mm::Union{Nothing,Float64}  # optional background-water voxelisation
     FOV::Float64                           # image field of view [m]
     Nfe::Int                               # frequency-encode samples
     Npe::Int                               # phase-encode steps
@@ -222,6 +223,7 @@ Construct a fresh E2 environment. Defaults match E2_PLAN.md training config.
 function E2Env(;
     cfg_field::Symbol             = :T15,
     voxel_size_mm::Real           = 1.0,
+    water_voxel_size_mm::Union{Nothing,Real} = nothing,
     FOV::Real                     = 0.2,
     Nfe::Int                      = 64,
     Npe::Int                      = 32,
@@ -265,6 +267,8 @@ function E2Env(;
         error("water_model must be :bloch or :cached_perline")
     (water_model === :bloch || include_water) ||
         error("water_model = :cached_perline requires include_water = true")
+    water_voxel_size_mm === nothing || Float64(water_voxel_size_mm) > 0.0 ||
+        error("water_voxel_size_mm must be > 0")
     0.0 <= Float64(mape_alpha) <= 1.0 ||
         error("mape_alpha must be in [0, 1]")
 
@@ -279,6 +283,7 @@ function E2Env(;
 
     env = E2Env(
         cfg_field, Float64(voxel_size_mm),
+        water_voxel_size_mm === nothing ? nothing : Float64(water_voxel_size_mm),
         Float64(FOV), Nfe, Npe, Bool(use_gpu),
         n_spheres, subset_size === nothing ? nothing : n_spheres,
         Int(max_blocks), Float64(time_budget_s),
@@ -391,6 +396,7 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
     phantom_cfg = PhantomConfig(
         field = env.cfg_field,
         voxel_size_mm = env.voxel_size_mm,
+        water_voxel_size_mm = env.water_voxel_size_mm,
         include_plates = env.include_water ? [:water] : Symbol[],
         rotation = episode_rotation,
         translation_mm = (tx, ty, tz),
@@ -398,7 +404,7 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
         rng_seed = rng_seed,
         custom_sphere_descriptors = active_descs,
         slice_thickness_mm = env.voxel_size_mm,
-        slice_center_mm = PLATE_Z_MM.T1,
+        slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1),
     )
 
     # :bloch → simulate spheres+water together. :cached_perline → simulate only the

@@ -31,14 +31,20 @@ function apply_transform!(obj, euler::NTuple{3,<:Real}, translation::NTuple{3,<:
 end
 
 """
-    apply_per_spin_noise!(obj, aug, rng)
+    apply_per_spin_noise!(obj, aug, rng; ρ_weight=nothing)
 
 Gaussian jitter on T1, T2, ρ, positions, and off-resonance. Sigmas of zero
 are no-ops so by default this function is effectively a passthrough.
+When `ρ_weight` is provided, PD jitter is applied to material proton density
+`obj.ρ[i] / ρ_weight[i]`, clamped to `[0, 1]`, then multiplied by the weight.
 """
-function apply_per_spin_noise!(obj, aug::AugmentConfig, rng::AbstractRNG)
+function apply_per_spin_noise!(obj, aug::AugmentConfig, rng::AbstractRNG;
+                               ρ_weight::Union{Nothing,AbstractVector{<:Real}} = nothing)
     n = length(obj.x)
     n == 0 && return obj
+    if ρ_weight !== nothing && length(ρ_weight) != n
+        error("ρ_weight length must match phantom spin count")
+    end
 
     if aug.T1_sigma_rel > 0
         @inbounds for i in 1:n
@@ -54,7 +60,15 @@ function apply_per_spin_noise!(obj, aug::AugmentConfig, rng::AbstractRNG)
     end
     if aug.PD_sigma_abs > 0
         @inbounds for i in 1:n
-            obj.ρ[i] = clamp(obj.ρ[i] + aug.PD_sigma_abs * randn(rng), 0.0, 1.0)
+            if ρ_weight === nothing
+                obj.ρ[i] = clamp(obj.ρ[i] + aug.PD_sigma_abs * randn(rng), 0.0, 1.0)
+            else
+                w = Float64(ρ_weight[i])
+                w > 0 || error("ρ_weight entries must be > 0")
+                ρ_material = obj.ρ[i] / w
+                ρ_material = clamp(ρ_material + aug.PD_sigma_abs * randn(rng), 0.0, 1.0)
+                obj.ρ[i] = ρ_material * w
+            end
         end
     end
     if aug.position_sigma_mm > 0

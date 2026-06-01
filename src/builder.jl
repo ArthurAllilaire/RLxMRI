@@ -4,6 +4,10 @@ const FIDUCIAL_RADIUS_M = 5.0e-3
 const CONTRAST_RADIUS_M = 7.5e-3
 "Water housing sphere radius in metres (200 mm ID hemispheres joined)."
 const HOUSING_RADIUS_M = 100e-3
+const MM_TO_M = 1e-3
+const PLATE_RNG_BUCKETS = 10_000
+
+_mm_to_m(x) = x * MM_TO_M
 
 """
     with_sphere_relaxation(d, T1, T2; T2s=T2)
@@ -195,14 +199,75 @@ function _empty_phantom(name::AbstractString = "empty")
     Phantom(name = String(name), x = Float64[])
 end
 
+function _slice_plane_basis(cfg::PhantomConfig)
+    n_hat, u_hat, v_hat = slice_basis(cfg.slice_normal)
+    centre = _mm_to_m.(cfg.slice_center_mm)
+    centre, n_hat, u_hat, v_hat
+end
+
+function _slice_slab(cfg::PhantomConfig)
+    cfg.slice_thickness_mm === nothing && return nothing
+    centre, n_hat, _, _ = _slice_plane_basis(cfg)
+    Slab(centre, n_hat, _mm_to_m(cfg.slice_thickness_mm) / 2)
+end
+
+function _water_voxel_size_mm(cfg::PhantomConfig)
+    cfg.water_voxel_size_mm === nothing ? cfg.voxel_size_mm : cfg.water_voxel_size_mm
+end
+
+function _water_throughplane_voxel_size_mm(cfg::PhantomConfig)
+    cfg.water_throughplane_voxel_size_mm === nothing ?
+        something(cfg.slice_thickness_mm, cfg.voxel_size_mm) :
+        cfg.water_throughplane_voxel_size_mm
+end
+
+function _water_ρ_weight(cfg::PhantomConfig)
+    sphere_dx = _mm_to_m(cfg.voxel_size_mm)
+    water_dx = _mm_to_m(_water_voxel_size_mm(cfg))
+    if cfg.slice_thickness_mm !== nothing
+        through_dx = _mm_to_m(_water_throughplane_voxel_size_mm(cfg))
+        return (water_dx / sphere_dx)^2 * (through_dx / sphere_dx)
+    end
+    cfg.water_voxel_size_mm === nothing && return 1.0
+    (water_dx / sphere_dx)^3
+end
+
+function _slice_sheet_offsets_and_thicknesses(slice_thickness_m::Real,
+                                              sheet_spacing_m::Real)
+    T = Float64(slice_thickness_m)
+    dz = Float64(sheet_spacing_m)
+    T > 0 || error("slice_thickness_mm must be > 0")
+    dz > 0 || error("water_throughplane_voxel_size_mm must be > 0")
+
+    edges = collect(-T / 2 : dz : T / 2)
+    if isempty(edges) || edges[1] > -T / 2 + PLANE_TOL
+        pushfirst!(edges, -T / 2)
+    end
+    if edges[end] < T / 2 - PLANE_TOL
+        push!(edges, T / 2)
+    else
+        edges[end] = T / 2
+    end
+
+    offsets = Float64[]
+    thicknesses = Float64[]
+    for i in 1:(length(edges) - 1)
+        thickness = edges[i + 1] - edges[i]
+        thickness > PLANE_TOL || continue
+        push!(offsets, (edges[i] + edges[i + 1]) / 2)
+        push!(thicknesses, thickness)
+    end
+    offsets, thicknesses
+end
+
 function build_phantom_from_descriptors(descs::AbstractVector{<:SphereDescriptor},
                                         delta_x::Real;
                                         name::AbstractString = "spheres",
-                                        z_range::Union{Nothing,Tuple{<:Real,<:Real}} = nothing)
+                                        slab::Union{Nothing,Slab} = nothing)
     isempty(descs) && return _empty_phantom(name)
     parts = Phantom[]
     for d in descs
-        p = build_sphere(d, delta_x; z_range = z_range)
+        p = build_sphere(d, delta_x; slab = slab)
         length(p.x) > 0 && push!(parts, p)
     end
     isempty(parts) && return _empty_phantom(name)
@@ -213,8 +278,8 @@ end
 
 function build_sphere(d::SphereDescriptor, delta_x::Real;
                       name::AbstractString = String(d.label),
-                      z_range::Union{Nothing,Tuple{<:Real,<:Real}} = nothing)
-    x, y, z = voxelise_sphere(d.centre, d.radius, delta_x; z_range = z_range)
+                      slab::Union{Nothing,Slab} = nothing)
+    x, y, z = voxelise_sphere(d.centre, d.radius, delta_x; slab = slab)
     n = length(x)
     n == 0 && return _empty_phantom(name)
     Phantom(
@@ -235,9 +300,9 @@ Voxelise the sphere descriptors of one plate and concatenate into a single
 `Phantom`. Returns an empty phantom if the plate is empty after augmentation.
 """
 function build_plate(plate::Symbol, cfg::PhantomConfig)
-    rng = Random.MersenneTwister(cfg.rng_seed + hash(plate) % 10_000)
+    rng = Random.MersenneTwister(cfg.rng_seed + hash(plate) % PLATE_RNG_BUCKETS)
     descs = sphere_descriptors(plate, cfg; rng)
-    delta_x = cfg.voxel_size_mm * 1e-3
+    delta_x = _mm_to_m(cfg.voxel_size_mm)
     build_phantom_from_descriptors(descs, delta_x; name = String(plate))
 end
 
@@ -248,37 +313,77 @@ Voxelise a 100 mm-radius water sphere and cut out all contrast + fiducial
 sphere volumes. Spins are labelled as bulk water.
 """
 function build_background_water(cfg::PhantomConfig; cutout_descs = nothing)
-    delta_x = cfg.voxel_size_mm * 1e-3
-    xs, ys, zs = voxelise_sphere((0.0, 0.0, 0.0), HOUSING_RADIUS_M, delta_x)
-    isempty(xs) && return _empty_phantom("water")
-    # Apply slice mask here — before allocating spin-property arrays — so that
-    # the full-3D water sphere (up to 33M spins at 0.5 mm) is never fully
-    # materialised in memory when a thin slice is requested.
-    if cfg.slice_thickness_mm !== nothing
-        z_half   = (cfg.slice_thickness_mm * 1e-3) / 2
-        z_centre = cfg.slice_center_mm * 1e-3
-        slice_ok = abs.(zs .- z_centre) .≤ z_half + 1e-9
-        xs, ys, zs = xs[slice_ok], ys[slice_ok], zs[slice_ok]
+    water, _ = _build_background_water_with_weights(cfg; cutout_descs = cutout_descs)
+    water
+end
+
+function _build_background_water_with_weights(cfg::PhantomConfig; cutout_descs = nothing)
+    sphere_dx = _mm_to_m(cfg.voxel_size_mm)
+    sphere_dx > 0 || error("voxel_size_mm must be > 0")
+    water_dx = _mm_to_m(_water_voxel_size_mm(cfg))
+    water_dx > 0 || error("water_voxel_size_mm must be > 0")
+    if cfg.water_throughplane_voxel_size_mm !== nothing
+        cfg.water_throughplane_voxel_size_mm > 0 ||
+            error("water_throughplane_voxel_size_mm must be > 0")
     end
-    isempty(xs) && return _empty_phantom("water")
+    props = BACKGROUND_WATER[cfg.field]
+
+    xs = Float64[]
+    ys = Float64[]
+    zs = Float64[]
+    ρ_weight = Float64[]
+
+    if cfg.slice_thickness_mm !== nothing
+        centre, n_hat, u_hat, v_hat = _slice_plane_basis(cfg)
+        offsets, thicknesses = _slice_sheet_offsets_and_thicknesses(
+            _mm_to_m(cfg.slice_thickness_mm),
+            _mm_to_m(_water_throughplane_voxel_size_mm(cfg)))
+        area_weight = (water_dx / sphere_dx)^2
+        for (offset, thickness) in zip(offsets, thicknesses)
+            sheet_centre = (
+                centre[1] + offset * n_hat[1],
+                centre[2] + offset * n_hat[2],
+                centre[3] + offset * n_hat[3],
+            )
+            x, y, z = voxelise_plane(sheet_centre, n_hat, u_hat, v_hat,
+                                     water_dx, HOUSING_RADIUS_M)
+            append!(xs, x)
+            append!(ys, y)
+            append!(zs, z)
+            append!(ρ_weight, fill(area_weight * (thickness / sphere_dx), length(x)))
+        end
+    else
+        xs, ys, zs = voxelise_sphere((0.0, 0.0, 0.0), HOUSING_RADIUS_M, water_dx)
+        append!(ρ_weight, fill(_water_ρ_weight(cfg), length(xs)))
+    end
+    isempty(xs) && return _empty_phantom("water"), Float64[]
+    # Keep sliced water under the same tolerant slab mask used for sphere voxels.
+    slab = _slice_slab(cfg)
+    if slab !== nothing
+        slice_ok = _slice_slab_mask(xs, ys, zs, slab)
+        xs, ys, zs = xs[slice_ok], ys[slice_ok], zs[slice_ok]
+        ρ_weight = ρ_weight[slice_ok]
+    end
+    isempty(xs) && return _empty_phantom("water"), Float64[]
     keep = trues(length(xs))
     cutouts = cutout_descs === nothing ? all_sphere_descriptors(cfg) : cutout_descs
     for d in cutouts
         @. keep &= ((xs - d.centre[1])^2 + (ys - d.centre[2])^2 +
                     (zs - d.centre[3])^2) > d.radius^2
     end
-    sum(keep) == 0 && return _empty_phantom("water")
-    props = BACKGROUND_WATER[cfg.field]
+    sum(keep) == 0 && return _empty_phantom("water"), Float64[]
     n = sum(keep)
-    Phantom(
+    ρ_weight = ρ_weight[keep]
+    water = Phantom(
         name = "water",
         x = xs[keep], y = ys[keep], z = zs[keep],
-        ρ   = fill(props.ρ,  n),
+        ρ   = props.ρ .* ρ_weight,
         T1  = fill(props.T1, n),
         T2  = fill(props.T2, n),
         T2s = fill(props.T2, n),
         Δw  = fill(0.0,      n),
     )
+    water, ρ_weight
 end
 
 """
@@ -292,27 +397,38 @@ per-spin noise. The returned `Phantom` can be fed directly to
 function build_phantom(cfg::PhantomConfig = PhantomConfig())
     rng = Random.MersenneTwister(cfg.rng_seed)
     sphere_descs = all_sphere_descriptors(cfg; rng)
+    slab = _slice_slab(cfg)
     parts = Phantom[]
+    ρ_weight_parts = Vector{Vector{Float64}}()
     if !isempty(sphere_descs)
-        push!(parts, build_phantom_from_descriptors(
-            sphere_descs, cfg.voxel_size_mm * 1e-3; name = "spheres"))
+        spheres = build_phantom_from_descriptors(
+            sphere_descs, _mm_to_m(cfg.voxel_size_mm); name = "spheres", slab = slab)
+        if length(spheres.x) > 0
+            push!(parts, spheres)
+            push!(ρ_weight_parts, ones(length(spheres.x)))
+        end
     end
-    :water ∈ cfg.include_plates &&
-        push!(parts, build_background_water(cfg; cutout_descs = sphere_descs))
+    if :water ∈ cfg.include_plates
+        water, water_ρ_weight = _build_background_water_with_weights(
+            cfg; cutout_descs = sphere_descs)
+        if length(water.x) > 0
+            push!(parts, water)
+            push!(ρ_weight_parts, water_ρ_weight)
+        end
+    end
 
-    filter!(p -> length(p.x) > 0, parts)
     obj = isempty(parts) ? _empty_phantom("qalibremd") : reduce(+, parts)
+    ρ_weight = isempty(ρ_weight_parts) ? Float64[] : reduce(vcat, ρ_weight_parts)
     obj.name = "qalibremd"
-    obj = apply_transform!(obj, cfg.rotation, cfg.translation_mm .* 1e-3)
     if cfg.slice_thickness_mm !== nothing && length(obj.x) > 0
-        z_half   = (cfg.slice_thickness_mm * 1e-3) / 2
-        z_centre = cfg.slice_center_mm * 1e-3
-        # +1 nm float-tolerance so voxels landing exactly on the slab edge
-        # (common when slice_thickness_mm == voxel_size_mm) survive roundoff.
-        keep = abs.(obj.z .- z_centre) .≤ z_half + 1e-9
+        # Tolerance keeps voxels that land exactly on the slab edge despite
+        # floating-point roundoff.
+        keep = _slice_slab_mask(obj.x, obj.y, obj.z, slab)
         obj = obj[keep]
+        ρ_weight = ρ_weight[keep]
         obj.name = "qalibremd"
     end
-    obj = apply_per_spin_noise!(obj, cfg.augment, rng)
+    obj = apply_transform!(obj, cfg.rotation, _mm_to_m.(cfg.translation_mm))
+    obj = apply_per_spin_noise!(obj, cfg.augment, rng; ρ_weight = ρ_weight)
     obj
 end

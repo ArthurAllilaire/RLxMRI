@@ -1,0 +1,7 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+KomaMRI = "6a340f8b-2cdf-4c04-99be-4953d9b66d0a"
+QalibreMDPhantom = "6229b35e-1f84-4e2c-829e-3cca79e866b7"
+
+[compat]
+Documenter = "1"

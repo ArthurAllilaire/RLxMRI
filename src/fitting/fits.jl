@@ -137,6 +137,35 @@ Special cases:
 end
 
 """
+    transient_mz_per_shot(T1, TI, TR, θ_inv, α_exc, Npe) -> Vector{Float64}
+
+Per-shot longitudinal magnetisation at excitation for each of the `Npe` shots
+of an IR block starting from thermal equilibrium. `Mz[k]` weights k-space row
+`k`. See [`transient_mz_at_excite_npe`](@ref) for the recurrence and limits.
+"""
+function transient_mz_per_shot(T1::Real, TI::Real, TR::Real, θ_inv::Real,
+                               α_exc::Real, Npe::Int)
+    Npe ≥ 1 || error("Npe must be ≥ 1")
+    T1f = Float64(T1)
+    E1  = exp(-Float64(TI) / T1f)
+    a   = cos(Float64(θ_inv))
+    out = Vector{Float64}(undef, Npe)
+    if !isfinite(TR) || TR <= 0
+        fill!(out, 1.0 - (1.0 - a) * E1)
+        return out
+    end
+    b      = cos(Float64(α_exc))
+    E2     = exp(-(Float64(TR) - Float64(TI)) / T1f)
+    Mz_pre = 1.0
+    @inbounds for k in 1:Npe
+        Mz_at_TI = (1.0 - E1) + a * E1 * Mz_pre
+        out[k]   = Mz_at_TI
+        Mz_pre   = (1.0 - E2) + b * E2 * Mz_at_TI
+    end
+    out
+end
+
+"""
     transient_mz_at_excite_npe(T1, TI, TR, θ_inv, α_exc; Npe::Int) -> Mz
 
 Mean Mz_at_excite across the `Npe` shots of an IR block that starts from
@@ -160,28 +189,9 @@ with E1 = exp(−TI/T1), E2 = exp(−(TR−TI)/T1). Limits:
 - `Npe → ∞`     ⇒ `steady_state_mz_at_excite(T1, TI, TR, θ_inv, α_exc)`.
 - `TR → ∞`      ⇒ `Mz_pre[k] ≡ 1` ⇒ pure transient (every shot from M0).
 """
-@inline function transient_mz_at_excite_npe(T1::Real, TI::Real, TR::Real,
-                                              θ_inv::Real, α_exc::Real;
-                                              Npe::Int)
-    Npe ≥ 1 || error("Npe must be ≥ 1")
-    T1f = Float64(T1)
-    E1  = exp(-Float64(TI) / T1f)
-    a   = cos(θ_inv)
-    if !isfinite(TR) || TR <= 0
-        # TR → ∞: Mz_pre is reset to 1 at the start of every shot.
-        return 1.0 - (1.0 - a) * E1
-    end
-    b   = cos(α_exc)
-    E2  = exp(-(Float64(TR) - Float64(TI)) / T1f)
-    Mz_pre = 1.0
-    accum  = 0.0
-    @inbounds for _ in 1:Npe
-        Mz_at_TI = (1 - E1) + a * E1 * Mz_pre
-        accum   += Mz_at_TI
-        Mz_pre   = (1 - E2) + b * E2 * Mz_at_TI
-    end
-    return accum / Npe
-end
+@inline transient_mz_at_excite_npe(T1::Real, TI::Real, TR::Real, θ_inv::Real,
+                                    α_exc::Real; Npe::Int) =
+    mean(transient_mz_per_shot(T1, TI, TR, θ_inv, α_exc, Npe))
 
 # ───────────────────────── fit_t1_generalized_ir helpers ─────────────────────
 # Each helper owns one section of the generalised IR fit; the public function
