@@ -1,5 +1,13 @@
 using Documenter
+using Literate
 using QalibreMDPhantom
+
+# Generate example pages from scripts in examples/
+examples_src = joinpath(@__DIR__, "..", "examples")
+examples_out = joinpath(@__DIR__, "src", "examples")
+
+Literate.markdown(joinpath(examples_src, "t1_mapping.jl"),       examples_out; execute = false)
+Literate.markdown(joinpath(examples_src, "snr_calibration.jl"),  examples_out; execute = false)
 
 makedocs(
     sitename = "QalibreMDPhantom.jl",
@@ -18,6 +26,11 @@ makedocs(
             "Phantom Construction" => "phantom.md",
             "Pulse Sequences"      => "sequences.md",
             "Parameter Fitting"    => "fitting.md",
+            "SNR Diagnostics"      => "diagnostics.md",
+        ],
+        "Examples" => [
+            "T1 Mapping"        => "examples/t1_mapping.md",
+            "SNR Calibration"   => "examples/snr_calibration.md",
         ],
         "API Reference"   => "api.md",
     ],
@@ -25,7 +38,7 @@ makedocs(
 )
 
 deploydocs(
-    repo   = "github.com/arthuraa/QalibreMDPhantom.jl.git",
+    repo   = "github.com/arthurallilaire/QalibreMDPhantom.jl.git",
     branch = "gh-pages",
     push_preview = true,
 )

@@ -1,36 +1,11 @@
-# Shared SNR diagnostics — used by both `src/rl/e2.jl` (via diagnose_e2)
-# and `scripts/t1_fit_vs_true.jl`. Pure functions over already-reconstructed
-# magnitude images; no environment coupling.
+# SNR diagnostics for reconstructed magnitude images.
 #
-# Three SNR metrics, all reported together so the figure-of-merit number in
-# the FYP report is rooted in a standard MRI method (NEMA MS-1) rather than an
-# internal k-space RMS ratio.
-#
-# Conventions
-# -----------
-# * NEMA single-image (clinical default):
-#     SNR = mean(signal in sphere ROI) / (std(background) / 0.6551)
-#   The /0.6551 corrects for Rayleigh bias on magnitude images of
-#   zero-mean complex Gaussian noise (Henkelman 1985; Gudbjartsson-Patz 1995).
-#   This is also Method 4 of NEMA MS1 - mean pixel value within MROI (Magnetic Region Of Interest)
-#   S = mean MROI - baseline pixel offset value
-#   baseline pixel offset is average pixel value in background ROI
-#   calculate SD of background ROI - it will be Rayleigh distribution so turn it into imagenoise with correction factor SD/0.66
-# * NEMA MS-1 dual-acquisition (the gold standard for reproducible SNR):
-#     SNR = mean(signal in ROI on (A+B)/2)  /  ( std(A−B in background) / √2 )
-#   Two identical acquisitions with independent noise realisations. The
-#   difference image is zero-mean Gaussian (no Rayleigh correction needed)
-#   and removes any structured background. Standard in NEMA MS-1 (2014).
-#   National Electrical Manufacturers Association
-#   (https://www.nema.org/docs/default-source/standards-document-library/ms1-2008-r2014-watermarked.pdf?sfvrsn=2101f7b9_2)
-#   divide by root 2 because of subtraction of both images
-#   Can have differnet formula to test temporal instability - haven't bothered
-# * Alternative method for comparison (not implemented):
-#   Calculate mean of background ROI / 1.25 and use that as image noise (as std is noisy thanks to squared term x artifacts)
-#   Ratio should be close to 1. or Mean / std = 1.91 (see appendix A of NEMA guide)
-# * Internal k-space SNR:
-#     SNR_ksp = sqrt(mean(|ksp|²)) / σ
-#   Non-standard; reported here only as a cross-check.
+# Three metrics are provided:
+#   - NEMA single-image (Method 4, NEMA MS-1 2014): mean(ROI) / (std(bg) / 0.6551)
+#     The 0.6551 = √((4-π)/2) corrects for Rayleigh bias (Henkelman 1985).
+#   - NEMA MS-1 dual-acquisition: mean((A+B)/2 in ROI) / (std(A-B in ROI) / √2)
+#     Gold standard — no Rayleigh correction needed, structured background cancels.
+#   - Internal k-space SNR: √mean(|ksp|²) / σ  (non-standard; calibration check only)
 
 """
     ImageSNRReport
@@ -509,7 +484,7 @@ function print_snr_report(io::IO, rep::SNRReport; label::AbstractString = "SNR r
                 "  (NEMA single-image, B)")
     println(io, "  diff_roi_std      = ", round(img.diff_roi_std, sigdigits = 5),
                 "    snr_dual_peak   = ", round(img.snr_dual_peak, sigdigits = 4),
-                "  (NEMA MS-1 dual-acq, REPORT FIGURE)")
+                "  (NEMA MS-1 dual-acq)")
     println(io, "  per-sphere snr_dual         = ", round.(img.snr_dual_per_sphere, digits = 2))
     println(io, "  per-sphere temporal_instab. = ", round.(img.temporal_instability, digits = 4))
 end
@@ -518,8 +493,7 @@ print_snr_report(rep::SNRReport; kwargs...) = print_snr_report(stdout, rep; kwar
 """
     snr_report_to_dict(rep::SNRReport) → Dict{String,Any}
 
-Serialisation helper for JSON output (e.g. `config.json` in
-`scripts/t1_fit_vs_true.jl`).
+Serialise an `SNRReport` to a JSON-friendly `Dict{String,Any}`.
 """
 function snr_report_to_dict(rep::SNRReport)
     img = rep.image

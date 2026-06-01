@@ -77,6 +77,26 @@ phys_to_pixel_wrap
 roi_mean
 ```
 
+## SNR diagnostics
+
+See the [SNR Diagnostics](@ref) guide for usage. Full API:
+
+```@docs
+SNRReport
+ImageSNRReport
+MultiBlockSNRReport
+background_mask
+nema_stats
+dual_acq_stats
+image_snr_report
+snr_report
+snr_report_from_clean
+pooled_image_snr_report
+print_snr_report
+snr_report_to_dict
+multi_block_snr_report_to_dict
+```
+
 ## Material tables
 
 ```@docs
