@@ -190,6 +190,12 @@ function sphere_descriptor_pixel(d::SphereDescriptor, Npe::Int, Nfe::Int,
      phys_to_pixel(d.centre[1], Nfe, FOV))
 end
 
+"""
+    sphere_descriptor_pixels(descs, Npe, Nfe, FOV) -> Vector{NTuple{2,Int}}
+
+Map a vector of sphere descriptors to image pixel indices `(i_pe, i_fe)`.
+Convenience wrapper over [`sphere_descriptor_pixel`](@ref).
+"""
 function sphere_descriptor_pixels(descs::AbstractVector{<:SphereDescriptor},
                                   Npe::Int, Nfe::Int, FOV::Real)
     [sphere_descriptor_pixel(d, Npe, Nfe, FOV) for d in descs]
@@ -260,6 +266,13 @@ function _slice_sheet_offsets_and_thicknesses(slice_thickness_m::Real,
     offsets, thicknesses
 end
 
+"""
+    build_phantom_from_descriptors(descs, delta_x; name, slab) -> Phantom
+
+Voxelise a vector of [`SphereDescriptor`](@ref)s at grid spacing `delta_x`
+(metres) and concatenate into a single `KomaMRI.Phantom`. Returns an empty
+phantom if `descs` is empty or all spheres miss the slab.
+"""
 function build_phantom_from_descriptors(descs::AbstractVector{<:SphereDescriptor},
                                         delta_x::Real;
                                         name::AbstractString = "spheres",
@@ -276,6 +289,12 @@ function build_phantom_from_descriptors(descs::AbstractVector{<:SphereDescriptor
     obj
 end
 
+"""
+    build_sphere(d, delta_x; name, slab) -> Phantom
+
+Voxelise a single [`SphereDescriptor`](@ref) at grid spacing `delta_x` (metres).
+Returns an empty phantom if no grid points fall inside the sphere (or slab).
+"""
 function build_sphere(d::SphereDescriptor, delta_x::Real;
                       name::AbstractString = String(d.label),
                       slab::Union{Nothing,Slab} = nothing)

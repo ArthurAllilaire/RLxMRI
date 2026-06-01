@@ -21,6 +21,7 @@ struct Relax
     ρ::Float64
 end
 
+"Relaxation properties of the fiducial spheres (aqueous CuSO₄). **Placeholder values** — not verified against calibration records. See file header for traceable sources."
 const FIDUCIAL_PROPS = Dict(
     :T15 => Relax(0.180, 0.120, 1.0),
     :T3  => Relax(0.180, 0.120, 1.0),

@@ -6,8 +6,10 @@ using QalibreMDPhantom
 examples_src = joinpath(@__DIR__, "..", "examples")
 examples_out = joinpath(@__DIR__, "src", "examples")
 
-Literate.markdown(joinpath(examples_src, "t1_mapping.jl"),       examples_out; execute = false)
-Literate.markdown(joinpath(examples_src, "snr_calibration.jl"),  examples_out; execute = false)
+Literate.markdown(joinpath(examples_src, "t1_mapping.jl"),      examples_out;
+                  execute = false, flavor = Literate.CommonMarkFlavor())
+Literate.markdown(joinpath(examples_src, "snr_calibration.jl"), examples_out;
+                  execute = false, flavor = Literate.CommonMarkFlavor())
 
 makedocs(
     sitename = "QalibreMDPhantom.jl",
