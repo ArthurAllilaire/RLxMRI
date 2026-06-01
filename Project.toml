@@ -4,25 +4,20 @@ version = "0.1.0"
 authors = ["Arthur"]
 
 [deps]
-DisplayAs = "0b91fe84-8a4c-11e9-3e1d-67c38462b6d6"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
-JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 KomaMRI = "6a340f8b-2cdf-4c04-99be-4953d9b66d0a"
 KomaMRIBase = "d0bc0b20-b151-4d03-b2a4-6ca51751cb9c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MRIReco = "bdf86e05-2d2b-5731-a332-f3fe1f9e047f"
-NPZ = "15e1cf62-19b3-5cfa-8e77-841668bca605"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 
 [compat]
 FFTW = "1.10.0"
-JSON = "0.21.4"
 KomaMRI = "0.10.3"
 KomaMRIBase = "0.11.0"
 MRIReco = "0.9.2"
-NPZ = "0.4.3"
 
 [extras]
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
