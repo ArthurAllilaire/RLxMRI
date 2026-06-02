@@ -156,7 +156,12 @@ During development two floating-point accumulation bugs were discovered in `Koma
 
 `MRISystemPhantom.jl` is developed as a standalone open-source Julia package at `github.com/ArthurAllilaire/MRISystemPhantom.jl` with API documentation hosted at `arthurallilaire.github.io/MRISystemPhantom.jl`. The package includes a complete test suite (~373 tests) and documentation pages covering phantom construction, sequence design, parameter fitting, and SNR diagnostics.
 
-Making the library independently installable was a deliberate choice: the digital twin is a contribution in its own right, separable from the RL experiments it was built to support, and a public release allows the methodology to be reproduced and extended by other groups working on quantitative MRI system validation or simulation-based sequence optimisation. There is also an educational dividend. Building the parameterised sequence blocks and their interactive RF/gradient/ADC plots was central to my own understanding of how each acquisition forms and weights its echo — turning the k-space and timing conventions from equations into waveforms I could scrub through and inspect — and shipping them as runnable examples means the same hands-on intuition is available to anyone learning MRI sequence design or starting out with KomaMRI.
+An independent, public library has several benefits:
+1. It lets the methodology of these experiments be reproduced and extended by other groups working on quantitative MRI system validation or simulation-based sequence optimisation.
+2. As a digital twin of a widely-deployed calibration device (the NIST/ISMRM System Standard Model 130), it provides an exact ground truth: calibration runs can be tested against the known reference T1/T2 values before being trusted on a scanner.
+3. Pure Julia & KomaMRI ecosystem compatability: returning standard `KomaMRI.Phantom`/`Sequence` objects drives easy adoption.
+4. It provides a complete forward pipeline — build, simulate, reconstruct, ROI-extract, and fit — so a researcher gets a working conventional baseline out of the box rather than re-assembling one from scratch.
+5. The parameterised sequence blocks and their interactive RF/gradient/ADC plots are a readable reference implementation, useful both as documentation and as a teaching resource for MRI sequence design.
 
 ### Example scripts
 
