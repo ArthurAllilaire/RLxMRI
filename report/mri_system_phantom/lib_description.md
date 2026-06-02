@@ -25,9 +25,9 @@ The relaxation values are field-strength-dependent, so separate reference values
 
 ## 1. Design goals and architecture
 
-A digital twin of this phantom is needed for two reasons. First, it provides a ground-truth environment for RL training: the agent needs to query a simulator that returns physically meaningful signals and can report the true tissue parameters for reward computation. Second, it must be **flexible** — the RL training loop needs to randomise pose, field strength, noise level, and sphere properties without modifying library code.
+A digital twin of this phantom is needed for two reasons. First, it provides a ground-truth environment for RL training: the agent needs to query a simulator that returns physically meaningful signals and can report the true tissue parameters for reward computation. Second, it must be **flexible**, depending on the RL experiment, different sections, noise level training loop needs to randomise pose, field strength, noise level, and sphere properties without modifying library code.
 
-The library is structured around a single contract: a `PhantomConfig` struct that carries everything the builder needs, passed to a single function `build_phantom` that returns a `KomaMRI.Phantom`. The phantom can then be fed directly to `KomaMRI.simulate` with no further setup. This design was chosen deliberately over a mutable phantom object or a collection of keyword arguments: the config is serialisable, diffable, and reproducible (the RNG seed is embedded), and the builder has no hidden state.
+The library is structured around a single contract: a `PhantomConfig` struct that carries everything the builder needs, passed to a single function `build_phantom` that returns a `KomaMRI.Phantom`. The phantom can then be fed directly to `KomaMRI.simulate`. This design was chosen deliberately over a mutable phantom object or a collection of keyword arguments as the config is serialisable, diffable, and reproducible (the RNG seed is embedded), and the builder has no hidden state. This is extremely useful for comparing different RL runs and results. The single contract is especially useful  this makes the python to Julia boundary very simple.
 
 The pipeline from config to simulation is:
 
@@ -140,9 +140,11 @@ The `rng_seed` is the only source of stochasticity: fixing it makes `build_phant
 
 ## 5. KomaMRI integration
 
-`MRISystemPhantom.jl` is built entirely on top of `KomaMRI.jl` and returns standard `KomaMRI.Phantom` objects. The concatenation operator `+` on `Phantom` is used throughout to combine plates: each plate's voxelised spheres are concatenated into one `Phantom`, then the water housing is concatenated with the sphere stack. The result is a single flat spin array with heterogeneous relaxation values, which is exactly what `KomaMRI.simulate` expects.
+`MRISystemPhantom.jl` is built entirely on top of `KomaMRI.jl` and returns standard `KomaMRI.Phantom` objects. The whole phantom is assembled using a single operation: the concatenation operator `+` on `Phantom`. Each voxelised sphere becomes a small `Phantom`, the spheres of each T1, T2 and PD plate are concatenated into that plate, the three plates are concatenated into a sphere stack, and finally the water background is concatenated on top. The result is a single array of spins with heterogeneous relaxation values, which is exactly what `KomaMRI.simulate` expects.
 
-The matching scanner is obtained from `scanner_for_field(cfg)`, which returns a `Scanner` with B0 set to 3.0 T for `:T3` or 1.5 T for `:T15`. Using any other `Scanner` with a phantom built at a different field would silently use the wrong relaxation values, so this helper is provided to make the coupling explicit.
+Because the output is an ordinary `KomaMRI.Phantom`, existing KomaMRI features work out of the box, such as the interactive plotting tools which are used extensively in the example scripts.
+
+The matching scanner is obtained from `scanner_for_field(cfg)`, which returns a `Scanner` with B0 set to 3.0 T for `:T3` or 1.5 T for `:T15`. Pairing a phantom with a `Scanner` of a different B0 silently produces the wrong relaxation values - a mistake the author made in practice - so this helper exists to make the coupling explicit.
 
 ### Known issue: floating-point accumulation in KomaMRI
 
@@ -155,6 +157,12 @@ During development two floating-point accumulation bugs were discovered in `Koma
 `MRISystemPhantom.jl` is developed as a standalone open-source Julia package at `github.com/ArthurAllilaire/MRISystemPhantom.jl` with API documentation hosted at `arthurallilaire.github.io/MRISystemPhantom.jl`. The package includes a complete test suite (~373 tests), example scripts for T1 mapping and SNR calibration, and documentation pages covering phantom construction, sequence design, parameter fitting, and SNR diagnostics. Making the library independently installable was a deliberate choice: the digital twin is a contribution in its own right, separable from the RL experiments it was built to support, and a public release allows the methodology to be reproduced and extended by other groups working on quantitative MRI system validation or simulation-based sequence optimisation.
 
 ---
+
+## 7. Future Work
+
+There are some limitations to the library:
+
+1. All reference values are for $20^{\circ}\text{C}$. The user manual does include temperature correction graphs, these are not included.
 
 <!-- TODO: relocate — physics explanation for the water-coarsening fidelity result, to be placed wherever the artefact discussion best fits. -->
 
