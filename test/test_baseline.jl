@@ -122,10 +122,10 @@
         end
     end
 
-    @testset "run_e0 MAPE bound (3T, smoke)" begin
+    @testset "run_conventional_baseline MAPE bound (3T, smoke)" begin
         # Full run over all 14 T1 + 14 T2 spheres at 3 T. This is the
-        # simulator sanity check PLAN.md §4 E0 calls for.
-        res = run_e0(; field = :T3, verbose = false)
+        # simulator sanity check the conventional baseline calls for.
+        res = run_conventional_baseline(; field = :T3, verbose = false)
         @test res.T1_MAPE_pct < 3.0
         @test res.T2_MAPE_pct < 3.0
     end

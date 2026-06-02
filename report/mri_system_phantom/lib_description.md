@@ -154,7 +154,23 @@ During development two floating-point accumulation bugs were discovered in `Koma
 
 ## 6. Library availability
 
-`MRISystemPhantom.jl` is developed as a standalone open-source Julia package at `github.com/ArthurAllilaire/MRISystemPhantom.jl` with API documentation hosted at `arthurallilaire.github.io/MRISystemPhantom.jl`. The package includes a complete test suite (~373 tests), example scripts for T1 mapping and SNR calibration, and documentation pages covering phantom construction, sequence design, parameter fitting, and SNR diagnostics. Making the library independently installable was a deliberate choice: the digital twin is a contribution in its own right, separable from the RL experiments it was built to support, and a public release allows the methodology to be reproduced and extended by other groups working on quantitative MRI system validation or simulation-based sequence optimisation.
+`MRISystemPhantom.jl` is developed as a standalone open-source Julia package at `github.com/ArthurAllilaire/MRISystemPhantom.jl` with API documentation hosted at `arthurallilaire.github.io/MRISystemPhantom.jl`. The package includes a complete test suite (~373 tests) and documentation pages covering phantom construction, sequence design, parameter fitting, and SNR diagnostics.
+
+Making the library independently installable was a deliberate choice: the digital twin is a contribution in its own right, separable from the RL experiments it was built to support, and a public release allows the methodology to be reproduced and extended by other groups working on quantitative MRI system validation or simulation-based sequence optimisation. There is also an educational dividend. Building the parameterised sequence blocks and their interactive RF/gradient/ADC plots was central to my own understanding of how each acquisition forms and weights its echo — turning the k-space and timing conventions from equations into waveforms I could scrub through and inspect — and shipping them as runnable examples means the same hands-on intuition is available to anyone learning MRI sequence design or starting out with KomaMRI.
+
+### Example scripts
+
+The package ships a set of runnable, self-contained demonstration scripts in `examples/`. Each exercises one slice of the public API and writes interactive Plotly HTML into `src/assets/`.
+
+- `plot_phantom.jl`: renders the T1/T2/PD maps and slice cuts of the built phantom.
+- `plot_fidelity_phantoms.jl`: visualises the water-coarsening fidelity levels.
+- `t1_mapping.jl`: runs a full IR-SE acquisition, reconstructs the image, extracts per-sphere ROIs and fits T1.
+- `conventional_baseline.jl`: runs the conventional fixed-sequence baseline (IR/SE sweep plus fit for all 28 T1 & T2 constrast spheres).
+- `snr_calibration.jl`: performs the NEMA MS-1 dual-acquisition SNR measurement.
+- `compare_water_coarseness.jl` and `hamming_apodisation.jl`: produce the fidelity-vs-cost and apodisation figures (§2.3) along with the numbers quoted there.
+- `plot_seqs.jl`: writes one interactive RF/gradient/ADC waveform plot per sequence into `src/assets/sequences/`. Sequences included: IR-SE (with and without crusher & TR-spoiler variant), SE for T2 mapping, IR-TSE echo-train, and spoiled GRE.
+
+Because the output is a standard `KomaMRI.Phantom`/`Sequence`, these scripts rely only on KomaMRI's own interactive plotting, with no bespoke visualisation code in the library.
 
 ---
 

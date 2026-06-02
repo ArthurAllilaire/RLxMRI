@@ -52,7 +52,7 @@ test/                      — Julia test suite (`] test`). 606 tests.
 
 examples/                  — runnable Julia scripts
 ├── plot_phantom.jl        — render interactive HTML phantom maps
-└── e0_baseline.jl         — run E0 and print the per-sphere MAPE tables
+└── conventional_baseline.jl — run the conventional baseline and print the per-sphere MAPE tables
 
 python/                    — RL/Python side
 ├── julia_runtime/         — Julia 1.11 sub-project for juliacall
@@ -349,7 +349,7 @@ against magnitude-null issues, which LM struggles with.
 Goal (PLAN §4): verify the twin + simulate + fit pipeline recovers
 the manual T1/T2 values on every sphere, MAPE < 3 %.
 
-Orchestrator `run_e0(; field)`:
+Orchestrator `run_conventional_baseline(; field)`:
 
 1. For each T1-array sphere i in 1..14:
    * build an **adaptive TI schedule** — 10 log-spaced points from
@@ -395,7 +395,7 @@ particular artefact.
 Running it yourself:
 
 ```bash
-julia --project=. examples/e0_baseline.jl
+julia --project=. examples/conventional_baseline.jl
 ```
 
 ---
@@ -651,7 +651,7 @@ option, with their reasoning.
    shell over (4).
 6. **`python/train_e1.py`** — PPO integration and what the eval
    callback actually measures.
-7. **`examples/e0_baseline.jl`** — non-RL yardstick. If E0 breaks,
+7. **`examples/conventional_baseline.jl`** — non-RL yardstick. If the baseline breaks,
    RL will too; this script is a 30-second sanity probe.
 
 ---

@@ -87,7 +87,7 @@ python python/eval_e1.py --policy runs/e1/ppo/policy.zip --episodes 500
 ### E0 — conventional sequence baseline (Julia only)
 
 ```bash
-julia --project=. examples/e0_baseline.jl
+julia --project=. examples/conventional_baseline.jl
 ```
 
 ---

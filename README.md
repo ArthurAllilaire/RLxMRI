@@ -277,14 +277,14 @@ T2-array spheres, then fits monoexponentials and compares against the
 manual values. Target: MAPE < 3 %.
 
 ```bash
-julia --project=. examples/e0_baseline.jl
+julia --project=. examples/conventional_baseline.jl
 ```
 
 Programmatic access:
 
 ```julia
 using QalibreMDPhantom
-res = run_e0(; field = :T3)
+res = run_conventional_baseline(; field = :T3)
 res.T1_MAPE_pct   # mean absolute percentage error on the 14 T1 spheres
 res.T2_MAPE_pct   # on the 14 T2 spheres
 ```
@@ -298,7 +298,7 @@ Key primitives exposed for later RL use:
 | `measure_ir_signal` / `measure_se_signal` | one TI/TE → one magnitude |
 | `fit_t1_ir(TIs, mags)` / `fit_t2_se(TEs, mags)` | monoexponential fits |
 | `adaptive_TI_schedule(T1_hint)` / `adaptive_TE_schedule(T2_hint)` | log-spaced sweeps sized to the target |
-| `run_e0(; field)` | full 14 + 14 sphere sweep |
+| `run_conventional_baseline(; field)` | full 14 + 14 sphere sweep |
 
 ---
 

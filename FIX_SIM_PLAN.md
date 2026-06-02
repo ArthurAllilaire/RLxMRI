@@ -187,7 +187,7 @@ the FFT-shift bug survived.
 | `test_augment.jl` | augmentation | rotation is orthogonal & det 1; translation shifts means; T1/T2 jitter has expected σ; PD clipped to [0,1]; B0 jitter sets Δw | none |
 | `test_determinism.jl` | reproducibility | seeded phantom builds bit-identical; different seed produces different T1s | none |
 | `test_simulation.jl` | KomaMRI smoke | single-sphere SE: ADC returns nADC samples; magnitudes decay; T2 fit recovers truth to 10 % | indirectly tests `simulate()`, but no image-domain assertions |
-| `test_baseline.jl` | analytical fits + E0 | closed-form IR/SE fits unbiased; sequence-builder block counts; `run_e0` T1/T2 MAPE < 3 % | exercises the full E0 pipeline end-to-end on a built phantom **without imaging** — uses single-spin signals, not images |
+| `test_baseline.jl` | analytical fits + E0 | closed-form IR/SE fits unbiased; sequence-builder block counts; `run_conventional_baseline` T1/T2 MAPE < 3 % | exercises the full E0 pipeline end-to-end on a built phantom **without imaging** — uses single-spin signals, not images |
 | `test_e1.jl` | E1 env | analytic IR signal identities; fitter recovery from clean data; env construction; reset determinism; step termination; backend-consistency analytical vs simulator on single voxel | single-voxel only, no 2D recon |
 | `test_e2.jl` | E2 sequence + fitter | `ir_se_2d_sequence` is Cartesian (no Gy during ADC); PE prewinder signs symmetric around 0; F1+ closed-form vs KomaMRI agrees to 5 %; fitter unbiased on adaptive schedules; steady-state fitter is provably biased on Npe-shot data | k-space *structure* is checked (gradient signs and PE counts), but the **forward path k-space → image → ROI value → fitter** is never tested as a whole |
 
