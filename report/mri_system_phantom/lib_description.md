@@ -2,7 +2,7 @@
 
 ## 0. The physical phantom
 
-The QalibreMD NIST/ISMRM System Standard Model 130 (manufactured by Caliber MRI, formerly QalibreMD) is a hardware phantom designed to mimic the geometry of a human head and to provide a wide, calibrated range of quantitative MRI tissue parameters — T1, T2, and proton density — in a single, reproducible object. It is the standard reference device for quantitative MRI system validation in clinical and research settings, and its design is described in the *QalibreMD System Standard Model 130 User Manual*.
+The QalibreMD NIST/ISMRM System Standard Model 130 (manufactured by Caliber MRI, formerly QalibreMD) is a hardware phantom designed to mimic the geometry of a human head and to provide a wide, calibrated range of quantitative MRI tissue parameters (T1, T2, and proton density). It is the standard reference device for quantitative MRI system validation in clinical and research settings, and its design is described in the *QalibreMD System Standard Model 130 User Manual*.
 
 The phantom consists of a spherical water-filled housing (100 mm internal radius) containing four internal structures at fixed axial positions:
 
@@ -11,11 +11,15 @@ The phantom consists of a spherical water-filled housing (100 mm internal radius
 | T1 array | +56.5 | 14 NiCl₂ spheres (15 mm radius), T1 range ~24 ms – 1.9 s at 3 T |
 | T2 array | +16.5 | 14 MnCl₂ spheres (15 mm radius), T2 range ~87 ms – 2.8 s at 3 T |
 | PD array | −23.5 | 14 spheres of varying proton density (15 mm radius) |
-| Fiducial grid | distributed | 57 small spheres (5 mm radius) on a 40 mm cubic lattice, clipped to a 95 mm sphere |
+| Fiducial grid | distributed | 57 small spheres (5 mm radius) on a 40 mm cubic lattice |
 
 Each contrast plate arranges its 14 spheres in two concentric rings: 10 on an outer ring of radius 65 mm and 4 on an inner ring of radius 28 mm. This geometry matches the phantom manual photographs but has not been verified against the physical device.
 
-The relaxation values are field-strength-dependent (doped aqueous solutions do not follow a simple scaling law), so separate tables are provided for 1.5 T and 3 T. The library also distinguishes two serial classes: serial numbers ≥ 0042 use a revised recipe with significantly different T1 values compared to the legacy (0001–0041) class. For example, T1-sphere 1 at 3 T is 1.84 s on the current recipe versus 2.38 s on legacy. Larger range of lower T1 values reflecting a shift in their importance.
+<!-- TODO: INSERT IMAGE? -->
+
+The relaxation values are field-strength-dependent, so separate reference values are provided for 1.5 T and 3 T field strength. The user manual also distinguishes between two serial classes, a legacy vs modern class distinguished by serial number, both sets of reference values are included in the library.
+
+<!-- extra info:  legacy = serial numbers < 0042 and modern phantoms (serial class ≥ 0042). For example, T1-sphere 1 at 3 T is 1.84 s on the current recipe versus 2.38 s on legacy. Larger range of lower T1 values reflecting a shift in their importance in qMRI. -->
 
 ---
 
