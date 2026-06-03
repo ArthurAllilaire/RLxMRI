@@ -34,6 +34,7 @@ A lot of this experimentation was done on the buggy simulator and so cannot be t
 ## Phantom setup
 
 - Single z-slice including water and the T1 plates
+- no rotation or translation necessary since I only ever passed in the T1 estimates and not image signal to the RL agent.
 
 ## Assumptions
 

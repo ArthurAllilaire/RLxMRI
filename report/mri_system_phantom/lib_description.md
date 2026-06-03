@@ -63,19 +63,24 @@ $$
 (x_i - c_x)^2 + (y_i - c_y)^2 + (z_i - c_z)^2 \leq r^2
 $$
 
-The grid is constructed by iterating over the bounding box `[c − r, c + r]` on each axis. For a typical 15 mm radius sphere at 2 mm voxels this produces around 500 spins per sphere, which is small enough that the full set of 14 spheres per plate fits comfortably in memory and the per-step simulate call is fast.
+The grid is constructed by iterating over the bounding box `[c − r, c + r]` on each axis. For a typical 15 mm radius sphere at 2 mm voxels this produces around 500 spins per sphere. Across all three contrast plates (42 spheres), the combined spin count at 2 mm voxels is ~9,100, occupying ~570 KB (8 Float64 fields per spin: $x, y, z, \rho, T_1, T_2, T_2^*, \Delta\omega$), small enough that the full set fits comfortably in memory and the per-step simulate call is fast.
 
 ### 2.2 Slicing
 
-For 2D imaging experiments, including only the spins in a thin slab reduces simulation cost dramatically. A `Slab` is defined by a centre point, a unit normal, and a half-thickness. Voxelisation is gated on the signed distance from the slab midplane:
+For 2D imaging experiments, only spins within a thin axial slab need to be simulated, reducing the spin count, and therefore simulation time, substantially. A `Slab` is defined by a centre point $\mathbf{c}$, a unit normal $\hat{n}$, and a thickness $t$. A spin at position $\mathbf{p}$ is included if its signed distance from the midplane satisfies:
 
 $$
 |(\mathbf{p} - \mathbf{c}) \cdot \hat{n}| \leq t/2
 $$
 
-The normal defaults to $\hat{z}$ (axial slice), but any orientation is supported. A floating-point tolerance of 0.1 µm is applied to the boundary condition to avoid rejecting voxels that land exactly on the slab edge due to roundoff. The slice centre `slice_center_mm = (0, 0, PLATE_Z_MM.T1)` isolates the T1 plate axially; the RL environment uses this to reduce simulation cost by an order of magnitude without changing the imaging geometry visible to the agent.
+The normal defaults to $\hat{z}$ but any orientation is supported. A 0.1 µm tolerance is applied at the boundary to avoid floating-point rejections of on-edge voxels. At 1 mm voxels, a 5 mm axial slab centred on the T1 plate retains ~33,000 of the full phantom's ~4.2 million spins, a **128× reduction**. This matches the excited volume of a slice-selective RF pulse without needing to encode one explicitly.
 
-### 2.3 Background water
+### 2.3 Pose transforms
+
+`apply_transform!` rotates and translates all spin positions by the Euler XYZ rotation and translation specified in `PhantomConfig.rotation` and `translation_mm`. The rotation matrix is built from three successive Rx, Ry, Rz multiplications. The transform is applied after voxelisation and before augmentation noise so that the sphere geometry is exact before any stochastic perturbation. This was designed to make it easy to reset the phantom and reduce overfitting.
+
+
+### 2.4 Background water
 
 The housing is voxelised as a 100 mm-radius sphere at a coarser grid spacing (`water_voxel_size_mm`, defaulting to `voxel_size_mm`) with all contrast and fiducial sphere volumes cut out. The cutout is a simple exclusion test on squared distance to each sphere centre — the same condition as the voxelisation but negated. The water proton density is reweighted by `(water_dx / sphere_dx)³` to conserve the total water spin count relative to what a uniform fine-grid voxelisation would give, so the bulk water signal amplitude is physically correct regardless of which coarsening factor is chosen.
 
@@ -92,10 +97,6 @@ The artefact also grows with acquisition matrix size, which is itself diagnostic
 > **The same comparison under Hamming-apodised reconstruction.** Identical layout and phantoms to the fidelity figure above, but every image is reconstructed with a 2-D Hamming window applied to k-space before the IFFT (the bottom row now shows the *windowed* k-space the IFFT actually sees). Apodisation suppresses the truncation side-lobes that carry the coarse-grid discrepancy, so the difference column (right) is markedly fainter than under the plain reconstruction: the coarse-vs-fine sphere-ROI error falls from 3.7% to 0.9% at a single pixel and from 1.5% to 1.1% over a 3×3 ROI (quantified in the text below). The price is resolution — the wider main lobe visibly blurs the spheres — while the compute cost is negligible, since the window is applied at reconstruction rather than in the simulation. Produced by the same `examples/compare_water_coarseness.jl`.
 
 If the discrepancy is genuinely Gibbs side-lobe leakage, then suppressing those side-lobes at reconstruction should remove it — and it does (figure above). Reconstructing both grids with a 2-D Hamming window (`kspace_to_image(...; hamming=true)`, which lowers the side-lobes from −13 dB to −43 dB) cuts the single-pixel coarse-vs-fine NRMSE roughly four-fold, from **3.7% to 0.9%**, confirming that the single-pixel error was almost entirely truncation artefact. The 3×3-ROI figure improves only modestly (**1.5% to 1.1%**), because spatial averaging over the sphere already cancels most of the oscillating side-lobe — apodisation and ROI averaging are suppressing the same thing — and the residual ~1.1% is the genuine, non-Gibbs fidelity floor. Crucially the window is a reconstruction-side operation (an element-wise multiply before the IFFT), costing a fraction of a millisecond and leaving the ~3× simulation speed-up of the coarse grid entirely intact; the trade is the usual loss of spatial resolution from the wider main lobe, not compute.
-
-### 2.4 Pose transforms
-
-`apply_transform!` rotates and translates all spin positions by the Euler XYZ rotation and translation specified in `PhantomConfig.rotation` and `translation_mm`. The rotation matrix is built from three successive Rx, Ry, Rz multiplications. The transform is applied after voxelisation and before augmentation noise so that the sphere geometry is exact before any stochastic perturbation. This was designed to make it easy to reset the phantom and reduce overfitting. For my experiments, this was not necessary since I only ever passed in the T1 estimates and not image signal to the RL agent.
 
 ---
 
@@ -134,9 +135,9 @@ The `serial_number_class` field switches the T1 table between current and legacy
 | `B0_sigma_Hz` | Adds `N(0, σ²)` per-spin off-resonance, stored in `Δw` (rad/s after ×2π) |
 | `drop_sphere_p` | Drops each sphere independently with Bernoulli probability p before voxelisation |
 
-The T1/T2 jitter is applied at the sphere level (one draw per sphere, not per spin) to simulate manufacturing variability in the doping concentration — a per-spin draw would be unphysical since all spins in a sphere are in the same solution. The position noise is per-spin and models rigid-body placement uncertainty at the sub-voxel scale.
+The T1/T2 jitter is applied at the sphere level (one draw per sphere, not per spin) to simulate manufacturing variability in the doping concentration. Of the fields above, only `T1_sigma_rel` and `T2_sigma_rel` were used in the experiments of this work; the remaining fields are implemented for completeness but were not exercised.
 
-The `rng_seed` is the only source of stochasticity: fixing it makes `build_phantom` deterministic, so the same configuration always produces the same phantom. Changing the seed between RL episodes provides statistically independent training samples without any global mutable state.
+The `rng_seed` is the only source of stochasticity: fixing it makes `build_phantom` deterministic, so the same configuration always produces the same phantom. Fixing the seed reproduces the exact same phantom, making evaluation runs reproducible. Incrementing it each training episode draws a statistically independent phantom, preventing the agent from memorising a fixed configuration.
 
 ---
 
@@ -147,10 +148,6 @@ The `rng_seed` is the only source of stochasticity: fixing it makes `build_phant
 Because the output is an ordinary `KomaMRI.Phantom`, existing KomaMRI features work out of the box, such as the interactive plotting tools which are used extensively in the example scripts.
 
 The matching scanner is obtained from `scanner_for_field(cfg)`, which returns a `Scanner` with B0 set to 3.0 T for `:T3` or 1.5 T for `:T15`. Pairing a phantom with a `Scanner` of a different B0 silently produces the wrong relaxation values - a mistake the author made in practice - so this helper exists to make the coupling explicit.
-
-### Known issue: floating-point accumulation in KomaMRI
-
-During development two floating-point accumulation bugs were discovered in `KomaMRIBase.jl`. The first caused per-shot signal drift in long sequences (> ~270 s total duration) when the gradient moment accumulator overflowed. The second was the same root cause at a different accumulation site. Both were diagnosed, reported (GitHub issue #788), and fixed in a fork (`ArthurAllilaire/KomaMRI.jl`, branch `fix/grad-fp`, PR #789). The library currently depends on this fork at a pinned commit; the fix is awaiting upstream merge. This dependency is the only deviation from the registered Julia package registry.
 
 ---
 
