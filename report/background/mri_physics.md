@@ -1,12 +1,12 @@
 Contents:
 
+k-space, FFT shift 
+
 Bloch equations
 
 Deriving fitter equations
 
 Transient vs steady state
-
-k-space, FFT shift 
 
 Spatial localisation using gradients and phase encoding
 
@@ -25,9 +25,6 @@ Gibbs ringing, Hamming window, K-space padding
 Ernst angle
 
 Brewsters angle
-
-
-# NOTES
 
 # Bloch equations
 
@@ -63,9 +60,7 @@ These two exponentials are the entire physical content of the fits.
 
 **Spoiling assumption** (used everywhere here): residual transverse magnetisation is crushed (gradient spoiler) or decayed (short T2) before the next block, so only the *scalar* Mz is carried shot-to-shot. This collapses the 3-vector dynamics to a scalar recurrence — why the forward models are one-liners, not matrix exponentials. Without it you'd need EPG/PDG-style coherence-pathway bookkeeping.
 
-# k-space, FFT shift 
 
-TODO: explain why FFT shift is needed
 
 # Sequences
 

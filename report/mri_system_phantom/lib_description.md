@@ -2,7 +2,7 @@
 
 ## 0. The physical phantom
 
-The QalibreMD NIST/ISMRM System Standard Model 130 (manufactured by [Caliber MRI](https://qmri.com/product/premium-system-phantom/), formerly QalibreMD) is a hardware phantom designed to mimic the geometry of a human head and to provide a wide, calibrated range of quantitative MRI tissue parameters (T1, T2, and proton density). It is the standard reference device for quantitative MRI system validation in clinical and research settings, and its design is described in the *QalibreMD System Standard Model 130 User Manual* ([available here](https://github.com/ArthurAllilaire/RLxMRI/blob/main/QalibreMD_NIST_ISMRM_System_Standard_Model_130_T1_T2_PD_User_Manual.pdf)).
+The QalibreMD NIST/ISMRM [System Standard Model 130](https://qmri.com/product/premium-system-phantom/) (manufactured by [Caliber MRI](https://qmri.com), formerly QalibreMD) is a hardware phantom designed to mimic the geometry of a human head and to provide a wide, calibrated range of quantitative MRI tissue parameters (T1, T2, and proton density). It is the standard reference device for quantitative MRI system validation in clinical and research settings, and its design is described in the *QalibreMD System Standard Model 130 User Manual* ([available here](https://github.com/ArthurAllilaire/RLxMRI/blob/main/QalibreMD_NIST_ISMRM_System_Standard_Model_130_T1_T2_PD_User_Manual.pdf)).
 
 The phantom consists of a spherical water-filled housing (100 mm internal radius) containing four internal structures at fixed axial positions:
 
@@ -196,6 +196,11 @@ The fidelity result in §2.3 has a clean physical explanation: the residual is *
 $$
 \text{PSF}(x) \;=\; \frac{\sin(\pi N x / \text{FOV})}{N\,\sin(\pi x / \text{FOV})},
 $$
+
+![alt text](figs/psf.jpeg)
+> 
+Original caption: Fig. 9.15. The point spread function. The production of a blurred image is shown as equivalent operations in the image domain (A) and in k-space (B). The limited extent of sampling in k-space is described by multiplying the full k-space distribution by a windowing function that cuts out the high spatial frequencies. The resulting image is the convolution of the true image with the Fourier transform (FT) of the windowing function, the point spread function PSF(x). The full two-dimensional (2D) version of the PSF is shown at the bottom.
+1. Buxton RB. Mapping the MR signal. In: Introduction to Functional Magnetic Resonance Imaging: Principles and Techniques. Cambridge: Cambridge University Press; 2009. p. 205–31.
 
 which has a main lobe one pixel wide and oscillating side-lobes with a first negative lobe of ≈ −21% and a $1/x$ decay. Any sharp edge in the object — and the water/sphere boundary is the sharpest edge in the scene — therefore produces ringing that oscillates across neighbouring pixels rather than a clean step. This happens for *both* grids; it is intrinsic to imaging a discontinuity with finite k-space.
 
