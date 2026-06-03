@@ -2,7 +2,7 @@
 
 ## 0. The physical phantom
 
-The QalibreMD NIST/ISMRM System Standard Model 130 (manufactured by Caliber MRI, formerly QalibreMD) is a hardware phantom designed to mimic the geometry of a human head and to provide a wide, calibrated range of quantitative MRI tissue parameters (T1, T2, and proton density). It is the standard reference device for quantitative MRI system validation in clinical and research settings, and its design is described in the *QalibreMD System Standard Model 130 User Manual*.
+The QalibreMD NIST/ISMRM System Standard Model 130 (manufactured by [Caliber MRI](https://qmri.com/product/premium-system-phantom/), formerly QalibreMD) is a hardware phantom designed to mimic the geometry of a human head and to provide a wide, calibrated range of quantitative MRI tissue parameters (T1, T2, and proton density). It is the standard reference device for quantitative MRI system validation in clinical and research settings, and its design is described in the *QalibreMD System Standard Model 130 User Manual* ([available here](https://github.com/ArthurAllilaire/RLxMRI/blob/main/QalibreMD_NIST_ISMRM_System_Standard_Model_130_T1_T2_PD_User_Manual.pdf)).
 
 The phantom consists of a spherical water-filled housing (100 mm internal radius) containing four internal structures at fixed axial positions:
 
@@ -15,7 +15,8 @@ The phantom consists of a spherical water-filled housing (100 mm internal radius
 
 Each contrast plate arranges its 14 spheres in two concentric rings: 10 on an outer ring of radius 65 mm and 4 on an inner ring of radius 28 mm. This geometry matches the phantom manual photographs but has not been verified against the physical device.
 
-<!-- TODO: INSERT IMAGE? -->
+![](figs/Premium-System-Phantom.png)
+> **The QalibreMD NIST/ISMRM System Standard Model 130 hardware phantom.** The spherical water-filled housing (100 mm internal radius) contains T1, T2, and PD contrast arrays, each consisting of 14 doped-solution spheres arranged in concentric rings at fixed axial positions, plus a fiducial grid for registration. Its calibrated T1 (24 ms – 1.9 s) and T2 (87 ms – 2.8 s) ranges at 3 T span the full physiological tissue window, making it the standard reference device for quantitative MRI system validation. Image reproduced from [Caliber MRI](https://qmri.com/product/premium-system-phantom/).
 
 The relaxation values are field-strength-dependent, so separate reference values are provided for 1.5 T and 3 T field strength. The user manual also distinguishes between two serial classes, a legacy vs modern class distinguished by serial number, both sets of reference values are included in the library.
 
@@ -25,7 +26,7 @@ The relaxation values are field-strength-dependent, so separate reference values
 
 ## 1. Design goals and architecture
 
-A digital twin of this phantom is needed for two reasons. First, it provides a ground-truth environment for RL training: the agent needs to query a simulator that returns physically meaningful signals and can report the true tissue parameters for reward computation. Second, it must be **flexible**, depending on the RL experiment, different sections, noise level training loop needs to randomise pose, field strength, noise level, and sphere properties without modifying library code.
+A digital twin of this phantom is needed for two reasons. First, it provides a ground-truth environment for RL training: the agent needs to query a simulator that returns physically meaningful signals and can report the true tissue parameters for reward computation. Second, it must be **flexible**: the RL training loop needs to randomise pose, inject noise, and jitter reference values across episodes without modifying library code. Different experiments also require different phantom sections or resolution.
 
 The library is structured around a single contract: a `PhantomConfig` struct that carries everything the builder needs, passed to a single function `build_phantom` that returns a `KomaMRI.Phantom`. The phantom can then be fed directly to `KomaMRI.simulate`. This design was chosen deliberately over a mutable phantom object or a collection of keyword arguments as the config is serialisable, diffable, and reproducible (the RNG seed is embedded), and the builder has no hidden state. This is extremely useful for comparing different RL runs and results. The single contract is especially useful  this makes the python to Julia boundary very simple.
 
@@ -45,11 +46,10 @@ PhantomConfig
     │
     ├─ apply_transform!(obj, rotation, translation)
     │
-    └─ apply_per_spin_noise!(obj, augment, rng)
-                                      → KomaMRI.Phantom (ready for simulate())
+    └─ apply_per_spin_noise!(obj, augment, rng) → KomaMRI.Phantom (ready for simulate())
 ```
 
-The two-stage design — descriptors first, voxels second — means all geometry and material decisions happen before any memory is allocated for spin arrays. The descriptor layer is also directly useful for imaging: `sphere_descriptor_pixels` maps descriptor centres to image pixel indices, so ROI extraction after reconstruction does not require a separate geometry calculation.
+The two-stage design — descriptors first, voxels second — means all geometry and material decisions happen before any memory is allocated for spin arrays. Descriptors are also individually modifiable and removable: you can simulate only a subset of the 14 spheres per plate, with the water housing automatically filling the vacated volume. Because each descriptor carries its physical centre coordinate, `sphere_descriptor_pixels` can convert those centres directly to pixel indices in the reconstructed image — using the same DC-at-centre convention as `kspace_to_image` — simplifying ROI extraction after reconstruction.
 
 ---
 
@@ -105,17 +105,19 @@ The relaxation values are read from four module-level constants defined from the
 
 | Constant | Spheres | Source |
 |----------|---------|--------|
-| `T1_ARRAY[:T3]` / `[:T15]` | 14 T1-plate spheres | NiCl₂ recipe, manual table, SN ≥ 0042 |
-| `T1_ARRAY_LEGACY[:T3]` / `[:T15]` | same spheres | pre-0042 recipe (substantially different values) |
+| `T1_ARRAY[:T3]` / `[:T15]` | 14 T1-plate spheres | NiCl₂ recipe, manual table, Serial Number ≥ 0042 |
+| `T1_ARRAY_LEGACY[:T3]` / `[:T15]` | same spheres | manual table, SN pre-0042 (different values) |
 | `T2_OF_T1_ARRAY` | T2 companions for T1 plate | same manual table |
 | `T2_ARRAY[:T3]` / `[:T15]` | 14 T2-plate spheres | MnCl₂ recipe |
 | `T1_OF_T2_ARRAY` | T1 companions for T2 plate | same manual table |
 | `PD_FRACTIONS` | 14 PD-plate spheres | proton density fractions |
 | `BACKGROUND_WATER` | housing water | distilled water at 20 °C |
 
-The T1 range at 3 T spans two decades: 23 ms to 1.84 s for the NiCl₂ plate, covering the full range of biological tissue T1 values from white matter to cerebrospinal fluid. The T2 range spans ~87 ms to 2.76 s. These wide ranges are why the phantom is used for system validation: a single acquisition must produce reliable estimates across the full physiological range.
+The T1 range at 3 T spans two decades: 23 ms to 1.84 s for the NiCl₂ plate, covering the full range of biological tissue T1 values from white matter to cerebrospinal fluid. The T2 range spans ~87 ms to 2.76 s. These wide ranges are why the phantom is used for system validation and make it useful for RL training: to ensure the learned policies can produce reliable estimates across the full physiological range.
 
-The `serial_number_class` field switches the T1 table between current and legacy recipes. The difference is large enough to matter: the highest T1 sphere changes from 1.84 s (current) to 2.38 s (legacy) at 3 T. Using the wrong table introduces a systematic bias in all T1 estimates that no amount of RL optimisation can overcome.
+The `serial_number_class` field switches the T1 table between current and legacy recipes.
+
+**Accuracy caveats.** Two entries are approximate: PD-plate T1/T2 values (`pd_t1`, `pd_t2`) use bulk water regardless of proton-density fraction (the manual does not tabulate per-sphere relaxation for the PD plate), and fiducial relaxation values (`FIDUCIAL_PROPS`) are generic CuSO₄ placeholders not verified against any calibration record. Neither affects the T1- or T2-plate experiments, but both should be replaced before any simulation-to-real comparison involving the PD plate or fiducial grid.
 
 ---
 
@@ -184,6 +186,7 @@ Because the output is a standard `KomaMRI.Phantom`/`Sequence`, these scripts rel
 There are some limitations to the library:
 
 1. All reference values are for $20^{\circ}\text{C}$. The user manual does include temperature correction graphs, these are not included.
+2. The resolution insets and 2 slice profiling wedges have not been included.
 
 <!-- TODO: relocate — physics explanation for the water-coarsening fidelity result, to be placed wherever the artefact discussion best fits. -->
 
