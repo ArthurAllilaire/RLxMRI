@@ -1,0 +1,28 @@
+\doublespacing % Do not change - required
+
+\chapter{Introduction}
+\label{ch1}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% IMPORTANT
+\begin{spacing}{1} %THESE FOUR
+\minitoc % LINES MUST APPEAR IN
+\end{spacing} % EVERY
+\thesisspacing % CHAPTER
+% COPY THEM IN ANY NEW CHAPTER
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\section{Introduction}
+
+In 2021, there were 395,000 cases of cancer in the UK, with 1 in 2 people in the UK being diagnosed with cancer in their lifetime. \cite{world_cancer_research_fund} Radiotherapy (RT) is a crucial component of cancer treatment; indeed, it is required for more than 50\% of cancer patients. \cite{rt_cancer_prevalance:15} 
+
+Image-guided radiation therapy (IGRT) is used to increase the precision of treatment and ensure accurate dose delivery. Conventionally, images are taken using a high-resolution X-ray technique called Cone Beam Computed Tomography. This is still the most common technique. \cite{liu_clinical_app_mrlinac:2023} 
+
+However, poor image quality (caused by excessive scattering of X-ray photons) and ionising radiation are key drawbacks. Instead, Magnetic Resonance Imaging (MRI) can be used to improve soft tissue contrast (vital for liver or pancreatic cancer) and increase the accuracy of tumor target delineation. MR-guided radiation therapy (MRgRT) has been shown to significantly improve patient prognosis. \cite{liu_clinical_app_mrlinac:2023}
+
+MRI and a linear accelerator (the source of radiation) have been coupled into a hybrid Magnetic Resonance Accelerator (MR-Linac), the latest innovation in IGRT. The MR-Linac allows on-table adaptation of treatment plans, to respond to tumour movements and progression. However, one of the clinical bottlenecks is the extra time required for image acquisition. \cite{mrlinac_in_practice:23} The high-resolution images needed for accurate delineation require extended scan time. This also increases the risk of motion artifacts (inaccuracies due to patient movement).
+
+There has been significant research into accelerating image acquisition, focusing mainly on using Deep Learning (computational neural network approaches) for image reconstruction (translating the raw MR signal into an image). Leading to significant improvements to image robustness, artifact reduction and image quality when using undersampled data.
+
+There is now a growing interest in using DL and Reinforcement Learning (agent-based approaches) to develop novel pulse sequences, which are currently designed by MR experts. Novel pulse sequences have shown promise in speeding up image acquisition while maintaining image quality. \cite{DLINMRI:24}

@@ -1,3 +1,9 @@
+report_latex is the final version. To upload to overleaf you must do:
+```
+cd report_latex
+latexmk -lualatex main.tex
+```
+
 Marking criteria:
 
 - 50% on the actual content

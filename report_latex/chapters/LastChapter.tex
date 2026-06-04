@@ -1,0 +1,135 @@
+\doublespacing % Do not change - required
+
+\chapter{Project Plan \& Evaluation}
+\label{chLast}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% IMPORTANT
+\begin{spacing}{1} %THESE FOUR
+\minitoc % LINES MUST APPEAR IN
+\end{spacing} % EVERY
+\thesisspacing % CHAPTER
+% COPY THEM IN ANY NEW CHAPTER
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Project Plan}
+
+The project is structured into three distinct phases, transitioning from rapid algorithmic prototyping to high-fidelity validation on clinical hardware. The key challenge will be bridging the gap between Julia (KomaMRI) and Python (PyTorch \& RL libraries) and validating the results on the MR-Linac.
+
+Time constraints will also be a big challenge. I will be working on this full-time from the 23rd March to the 12th June, with a 2-week Easter break.  This corresponds to 10 full-time weeks, the below plan is based on 12 weeks as I am hoping to make progress on the Environment Setup before the 23rd March alongside my studies. So far, progress has been limited. I have tested KomaMRI and conducted background research into related works.
+
+\subsection{Phase 1: Prototyping and Environment Setup (Weeks 1--4)}
+\begin{itemize}
+    \item \textbf{Simulator Interfacing:} Develop a Python-based Gymnasium wrapper for the \texttt{MRzero} environment to facilitate reinforcement learning.
+    \item \textbf{Digital Phantom Design:} Script a digital twin of the \textbf{QalibreMD Model 130} phantom, incorporating its 42 spheres with varying $T_1$, $T_2$, and PD properties.
+    \item \textbf{Milestone:} Successful "sim-to-sim" loop where the RL agent receives a signal from \texttt{MRzero} and proposes a sequence change.
+\end{itemize}
+
+\subsection{Phase 2: RL Training and Simulator Migration (Weeks 5--8)}
+\begin{itemize}
+    \item \textbf{Agent Training:} Train the agent to optimise scan trajectories for the rapid localisation of the Model 130 vials. 
+    \item \textbf{Simulator Migration:} Port the trained agent to \texttt{KomaMRI.jl} using \texttt{JuliaCall}. This stage tests the agent's robustness when moving from EPG-based physics to Bloch-based physics.
+    \item \textbf{Milestone:} Agent converges on an optimised protocol that accurately identifies vial locations in under 5 minutes.
+\end{itemize}
+
+\subsection{Phase 3: Validation and qMRI Extraction (Weeks 9--12)}
+\begin{itemize}
+    \item \textbf{MR-Linac Deployment:} Execute the optimised sequences on the MR-Linac using physical phantoms. 
+    \item \textbf{Project Write-up:} Complete the final BENG report.
+    \item \textbf{Milestone:} Comparison of simulated results against experimental phantom data.
+\end{itemize}
+
+\subsection{Potential Extensions: Advanced qMRI Mapping}
+If the core objectives are met ahead of schedule, the following extensions will be explored:
+\begin{itemize}
+    \item \textbf{Autonomous qMRI Mapping:} Beyond mere localisation, the RL reward function will be modified to prioritise the precision of $T_1$ and $T_2$ estimates. The agent would "learn" to dwell longer on specific k-space coordinates to maximise the SNR of relaxation time measurements for the QalibreMD spheres.
+    \item \textbf{B1+ Inhomogeneity Correction:} Extending the agent’s capabilities to identify and compensate for flip-angle variations, a common challenge in 1.5T MR-Linac systems, to improve the accuracy of the resulting qMRI maps.
+\end{itemize}
+
+\section{Evaluation Plan}
+
+The project’s success will be evaluated through a rigorous comparison of the RL agent's performance against the ground-truth properties of the \textbf{QalibreMD System Standard Model 130} phantom. This phantom is specifically designed for the NIST/ISMRM standard and provides traceable reference values for multi-parameter validation.
+
+\subsection{Benchmark: The QalibreMD Model 130 Standard}
+The evaluation will utilize three primary components of the Model 130 phantom to measure the agent's ability to accurately characterize tissue-mimicking materials:
+\begin{itemize}
+    \item \textbf{$T_1$ Array:} 14 spheres containing NiCl$_2$ with longitudinal relaxation times ranging from $\sim$20 ms to 1900 ms.
+    \item \textbf{$T_2$ Array:} 14 spheres containing MnCl$_2$ with transverse relaxation times ranging from $\sim$5 ms to 550 ms.
+    \item \textbf{Proton Density (PD) Array:} 14 spheres with PD values ranging from 5\% to 100\%.
+\end{itemize}
+
+\subsection{Quantitative Performance Metrics}
+The primary objective is to minimize the "Sim-to-Real" gap. Success will be defined by the following metrics:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|p{3.5cm}|p{5.5cm}|p{3.5cm}|}
+\hline
+\textbf{Metric} & \textbf{Measurement Description} & \textbf{Success Criteria} \\ \hline
+\textbf{Parameter Accuracy} & Mean Absolute Percentage Error (MAPE) of $T_1$, $T_2$, and PD relative to QalibreMD reference values. & $< 5\%$ error for all arrays. \\ \hline
+\textbf{Spatial Localization} & Accuracy in identifying the $(x, y)$ centroids of the 42 spheres within the 5-minute scan window. & Error $< 1.0$ mm. \\ \hline
+\textbf{Scan Efficiency} & Total measurement time required to reach a stable parameter estimate compared to a standard grid-search protocol. & $> 25\%$ reduction in acquisition time. \\ \hline
+\textbf{Signal-to-Noise (SNR)} & The agent's ability to maintain sufficient SNR while adapting sequence parameters in real-time. & SNR $\geq$ standard clinical protocol. \\ \hline
+\end{tabular}
+\caption{Evaluation benchmarks for the RL agent using the Model 130 phantom. Quantitative success criteria are illustrative estimates.}
+\end{table}
+
+\subsection{Experimental Verification Strategy}
+\begin{enumerate}
+    \item \textbf{Phase I (Sim-to-Sim):} The agent’s ability to "transfer" its learning from the MRzero EPG simulator to the KomaMRI.jl Bloch simulator will be tested. This ensures the RL strategy is robust to more complex physical artifacts (e.g., off-resonance or B1 inhomogeneities).
+    \item \textbf{Phase II (Sim-to-Real):} The final sequence, optimised by the agent, will be deployed on the MR-Linac. The resulting quantitative maps will be processed using standard fitting algorithms (e.g., \texttt{PhantomViewer} or custom Julia scripts) to compare the RL-driven results against the NIST-traceable ground truth.
+\end{enumerate}
+
+\subsection{Contribution to the State-of-the-Art}
+Current qMRI protocols on the MR-Linac often suffer from long acquisition times or motion artifacts. By demonstrating that an RL agent can autonomously navigate the QalibreMD phantom's parameter space (locating vials and measuring $T_1/T_2$ simultaneously), this project aims to prove the feasibility of \textbf{fully adaptive, autonomous quantitative imaging}.
+
+\section{Legal and Ethical Matters}
+
+The development of a reinforcement learning (RL) framework for MRI sequence optimisation poses several legal and ethical considerations.
+
+\subsection{Legal Considerations}
+
+This project will build upon MRI simulators and RL libraries, so careful consideration of intellectual property (IP) and software licensing is required. In addition to adhering to the terms of use of the MR-Linac and the phantoms used. 
+
+\begin{itemize}
+    \item \textbf{Intellectual Property and Open Source:} This project will build exclusively on Open Source software. Using both \texttt{KomaMRI.jl} and \texttt{MRzero} for MRI simulators, \texttt{PulSeq} for sequence specifications, and Python's extensive ML libraries (e.g. \texttt{PyTorch}). All development will adhere to the original \texttt{MIT} or \texttt{Apache} licenses. The resulting code and trained RL agents will be documented and shared under similar open-source terms to promote reproducibility in the scientific community.
+    \item \textbf{Regulatory Compliance:} While the project is currently in the research phase, the software will interact with an MR-Linac. Since this is a clinical therapeutic device, development must comply with the manufacturer’s safety protocols. For example, the RL agent will be unable to request gradient switching rates or radio frequency (RF) power levels that exceed hardware safety limits.
+    \item \textbf{Data Protection:} This project will only use physical phantoms (e.g. NIST-traceable phantoms) or their digital twins. As such, no Personal Data or Protected Health Information (PHI) will be processed. Consequently, the project does not fall under the jurisdiction of the General Data Protection Regulation (GDPR).
+\end{itemize}
+
+\subsection{Ethical Considerations}
+
+While testing will be limited to non-biological subjects, the use of a clinical MR-Linac raises ethical considerations.
+
+\begin{itemize}
+    \item \textbf{Safety and Hardware Integrity:} A primary ethical concern is the "black box" nature of reinforcement learning. An agent trained to optimise for speed might explore pulse sequences that are physically taxing on the MRI hardware. To address this, the simulation environment includes hard constraints on the Specific Absorption Rate (SAR) and $dB/dt$ limits to ensure that the learned strategies are inherently safe for future clinical translation.
+    \item \textbf{Data Integrity and Hallucination:} In the context of AI-driven MRI, there is an ethical risk of the agent generating "hallucinated" features or artifacts to maximise its reward function. This project addresses this by using quantitative MRI (qMRI) phantoms with known ground-truth relaxation times ($T_1, T_2$), allowing for a rigorous, objective validation of the agent's accuracy.
+    \item \textbf{Professional Responsibility:} The use of the MR-Linac for phantom experiments requires adherence to institutional safety guidelines. All experiments will be conducted under the supervision of qualified medical physicists to ensure that the research does not interfere with clinical workflows or compromise the calibration of equipment used for patient treatment.
+\end{itemize}
+
+
+
+
+
+% \section{Environmental and Social impact}
+
+
+% This section should demonstrate how the sustainability and environmental and societal impact of the proposed solutions is assessed and potential adverse impacts (if any) are identified, together with suggestions for possible ways to mitigate them. 
+% We recognize that some projects may only have a rather theoretical flavour, so that any societal impact could be hard to anticipate. Nevertheless, an effort should be made, while identifying potential application scenarios, to also comment on their sustainability and potential undesired adverse impacts.
+% %This will demonstrate the following Learning Outcome as required by IET: ``Evaluate the environmental and societal impact of solutions to complex problems (to include the entire life-cycle of a product or process) and minimise adverse impacts''. %There is no prescribed length for this section, but its presence is a mandatory requirement in your final submission file.
+
+% %You can move this section somewhere else in the report if you wish as long as the report contains a dedicated section, rather than having such considerations spread across the manuscript.
+
+
+% \section{Equality, Diversity, and Inclusion}
+
+% This section should reflect an understanding of the importance of equality, diversity, and inclusion (EDI) within engineering practice.
+
+
+% Students should explain how EDI principles have been considered in the project, whether in the design process, user accessibility, team collaboration, or stakeholder engagement. This may include considerations such as accessibility of technologies, bias mitigation in data or algorithms, cultural awareness, or inclusive communication. The section should demonstrate an appreciation of the responsibilities and benefits associated with promoting an inclusive engineering environment.
+
+% \section{Quality Management Systems}
+
+% This section should provide a brief discussion of how quality management principles have been applied or considered during the project.
+
+% This may involve reference to established frameworks, the use of testing protocols, validation procedures, or version control systems used during the project. The focus should be on how quality was monitored, evaluated, and improved throughout the work.
