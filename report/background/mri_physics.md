@@ -28,7 +28,7 @@ Brewsters angle
 
 # Bloch equations
 
-The one primer everything else rests on. (Full algebra → fit formulas lives in `report/qalibre_phantom/fits.md §0`; this is the physics summary.)
+The one primer everything else rests on. (Full algebra → fit formulas lives in `report/mri_system_phantom/fits.md §0`; this is the physics summary.)
 
 Magnetisation vector $\mathbf{M} = (M_x, M_y, M_z)$. In the frame rotating at the Larmor frequency $\omega_0 = \gamma B_0$, with equilibrium $M_0$ along $+z$:
 

@@ -1,4 +1,4 @@
-report_latex is the final version. To upload to overleaf you must do:
+report_latex is the final version. To compile to pdf you must do:
 ```
 cd report_latex
 latexmk -lualatex main.tex

@@ -13,6 +13,12 @@
 \PassOptionsToPackage{hypertexnames=false}{hyperref}
 \PassOptionsToPackage{nohints}{minitoc}
 \documentclass[10pt]{ic_eee_thesis}
+\geometry{
+  top=2.5cm,
+  bottom=2.5cm,
+  left=2.5cm,
+  right=2.5cm
+}
 
 \usepackage[style=ieee,backend=biber,hyperref=auto]{biblatex}
 \addbibresource{references.bib}
@@ -143,8 +149,8 @@
 % APPENDICES ARE OPTIONAL
 % COMMENT OUT BOTH LINES BELOW TO REMOVE THEM
 % ADD CHAPTERS TO ADD MULTIPLE APPENDICES
-% \appendix 
-% \input{AppendixA.tex}
+\appendix
+\input{AppendixA.tex}
 %\input{AppendixB.tex} % Example second appendix (need to create the file in "chapters")
 
 

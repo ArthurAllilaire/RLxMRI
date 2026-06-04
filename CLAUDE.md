@@ -197,6 +197,19 @@ Every technical chapter must explicitly state:
 
 The `project_context/marking_docs/fyp26assess-info.pdf` contains the official assessment criteria — read it before drafting the report.
 
+## `report_latex` guidance
+
+The final report source lives in `report_latex/`. Compile it from that
+directory with:
+
+```bash
+latexmk -lualatex main.tex
+```
+
+The report is space-constrained: the final submission can contain at most
+60 pages of content. Prefer compact layouts in `report_latex` edits: concise captions, compact
+tables, and no unnecessary whitespace.
+
 Wayne email template for weekly updates:
 - Subject: `Weekly Progress Update — Arthur Allilaire FYP`
 - Bullet: tasks completed this week
