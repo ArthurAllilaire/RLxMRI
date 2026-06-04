@@ -18,7 +18,7 @@ Each contrast plate arranges its 14 spheres in two concentric rings: 10 on an ou
 ![](figs/Premium-System-Phantom.png)
 > **The QalibreMD NIST/ISMRM System Standard Model 130 hardware phantom.** The spherical water-filled housing (100 mm internal radius) contains T1, T2, and PD contrast arrays, each consisting of 14 doped-solution spheres arranged in concentric rings at fixed axial positions, plus a fiducial grid for registration. Its calibrated T1 (24 ms – 1.9 s) and T2 (87 ms – 2.8 s) ranges at 3 T span the full physiological tissue window, making it the standard reference device for quantitative MRI system validation. Image reproduced from [Caliber MRI](https://qmri.com/product/premium-system-phantom/).
 
-The relaxation values are field-strength-dependent, so separate reference values are provided for 1.5 T and 3 T field strength. The user manual also distinguishes between two serial classes, a legacy vs modern class distinguished by serial number, both sets of reference values are included in the library.
+The relaxation values are field-strength-dependent, so separate reference values are provided for 1.5 T and 3 T. The user manual also distinguishes between legacy and modern serial-number classes; both sets of reference values are included in the library.
 
 <!-- extra info:  legacy = serial numbers < 0042 and modern phantoms (serial class ≥ 0042). For example, T1-sphere 1 at 3 T is 1.84 s on the current recipe versus 2.38 s on legacy. Larger range of lower T1 values reflecting a shift in their importance in qMRI. -->
 
@@ -28,7 +28,7 @@ The relaxation values are field-strength-dependent, so separate reference values
 
 A digital twin of this phantom is needed for two reasons. First, it provides a ground-truth environment for RL training: the agent needs to query a simulator that returns physically meaningful signals and can report the true tissue parameters for reward computation. Second, it must be **flexible**: the RL training loop needs to randomise pose, inject noise, and jitter reference values across episodes without modifying library code. Different experiments also require different phantom sections or resolution.
 
-The library is structured around a single contract: a `PhantomConfig` struct that carries everything the builder needs, passed to a single function `build_phantom` that returns a `KomaMRI.Phantom`. The phantom can then be fed directly to `KomaMRI.simulate`. This design was chosen deliberately over a mutable phantom object or a collection of keyword arguments as the config is serialisable, diffable, and reproducible (the RNG seed is embedded), and the builder has no hidden state. This is extremely useful for comparing different RL runs and results. The single contract is especially useful  this makes the python to Julia boundary very simple.
+The library is structured around a single contract: a `PhantomConfig` struct that carries everything the builder needs, passed to a single function `build_phantom` that returns a `KomaMRI.Phantom`. The phantom can then be fed directly to `KomaMRI.simulate`. This design was chosen deliberately over a mutable phantom object or a collection of keyword arguments as the config is serialisable, diffable, and reproducible (the RNG seed is embedded), and the builder has no hidden state. This is useful for comparing different RL runs and also simplifies the Python-Julia boundary used by the training code.
 
 The pipeline from config to simulation is:
 
@@ -54,6 +54,8 @@ The two-stage design — descriptors first, voxels second — means all geometry
 ---
 
 ## 2. Geometry
+
+The geometry implementation is judged by whether it preserves the reconstructed sphere measurements, not by whether every background-water spin is represented exactly.
 
 ### 2.1 Sphere voxelisation
 
@@ -88,7 +90,7 @@ This coarsening must also handle anisotropic resolution as slices are typically 
 
 The figure below quantifies the fidelity–cost trade for an IR-SE-2D acquisition.
 
-![alt text](figs/water_voxel_fidelity.png)
+![Water voxelisation fidelity comparison](figs/water_voxel_fidelity.png)
 > **Fidelity–cost trade-off of background-water voxelisation.** The same IR-SE-2D acquisition (TI/TE/TR = 400/80/1500 ms, 32×64, FOV 0.2 m) is simulated through two phantoms differing *only* in background-water discretisation. **Top row:** magnitude images; **bottom row:** log-magnitude k-space; **right column:** fine − coarse difference. The coarse 3 mm grid uses **6,919 vs 23,735 spins** (3.4× fewer) and is **~3.4× faster to simulate** (0.9 ± 0.1 s vs 3.2 ± 0.6 s, mean ± std over 20 runs). The total integrated signal (k-space DC) changes by only **0.35%**, confirming the PD reweighting conserves the bulk water signal. The visible residual is low-amplitude and concentrated at high-spatial-frequencies. This figure and every number quoted in this section are reproduced by running `examples/compare_water_coarseness.jl`, which ships with the library; the timings are wall-clock means over 20 repeats and will vary with hardware.
 
 Conserving the bulk water signal is necessary but not sufficient. The k-space DC term changes by only 0.35%, but the phantom is used to measure the sphere signals. Using the `sphere_descriptor_pixels` mapping from §1, the single centre-pixel coarse-vs-fine NRMSE at the 32×64 matrix is **3.7%**.
@@ -103,13 +105,13 @@ The same pattern strengthens at 64×64: with unchanged spin counts and DC term, 
 
 Because the discrepancy is carried by truncation side-lobes, it can be suppressed at reconstruction. The library provides a 2-D Hamming window through `hamming_window_2d` and `kspace_to_image(...; hamming=true)`. As derived in the background chapter, this reduces the PSF side-lobes from -13 dB to -43 dB, at the cost of a wider main lobe.
 
-![alt text](figs/hamming_phantom_diff.png)
+![Hamming apodisation comparison](figs/hamming_phantom_diff.png)
 
 > **Effect of Hamming apodisation on one reconstruction.** A coarse-water phantom reconstructed without a Hamming window (left), with a 2-D Hamming window (centre), and their difference (right). The top row shows magnitude images; the bottom row shows k-space after the corresponding reconstruction weighting. The window down-weights outer k-space, visible as the darkened periphery of the centre k-space panel. This widens the PSF main lobe, slightly blurring the spheres, but strongly suppresses ringing side-lobes. The difference is localised to sphere edges and high-frequency k-space, consistent with suppression of truncation ringing rather than a change in the smooth low-frequency signal. Produced by `examples/hamming_apodisation.jl`.
 
-Reconstructing both grids with the Hamming window reduces the single-pixel coarse-vs-fine NRMSE by four-fold, from **3.7% to 0.9%**. This confirms that the single-pixel discrepancy was dominated by truncation ringing. The 3×3-ROI error improves more modestly, from **1.5% to 1.1%**, because ROI averaging already cancels much of the oscillatory side-lobe structure. Apodisation and spatial averaging therefore suppress largely the same error component, rather than providing independent gains. The remaining ≈1.1% is the non-Gibbs fidelity floor for this coarse-water measurement protocol.
+Reconstructing both grids with the Hamming window reduces the single-pixel coarse-vs-fine NRMSE by four-fold, from **3.7% to 0.9%**. This confirms that the single-pixel discrepancy was dominated by truncation ringing. The 3×3-ROI error improves more modestly, from **1.5% to 1.1%**, because ROI averaging already cancels much of the oscillatory side-lobe structure. Apodisation and spatial averaging therefore suppress largely the same error component, rather than providing independent gains. The remaining ≈1.1% is the residual coarse-grid discrepancy under this ROI-based measurement protocol.
 
-The Hamming window is a reconstruction-side element-wise multiplication and costs only a fraction of a millisecond, so it does not affect the roughly 3× simulation speed-up from the coarse grid. Its cost is resolution, through the wider PSF main lobe. 
+The Hamming window is a reconstruction-side element-wise multiplication and costs only a fraction of a millisecond, so it does not affect the roughly 3× simulation speed-up from the coarse grid. Its cost is resolution, through the wider PSF main lobe.
 
 A natural future improvement is a boundary-aware water grid: keep the smooth water bulk coarse, but voxelise a thin shell around the housing surface and sphere cut-outs at fine resolution so that coarsening no longer changes the boundary geometry.
 
@@ -171,11 +173,11 @@ The matching scanner is obtained from `scanner_for_field(cfg)`, which returns a 
 `MRISystemPhantom.jl` is developed as a standalone open-source Julia package at `github.com/ArthurAllilaire/MRISystemPhantom.jl` with API documentation hosted at `arthurallilaire.github.io/MRISystemPhantom.jl`. The package includes a complete test suite (~373 tests) and documentation pages covering phantom construction, sequence design, parameter fitting, and SNR diagnostics.
 
 An independent, public library has several benefits:
-1. It lets the methodology of these experiments be reproduced and extended by other groups working on quantitative MRI system validation or simulation-based sequence optimisation.
-2. As a digital twin of a widely-deployed calibration device (the NIST/ISMRM System Standard Model 130), it provides an exact ground truth: calibration runs can be tested against the known reference T1/T2 values before being trusted on a scanner.
-3. Pure Julia & KomaMRI ecosystem compatability: returning standard `KomaMRI.Phantom`/`Sequence` objects drives easy adoption.
-4. It provides a complete forward pipeline — build, simulate, reconstruct, ROI-extract, and fit — so a researcher gets a working conventional baseline out of the box rather than re-assembling one from scratch.
-5. The parameterised sequence blocks and their interactive RF/gradient/ADC plots are a readable reference implementation, useful both as documentation and as a teaching resource for MRI sequence design.
+1. It provides a complete, tested forward pipeline — phantom construction, sequence generation, simulation, reconstruction, ROI extraction, and parameter fitting — rather than a set of experiment-specific scripts.
+2. It makes the methodology reproducible and extensible for other groups working on quantitative MRI system validation or simulation-based sequence optimisation.
+3. It provides a reusable digital twin of a widely deployed calibration device, so simulated methods can be checked against known T1/T2 reference values before scanner deployment.
+4. It integrates directly with the Julia/KomaMRI ecosystem by returning standard `KomaMRI.Phantom` and `Sequence` objects.
+5. Its example scripts provide runnable, educational references for phantom construction, sequence design, parameter fitting, SNR calibration, and the fidelity checks reported here.
 
 ### Example scripts
 
@@ -184,7 +186,7 @@ The package ships a set of runnable, self-contained demonstration scripts in `ex
 - `plot_phantom.jl`: renders the T1/T2/PD maps and slice cuts of the built phantom.
 - `plot_fidelity_phantoms.jl`: visualises the water-coarsening fidelity levels.
 - `t1_mapping.jl`: runs a full IR-SE acquisition, reconstructs the image, extracts per-sphere ROIs and fits T1.
-- `conventional_baseline.jl`: runs the conventional fixed-sequence baseline (IR/SE sweep plus fit for all 28 T1 & T2 constrast spheres).
+- `conventional_baseline.jl`: runs the conventional fixed-sequence baseline (IR/SE sweep plus fit for all 28 T1 & T2 contrast spheres).
 - `snr_calibration.jl`: performs the NEMA MS-1 dual-acquisition SNR measurement.
 - `compare_water_coarseness.jl` and `hamming_apodisation.jl`: produce the fidelity-vs-cost and apodisation figures (§2.3) along with the numbers quoted there.
 - `plot_seqs.jl`: writes one interactive RF/gradient/ADC waveform plot per sequence into `src/assets/sequences/`. Sequences included: IR-SE (with and without crusher & TR-spoiler variant), SE for T2 mapping, IR-TSE echo-train, and spoiled GRE.
