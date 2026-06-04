@@ -478,51 +478,55 @@ fields default to zero. When non-zero values are provided,
 \texttt{apply\_per\_spin\_noise!} draws from the relevant distributions
 using the config's \texttt{rng\_seed}:
 
+\begingroup
+\def\augmentFieldWidth{0.25\columnwidth}
+\def\augmentEffectWidth{0.70\columnwidth}
 \begin{longtable}[]{@{}ll@{}}
 \toprule
-\begin{minipage}[b]{0.44\columnwidth}\raggedright
+\begin{minipage}[b]{\augmentFieldWidth}\raggedright
 Field\strut
-\end{minipage} & \begin{minipage}[b]{0.50\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[b]{\augmentEffectWidth}\raggedright
 Effect\strut
 \end{minipage}\tabularnewline
 \midrule
 \endhead
-\begin{minipage}[t]{0.44\columnwidth}\raggedright
+\begin{minipage}[t]{\augmentFieldWidth}\raggedright
 \texttt{T1\_sigma\_rel}\strut
-\end{minipage} & \begin{minipage}[t]{0.50\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{\augmentEffectWidth}\raggedright
 Multiplies each sphere's T1 by \texttt{exp(sigma*z)} where
 \texttt{z\ \textasciitilde{}\ N(0,1)}, drawn once per sphere\strut
 \end{minipage}\tabularnewline
-\begin{minipage}[t]{0.44\columnwidth}\raggedright
+\begin{minipage}[t]{\augmentFieldWidth}\raggedright
 \texttt{T2\_sigma\_rel}\strut
-\end{minipage} & \begin{minipage}[t]{0.50\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{\augmentEffectWidth}\raggedright
 Same for T2\strut
 \end{minipage}\tabularnewline
-\begin{minipage}[t]{0.44\columnwidth}\raggedright
+\begin{minipage}[t]{\augmentFieldWidth}\raggedright
 \texttt{PD\_sigma\_abs}\strut
-\end{minipage} & \begin{minipage}[t]{0.50\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{\augmentEffectWidth}\raggedright
 Adds \texttt{N(0,\ sigma\^{}2)} to each spin's proton density\strut
 \end{minipage}\tabularnewline
-\begin{minipage}[t]{0.44\columnwidth}\raggedright
+\begin{minipage}[t]{\augmentFieldWidth}\raggedright
 \texttt{position\_sigma\_mm}\strut
-\end{minipage} & \begin{minipage}[t]{0.50\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{\augmentEffectWidth}\raggedright
 Adds \texttt{N(0,\ sigma\^{}2)} to each spin's (x, y, z) position
 independently\strut
 \end{minipage}\tabularnewline
-\begin{minipage}[t]{0.44\columnwidth}\raggedright
+\begin{minipage}[t]{\augmentFieldWidth}\raggedright
 \texttt{B0\_sigma\_Hz}\strut
-\end{minipage} & \begin{minipage}[t]{0.50\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{\augmentEffectWidth}\raggedright
 Adds \texttt{N(0,\ sigma\^{}2)} per-spin off-resonance, stored in \(\Delta w\)
 (rad/s after \(\times 2\pi\))\strut
 \end{minipage}\tabularnewline
-\begin{minipage}[t]{0.44\columnwidth}\raggedright
+\begin{minipage}[t]{\augmentFieldWidth}\raggedright
 \texttt{drop\_sphere\_p}\strut
-\end{minipage} & \begin{minipage}[t]{0.50\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{\augmentEffectWidth}\raggedright
 Drops each sphere independently with Bernoulli probability p before
 voxelisation\strut
 \end{minipage}\tabularnewline
 \bottomrule
 \end{longtable}
+\endgroup
 
 The T1/T2 jitter is applied at the sphere level (one draw per sphere,
 not per spin) to simulate manufacturing variability in the doping
