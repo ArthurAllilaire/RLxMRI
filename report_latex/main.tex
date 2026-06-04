@@ -10,10 +10,13 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % DO NOT MODIFY FROM HERE ...
+\PassOptionsToPackage{hypertexnames=false}{hyperref}
+\PassOptionsToPackage{nohints}{minitoc}
 \documentclass[10pt]{ic_eee_thesis}
 
 \usepackage[style=ieee,backend=biber,hyperref=auto]{biblatex}
 \addbibresource{references.bib}
+\AtBeginBibliography{\sloppy\emergencystretch=3em\relax}
 % ... TO HERE
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -97,6 +100,8 @@
 \usepackage{longtable}
 \usepackage{booktabs}
 \usepackage{array}
+\usepackage{tabularx}
+\usetikzlibrary{positioning,arrows.meta,fit}
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 %...
@@ -109,6 +114,7 @@
 
 
 \begin{document}
+\raggedbottom
 
 \preamble % Do not change - required
 

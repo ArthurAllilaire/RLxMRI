@@ -61,16 +61,16 @@ The evaluation will utilize three primary components of the Model 130 phantom to
 \subsection{Quantitative Performance Metrics}
 The primary objective is to minimize the "Sim-to-Real" gap. Success will be defined by the following metrics:
 
-\begin{table}[h]
+\begin{table}[htbp]
 \centering
-\begin{tabular}{|p{3.5cm}|p{5.5cm}|p{3.5cm}|}
+\begin{tabularx}{\linewidth}{|>{\raggedright\arraybackslash}p{3.7cm}|X|>{\raggedright\arraybackslash}p{3.2cm}|}
 \hline
 \textbf{Metric} & \textbf{Measurement Description} & \textbf{Success Criteria} \\ \hline
 \textbf{Parameter Accuracy} & Mean Absolute Percentage Error (MAPE) of $T_1$, $T_2$, and PD relative to QalibreMD reference values. & $< 5\%$ error for all arrays. \\ \hline
 \textbf{Spatial Localization} & Accuracy in identifying the $(x, y)$ centroids of the 42 spheres within the 5-minute scan window. & Error $< 1.0$ mm. \\ \hline
 \textbf{Scan Efficiency} & Total measurement time required to reach a stable parameter estimate compared to a standard grid-search protocol. & $> 25\%$ reduction in acquisition time. \\ \hline
 \textbf{Signal-to-Noise (SNR)} & The agent's ability to maintain sufficient SNR while adapting sequence parameters in real-time. & SNR $\geq$ standard clinical protocol. \\ \hline
-\end{tabular}
+\end{tabularx}
 \caption{Evaluation benchmarks for the RL agent using the Model 130 phantom. Quantitative success criteria are illustrative estimates.}
 \end{table}
 
