@@ -30,7 +30,7 @@ A digital twin of this phantom is needed for two reasons. First, it provides a g
 
 The library is structured around a single contract: a `PhantomConfig` struct that carries everything the builder needs, passed to a single function `build_phantom` that returns a `KomaMRI.Phantom`. The phantom can then be fed directly to `KomaMRI.simulate`. This design was chosen deliberately over a mutable phantom object or a collection of keyword arguments as the config is serialisable, diffable, and reproducible (the RNG seed is embedded), and the builder has no hidden state. This is useful for comparing different RL runs and also simplifies the Python-Julia boundary used by the training code.
 
-The pipeline from config to simulation is:
+The pipeline from `PhantomConfig` to `KomaMRI.simulate()` is:
 
 ```
 PhantomConfig
@@ -170,7 +170,7 @@ The matching scanner is obtained from `scanner_for_field(cfg)`, which returns a 
 
 ## 6. Library availability
 
-`MRISystemPhantom.jl` is developed as a standalone open-source Julia package at `github.com/ArthurAllilaire/MRISystemPhantom.jl` with API documentation hosted at `arthurallilaire.github.io/MRISystemPhantom.jl`. The package includes a complete test suite (~373 tests) and documentation pages covering phantom construction, sequence design, parameter fitting, and SNR diagnostics.
+`MRISystemPhantom.jl` is developed as a standalone open-source Julia package, with source code hosted on [GitHub](https://github.com/ArthurAllilaire/MRISystemPhantom.jl) and [API documentation](https://arthurallilaire.github.io/MRISystemPhantom.jl) hosted on GitHub Pages. The package includes a complete test suite (~373 tests) and documentation pages covering phantom construction, sequence design, parameter fitting, and SNR diagnostics.
 
 An independent, public library has several benefits:
 1. It provides a complete, tested forward pipeline — phantom construction, sequence generation, simulation, reconstruction, ROI extraction, and parameter fitting — rather than a set of experiment-specific scripts.

@@ -11,6 +11,12 @@ Library}\label{ch:mri-system-phantom}}
 % COPY THEM IN ANY NEW CHAPTER
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+\setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{4pt}
+\setlength{\belowcaptionskip}{0pt}
+
 \hypertarget{the-physical-phantom}{%
 \section{The physical phantom}\label{the-physical-phantom}}
 
@@ -81,17 +87,11 @@ verified against the physical device. The current digital twin models
 the contrast arrays and fiducial grid, but not the resolution insets or
 the two slice-profile wedges.
 
-\begin{figure}
+\begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.75\linewidth]{imgs/mri_system_phantom/Premium-System-Phantom.png}
+\includegraphics[width=0.52\linewidth]{imgs/mri_system_phantom/Premium-System-Phantom.png}
 \caption{\textbf{The QalibreMD NIST/ISMRM System Standard Model 130 hardware
-phantom.} The spherical water-filled housing (100 mm internal radius)
-contains T1, T2, and PD contrast arrays, each consisting of 14
-doped-solution spheres arranged in concentric rings at fixed axial
-positions, plus a fiducial grid for registration. Its calibrated T1 (24
-ms -- 1.9 s) and T2 (87 ms -- 2.8 s) ranges at 3 T span the full
-physiological tissue window, making it the standard reference device for
-quantitative MRI system validation. Image reproduced from
+phantom.} Image reproduced from
 \href{https://qmri.com/product/premium-system-phantom/}{Caliber MRI}.}
 \label{fig:premium-system-phantom}
 \end{figure}
@@ -100,8 +100,6 @@ The relaxation values are field-strength-dependent, so separate
 reference values are provided for 1.5 T and 3 T. The user manual also
 distinguishes between legacy and modern serial-number classes; both sets
 of reference values are included in the library.
-
-\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
 
 \hypertarget{design-goals-and-architecture}{%
 \section{Design goals and
@@ -117,9 +115,9 @@ modifying library code. Different experiments also require different
 phantom sections or resolution.
 
 The library is structured around a single contract: a
-\texttt{PhantomConfig} struct that carries everything the builder needs,
-passed to a single function \texttt{build\_phantom} that returns a
-\texttt{KomaMRI.Phantom}. The phantom can then be fed directly to
+\texttt{PhantomConfig} struct that carries the builder configuration.
+A single function, \texttt{build\_phantom}, returns a
+\texttt{KomaMRI.Phantom}, which can then be fed directly to
 \texttt{KomaMRI.simulate}. This design was chosen deliberately over a
 mutable phantom object or a collection of keyword arguments as the
 config is serialisable, diffable, and reproducible (the RNG seed is
@@ -127,24 +125,69 @@ embedded), and the builder has no hidden state. This is useful for
 comparing different RL runs and also simplifies the Python-Julia
 boundary used by the training code.
 
-The pipeline from config to simulation is:
+The pipeline from \texttt{PhantomConfig} to \texttt{KomaMRI.simulate()}
+is:
 
-\begin{verbatim}
-PhantomConfig
-    |
-    +-- sphere_descriptors(:T1, cfg)
-    +-- sphere_descriptors(:T2, cfg)   one SphereDescriptor per contrast sphere
-    +-- sphere_descriptors(:PD, cfg)   (geometry + material, no voxels yet)
-    +-- sphere_descriptors(:fiducials)
-    |
-    +-- voxelise_sphere(d, delta_x)    -> KomaMRI.Phantom per sphere
-    |
-    +-- build_background_water(cfg)    -> KomaMRI.Phantom (water housing, sphere cutouts)
-    |
-    +-- apply_transform!(obj, rotation, translation)
-    |
-    +-- apply_per_spin_noise!(obj, augment, rng) -> KomaMRI.Phantom (ready for simulate())
-\end{verbatim}
+\begin{center}
+\resizebox{0.98\linewidth}{!}{%
+\begin{tikzpicture}[
+  node distance=5mm and 7mm,
+  flowbox/.style={
+    draw,
+    rounded corners=2pt,
+    align=center,
+    font=\tiny,
+    inner xsep=5pt,
+    inner ysep=4pt,
+    minimum height=10mm,
+    text width=34mm
+  },
+  groupbox/.style={
+    flowbox,
+    text width=31mm,
+    fill=black!3
+  },
+  finalbox/.style={
+    flowbox,
+    text width=31mm,
+    fill=ImperialBlue!6
+  },
+  plusbox/.style={
+    draw,
+    circle,
+    inner sep=0pt,
+    minimum size=5mm,
+    font=\tiny
+  },
+  builderbox/.style={
+    draw,
+    dashed,
+    rounded corners=3pt,
+    inner xsep=7pt,
+    inner ysep=8pt,
+    label={[font=\scriptsize]above:\texttt{build\_phantom(cfg)}}
+  },
+  flowarrow/.style={-{Latex[length=1.7mm]}, line width=0.35pt}
+]
+\node[groupbox] (cfg) {\texttt{PhantomConfig}};
+\node[groupbox, right=of cfg] (desc) {\texttt{sphere\_descriptors}\\{\tiny :T1/:T2/:PD/fiducials}};
+\node[flowbox, right=of desc, yshift=6mm] (vox) {\texttt{voxelise\_sphere}};
+\node[flowbox, right=of desc, yshift=-6mm] (water) {\texttt{build\_background\_water}};
+\node[plusbox, right=of desc, xshift=42mm] (merge) {\texttt{+}};
+\node[flowbox, right=of merge] (pose) {rotation\\translation\\\texttt{AugmentConfig}};
+\node[finalbox, right=of pose] (phantom) {\texttt{KomaMRI.Phantom}};
+\node[builderbox, fit=(desc)(vox)(water)(merge)(pose)] (builder) {};
+
+\draw[flowarrow] (cfg) -- (desc);
+\draw[flowarrow] (desc) -- (vox);
+\draw[flowarrow] (desc) -- (water);
+\draw[flowarrow] (vox) -- (merge);
+\draw[flowarrow] (water) -- (merge);
+\draw[flowarrow] (merge) -- (pose);
+\draw[flowarrow] (pose) -- (phantom);
+\end{tikzpicture}
+}
+\end{center}
 
 The two-stage design --- descriptors first, voxels second --- means all
 geometry and material decisions happen before any memory is allocated
@@ -156,8 +199,6 @@ each descriptor carries its physical centre coordinate,
 to pixel indices in the reconstructed image --- using the same
 DC-at-centre convention as \texttt{kspace\_to\_image} --- simplifying
 ROI extraction after reconstruction.
-
-\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
 
 \hypertarget{geometry}{%
 \section{Geometry}\label{geometry}}
@@ -246,32 +287,25 @@ apart). Again, these are re-weighted to conserve total magnetisation.
 The figure below quantifies the fidelity--cost trade for an IR-SE-2D
 acquisition.
 
-\begin{figure}
+\begin{figure}[!htbp]
 \centering
-\includegraphics[width=\linewidth]{imgs/mri_system_phantom/water_voxel_fidelity.png}
+\includegraphics[width=0.82\linewidth]{imgs/mri_system_phantom/water_voxel_fidelity.png}
 \caption{\textbf{Fidelity--cost trade-off of background-water voxelisation.} The
 same IR-SE-2D acquisition (TI/TE/TR = 400/80/1500 ms, \(32\times64\), FOV 0.2 m)
 is simulated through two phantoms differing \emph{only} in
 background-water discretisation. \textbf{Top row:} magnitude images;
 \textbf{bottom row:} log-magnitude k-space; \textbf{right column:} fine
-- coarse difference. The coarse 3 mm grid uses \textbf{6,919 vs 23,735
-spins} (\(3.4\times\) fewer) and is \textbf{\textasciitilde\(3.4\times\) faster to
-simulate} (\(0.9 \pm 0.1\) s vs \(3.2 \pm 0.6\) s, mean \(\pm\) std over 20 runs). The
-total integrated signal (k-space DC) changes by only \textbf{0.35\%},
-confirming the PD reweighting conserves the bulk water signal. The
-visible residual is low-amplitude and concentrated at
-high-spatial-frequencies. This figure and every number quoted in this
-section are reproduced by running
-\texttt{examples/compare\_water\_coarseness.jl}, which ships with the
-library; the timings are wall-clock means over 20 repeats and will vary
-with hardware.}
+- coarse difference. The figure and numbers are reproduced by \texttt{examples/compare\_water\_coarseness.jl}.}
 \label{fig:water-voxel-fidelity}
 \end{figure}
 
 Conserving the bulk water signal is necessary but not sufficient. The
 k-space DC term changes by only 0.35\%, but the phantom is used to
-measure the sphere signals. Using the
-\texttt{sphere\_descriptor\_pixels} mapping from §1, the single
+measure the sphere signals. The coarse 3 mm grid uses
+\textbf{6,919 vs 23,735 spins} (\(3.4\times\) fewer) and is
+\textbf{\textasciitilde\(3.4\times\) faster to simulate}
+(\(0.9 \pm 0.1\) s vs \(3.2 \pm 0.6\) s, mean \(\pm\) std over 20
+runs). Using the \texttt{sphere\_descriptor\_pixels} mapping, the single
 centre-pixel coarse-vs-fine NRMSE at the \(32\times64\) matrix is \textbf{3.7\%}.
 
 The larger single-pixel error reflects where the coarse grid differs
@@ -305,25 +339,17 @@ admitting more of the edge mismatch.
 
 Because the discrepancy is carried by truncation side-lobes, it can be
 suppressed at reconstruction. The library provides a 2-D Hamming window
-through \texttt{hamming\_window\_2d} and
-\texttt{kspace\_to\_image(...;\ hamming=true)}. As derived in the
+through \texttt{hamming\_\allowbreak window\_\allowbreak 2d} and
+\texttt{kspace\_\allowbreak to\_\allowbreak image(...;\ hamming=true)}. As derived in the
 background chapter, this reduces the PSF side-lobes from -13 dB to -43
 dB, at the cost of a wider main lobe.
 
-\begin{figure}
+\begin{figure}[!htbp]
 \centering
-\includegraphics[width=\linewidth]{imgs/mri_system_phantom/hamming_phantom_diff.png}
+\includegraphics[width=0.82\linewidth]{imgs/mri_system_phantom/hamming_phantom_diff.png}
 \caption{\textbf{Effect of Hamming apodisation on one reconstruction.} A
 coarse-water phantom reconstructed without a Hamming window (left), with
-a 2-D Hamming window (centre), and their difference (right). The top row
-shows magnitude images; the bottom row shows k-space after the
-corresponding reconstruction weighting. The window down-weights outer
-k-space, visible as the darkened periphery of the centre k-space panel.
-This widens the PSF main lobe, slightly blurring the spheres, but
-strongly suppresses ringing side-lobes. The difference is localised to
-sphere edges and high-frequency k-space, consistent with suppression of
-truncation ringing rather than a change in the smooth low-frequency
-signal. Produced by \texttt{examples/hamming\_apodisation.jl}.}
+a 2-D Hamming window (centre), and their difference (right). Produced by \texttt{examples/hamming\_apodisation.jl}.}
 \label{fig:hamming-phantom-diff}
 \end{figure}
 
@@ -337,17 +363,21 @@ therefore suppress largely the same error component, rather than
 providing independent gains. The remaining \(\approx 1.1\%\) is the residual
 coarse-grid discrepancy under this ROI-based measurement protocol.
 
-The Hamming window is a reconstruction-side element-wise multiplication
-and costs only a fraction of a millisecond, so it does not affect the
-roughly \(3\times\) simulation speed-up from the coarse grid. Its cost is
-resolution, through the wider PSF main lobe.
+The Hamming window down-weights outer k-space, visible as the darkened
+periphery of the centre k-space panel in Figure
+\ref{fig:hamming-phantom-diff}. This widens the PSF main lobe and
+slightly blurs the spheres, but suppresses ringing side-lobes. The
+difference is localised to sphere edges and high-frequency k-space,
+consistent with suppression of truncation ringing rather than a change
+in the smooth low-frequency signal. The window is a reconstruction-side
+element-wise multiplication and costs only a fraction of a millisecond,
+so it does not affect the roughly \(3\times\) simulation speed-up from
+the coarse grid. Its cost is resolution, through the wider PSF main lobe.
 
 A natural future improvement is a boundary-aware water grid: keep the
 smooth water bulk coarse, but voxelise a thin shell around the housing
 surface and sphere cut-outs at fine resolution so that coarsening no
 longer changes the boundary geometry.
-
-\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
 
 \hypertarget{material-tables}{%
 \section{Material tables}\label{material-tables}}
@@ -440,8 +470,6 @@ against any calibration record. Neither affects the T1- or T2-plate
 experiments, but both should be replaced before any simulation-to-real
 comparison involving the PD plate or fiducial grid.
 
-\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
-
 \hypertarget{augmentation}{%
 \section{Augmentation}\label{augmentation}}
 
@@ -510,13 +538,11 @@ same phantom, making evaluation runs reproducible. Incrementing it each
 training episode draws a statistically independent phantom, preventing
 the agent from memorising a fixed configuration.
 
-\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
-
 \hypertarget{komamri-integration}{%
 \section{KomaMRI integration}\label{komamri-integration}}
 
 \texttt{MRISystemPhantom.jl} is built entirely on top of
-\texttt{KomaMRI.jl} and returns standard \texttt{KomaMRI.Phantom}
+\texttt{KomaMRI.jl} and returns standard \texttt{KomaMRI.\allowbreak Phantom}
 objects. The whole phantom is assembled using a single operation: the
 concatenation operator \texttt{+} on \texttt{Phantom}. Each voxelised
 sphere becomes a small \texttt{Phantom}, the spheres of each T1, T2 and
@@ -524,46 +550,57 @@ PD plate are concatenated into that plate, the three plates are
 concatenated into a sphere stack, and finally the water background is
 concatenated on top. The result is a single array of spins with
 heterogeneous relaxation values, which is exactly what
-\texttt{KomaMRI.simulate} expects.
+\texttt{KomaMRI.\allowbreak simulate} expects.
 
-Because the output is an ordinary \texttt{KomaMRI.Phantom}, existing
+Because the output is an ordinary \texttt{KomaMRI.\allowbreak Phantom}, existing
 KomaMRI features work out of the box, such as the interactive plotting
 tools which are used extensively in the example scripts.
 
-The matching scanner is obtained from \texttt{scanner\_for\_field(cfg)},
+The matching scanner is obtained from \texttt{scanner\_\allowbreak for\_\allowbreak field(cfg)},
 which returns a \texttt{Scanner} with B0 set to 3.0 T for \texttt{:T3}
 or 1.5 T for \texttt{:T15}. Pairing a phantom with a \texttt{Scanner} of
 a different B0 silently produces the wrong relaxation values - a mistake
 the author made in practice - so this helper exists to make the coupling
 explicit.
 
-\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
-
 \hypertarget{library-availability}{%
 \section{Library availability}\label{library-availability}}
 
 \texttt{MRISystemPhantom.jl} is developed as a standalone open-source
-Julia package at \texttt{github.com/ArthurAllilaire/MRISystemPhantom.jl}
-with API documentation hosted at
-\texttt{arthurallilaire.github.io/MRISystemPhantom.jl}. The package
+Julia package, with source code hosted on
+\href{https://github.com/ArthurAllilaire/MRISystemPhantom.jl}{GitHub}
+and
+\href{https://arthurallilaire.github.io/MRISystemPhantom.jl}{API
+documentation} hosted on GitHub Pages. The package
 includes a complete test suite (\textasciitilde373 tests) and
 documentation pages covering phantom construction, sequence design,
 parameter fitting, and SNR diagnostics.
 
-An independent, public library has several benefits: 1. It provides a
-complete, tested forward pipeline --- phantom construction, sequence
-generation, simulation, reconstruction, ROI extraction, and parameter
-fitting --- rather than a set of experiment-specific scripts. 2. It
-makes the methodology reproducible and extensible for other groups
-working on quantitative MRI system validation or simulation-based
-sequence optimisation. 3. It provides a reusable digital twin of a
-widely deployed calibration device, so simulated methods can be checked
-against known T1/T2 reference values before scanner deployment. 4. It
-integrates directly with the Julia/KomaMRI ecosystem by returning
-standard \texttt{KomaMRI.Phantom} and \texttt{Sequence} objects. 5. Its
-example scripts provide runnable, educational references for phantom
-construction, sequence design, parameter fitting, SNR calibration, and
-the fidelity checks reported here.
+An independent, public library has several benefits:
+
+\begin{enumerate}
+\tightlist
+\item
+  It provides a complete, tested forward pipeline --- phantom
+  construction, sequence generation, simulation, reconstruction, ROI
+  extraction, and parameter fitting --- rather than a set of
+  experiment-specific scripts.
+\item
+  It makes the methodology reproducible and extensible for other groups
+  working on quantitative MRI system validation or simulation-based
+  sequence optimisation.
+\item
+  It provides a reusable digital twin of a widely deployed calibration
+  device, so simulated methods can be checked against known T1/T2
+  reference values before scanner deployment.
+\item
+  It integrates directly with the Julia/KomaMRI ecosystem by returning
+  standard \texttt{KomaMRI.Phantom} and \texttt{Sequence} objects.
+\item
+  Its example scripts provide runnable, educational references for
+  phantom construction, sequence design, parameter fitting, SNR
+  calibration, and the fidelity checks reported here.
+\end{enumerate}
 
 \hypertarget{example-scripts}{%
 \subsection{Example scripts}\label{example-scripts}}
@@ -605,5 +642,3 @@ Because the output is a standard
 \texttt{KomaMRI.Phantom}/\texttt{Sequence}, these scripts rely only on
 KomaMRI's own interactive plotting, with no bespoke visualisation code
 in the library.
-
-\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}

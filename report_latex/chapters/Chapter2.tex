@@ -59,7 +59,7 @@ The effects of $T_2$ can be isolated using a "spin-echo" pulse sequence. Again, 
     \caption{\textbf{Upper Row:} Longitudinal relaxation (decreasing the flip angle). \\
     \textbf{Lower Row:} Transverse relaxation (spin dephasing) 
     Figure from \cite{RobPio:99}}
-    \label{fig:placeholder}
+    \label{fig:relaxation-properties}
 \end{figure}
 
 \subsection{Spatial Encoding \& k-Space Acquisition}
@@ -78,7 +78,7 @@ Plotting the amplitude of a particular phase and frequency is called K-space. Co
     \centering
     \includegraphics[width=0.5\linewidth]{imgs/slice_selection.jpg}
     \caption{Thin slices (3-8mm) can be excited by using a narrow range of RF pulses. Figure from \cite{RobPio:99}}
-    \label{fig:placeholder}
+    \label{fig:slice-selection}
 \end{figure}
 
 \subsection{K-space \& Gibbs (truncation) ringing}
@@ -86,8 +86,8 @@ Plotting the amplitude of a particular phase and frequency is called K-space. Co
 \begin{figure}
     \centering
     \includegraphics[width=0.5\linewidth]{image.png}
-    \caption{Enter Caption}
-    \label{fig:placeholder}
+    \caption{Illustrative k-space representation used to motivate the relationship between finite sampling and image-domain ringing.}
+    \label{fig:kspace-representation}
 \end{figure}
 
 A typical k-space diagram looks like:
@@ -135,8 +135,7 @@ Which is a trade-off though as you can see those edges are properly dimmed and e
 
 You can also round neighbouring pixels - smooth the image by using an average - e.g. ROI of 3x3 vs 1x1 equivalent of smoothing and so the lobes cancel each other out - even at edges - but you slightly remove the edges.
 
-Unsure about:
-1. Those lobes are each pixel somehow? The top denominator has N peaks/troughs for each FOV - so therefore yes is neighbouring pixels.
+The oscillatory side-lobes are therefore a pixel-domain manifestation of the finite k-space support: each sharp transition contributes a ringing pattern whose lobe spacing is set by the sampled matrix size and field of view.
 
 
 \subsection{Pulse Sequences}
@@ -221,7 +220,7 @@ By recasting pulse sequence development as a ``game of perfect information,'' re
     \centering
     \includegraphics[width=0.5\linewidth]{imgs/AUTOSEQ_RES.png}
     \caption{(B) Novel pulse sequence successfully developed by AUTOSEQ to mimic a gradient echo sequence. Figure from \cite{zhu2018autoseq}}
-    \label{fig:placeholder}
+    \label{fig:autoseq-gradient-echo}
 \end{figure}
 
 \subsection{Adaptive MRI acquisition}
