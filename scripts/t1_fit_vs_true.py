@@ -33,7 +33,9 @@ import matplotlib.colors as mcolors
 import csv
 
 here = os.path.dirname(os.path.abspath(__file__))
-runs_t1 = os.path.join(here, "runs", "t1_fit_vs_true")
+# Override with RUNS_ROOT to target a version folder (see pixel_grid_overlay.py).
+runs_t1 = os.path.join(os.environ.get("RUNS_ROOT", os.path.join(here, "runs")),
+                       "t1_fit_vs_true")
 
 
 # ── Data loaders ─────────────────────────────────────────────────────────────

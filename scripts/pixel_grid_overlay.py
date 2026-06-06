@@ -20,10 +20,15 @@ from dataclasses import dataclass
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import SymLogNorm
 from matplotlib.patches import Circle
 
 here = os.path.dirname(os.path.abspath(__file__))
-runs_root = os.path.join(here, "runs", "pixel_grid_overlay")
+# Output root. Override with RUNS_ROOT to target a version folder, e.g.
+# RUNS_ROOT=scripts/runs/eae656a_current-koma. Inherited by child processes the
+# .jl scripts spawn, so the Julia driver and these plotters always agree.
+runs_root = os.path.join(os.environ.get("RUNS_ROOT", os.path.join(here, "runs")),
+                         "pixel_grid_overlay")
 
 
 def build_run_label(npe, nfe, fov, voxel_mm):
@@ -247,40 +252,64 @@ def render_kspace_baseline(ctx: RunContext, ksp_meas, ksp_theo, theo_label):
     extent_k = (-kx_max, kx_max, -ky_max, ky_max)
 
     def lmf(z): return np.log10(np.maximum(np.abs(z), np.abs(z).max() * 1e-4))
+    ti_s = ctx.img_meta["TI_s"]
 
-    # 3 panels when theory present (measured | theory | signed |k| diff), else 1.
-    ncols = 3 if ksp_theo is not None else 1
+    # Panel painters, reused across the figures below.
+    def draw_mag(ax, z, title):
+        im = ax.imshow(lmf(z), cmap="magma", origin="lower",
+                       extent=extent_k, aspect="auto")
+        ax.set_title(title)
+        ax.set_xlabel("kx [1/m]"); ax.set_ylabel("ky [1/m]")
+        plt.colorbar(im, ax=ax, fraction=0.046, label="log10 |S|")
+
+    # ── 2-panel measured | theory (used by the stitch) ───────────────────────
+    ncols = 2 if ksp_theo is not None else 1
     fig, axes = plt.subplots(1, ncols, figsize=(7 * ncols, 6))
     if ncols == 1:
         axes = [axes]
-
-    im0 = axes[0].imshow(lmf(ksp_meas), cmap="magma", origin="lower",
-                         extent=extent_k, aspect="auto")
-    axes[0].set_title(f"measured log|k-space|  (TI={ctx.img_meta['TI_s']:g} s)")
-    axes[0].set_xlabel("kx [1/m]"); axes[0].set_ylabel("ky [1/m]")
-    plt.colorbar(im0, ax=axes[0], fraction=0.046, label="log10 |S|")
-
+    draw_mag(axes[0], ksp_meas, f"measured log|k-space|  (TI={ti_s:g} s)")
     if ksp_theo is not None:
-        im1 = axes[1].imshow(lmf(ksp_theo), cmap="magma", origin="lower",
-                             extent=extent_k, aspect="auto")
-        axes[1].set_title(theo_label)
-        axes[1].set_xlabel("kx [1/m]"); axes[1].set_ylabel("ky [1/m]")
-        plt.colorbar(im1, ax=axes[1], fraction=0.046, label="log10 |S|")
-
-        # Signed |k| difference (measured − theory) — surfaces the residual
-        # structure a log-magnitude side-by-side hides. Title carries L1 relerr.
-        diff = np.abs(ksp_meas) - np.abs(ksp_theo)
-        dmax = np.abs(diff).max() or 1.0
-        relerr = np.sum(np.abs(ksp_meas - ksp_theo)) / max(np.sum(np.abs(ksp_meas)), 1e-30)
-        im2 = axes[2].imshow(diff, cmap="bwr", origin="lower", extent=extent_k,
-                             aspect="auto", vmin=-dmax, vmax=dmax)
-        axes[2].set_title(f"|k| diff (meas − theory)\nL1 relerr = {relerr:.2e}")
-        axes[2].set_xlabel("kx [1/m]"); axes[2].set_ylabel("ky [1/m]")
-        plt.colorbar(im2, ax=axes[2], fraction=0.046, label="Δ|S|")
-
+        draw_mag(axes[1], ksp_theo, theo_label)
     fig.suptitle(f"k-space comparison  [{ctx.run_label}]", fontsize=11)
     plt.tight_layout()
     _save(fig, ctx, "pixel_grid_overlay_kspace")
+
+    if ksp_theo is None:
+        return
+
+    # Signed |k| difference (measured − theory). Symlog colour scale so the
+    # residual structure shows — a linear scale is dominated by a couple of
+    # huge centre points and hides everything else.
+    diff = np.abs(ksp_meas) - np.abs(ksp_theo)
+    dmax = float(np.abs(diff).max()) or 1.0
+    nz = np.abs(diff)[np.abs(diff) > 0]
+    linthresh = float(np.median(nz)) if nz.size else dmax * 1e-3
+    relerr = np.sum(np.abs(ksp_meas - ksp_theo)) / max(np.sum(np.abs(ksp_meas)), 1e-30)
+
+    def draw_diff(ax):
+        im = ax.imshow(diff, cmap="bwr", origin="lower", extent=extent_k,
+                       aspect="auto",
+                       norm=SymLogNorm(linthresh=linthresh, vmin=-dmax, vmax=dmax, base=10))
+        ax.set_title(f"|k| diff (meas − theory), symlog\nL1 relerr = {relerr:.2e}")
+        ax.set_xlabel("kx [1/m]"); ax.set_ylabel("ky [1/m]")
+        plt.colorbar(im, ax=ax, fraction=0.046, label="Δ|S| (symlog)")
+
+    # ── Standalone single-panel diff ─────────────────────────────────────────
+    figd, axd = plt.subplots(figsize=(7, 6))
+    draw_diff(axd)
+    axd.set_title(axd.get_title() + f"  (TI={ti_s:g} s)")
+    figd.suptitle(f"k-space diff  [{ctx.run_label}]", fontsize=11)
+    plt.tight_layout()
+    _save(figd, ctx, "pixel_grid_overlay_kspace_diff")
+
+    # ── 3-panel measured | theory | diff ─────────────────────────────────────
+    fig3, ax3 = plt.subplots(1, 3, figsize=(21, 6))
+    draw_mag(ax3[0], ksp_meas, f"measured log|k-space|  (TI={ti_s:g} s)")
+    draw_mag(ax3[1], ksp_theo, theo_label)
+    draw_diff(ax3[2])
+    fig3.suptitle(f"k-space comparison + diff  [{ctx.run_label}]", fontsize=11)
+    plt.tight_layout()
+    _save(fig3, ctx, "pixel_grid_overlay_kspace_diff3")
 
 
 def render_variants_grid(ctx: RunContext, imgs, ksps):

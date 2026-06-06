@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,7 +30,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 HERE = Path(__file__).parent
-RUNS_DIR = HERE / "runs" / "t1_fit_vs_true"
+# Override with RUNS_ROOT to target a version folder (see pixel_grid_overlay.py).
+RUNS_DIR = Path(os.environ.get("RUNS_ROOT", HERE / "runs")) / "t1_fit_vs_true"
 
 
 def init_julia():

@@ -124,7 +124,7 @@ slice_thick  = slice_mm > 0 ? slice_mm : VOXEL_MM
 cfg     = PhantomConfig(field = :T15, voxel_size_mm = VOXEL_MM,
                         include_plates     = water ? [:T1, :water] : [:T1],
                         slice_thickness_mm = slice_thick,
-                        slice_center_mm    = slice_center)
+                        slice_center_mm    = (0.0, 0.0, slice_center))  # (x,y,z) point on slab plane
 phantom = build_phantom(cfg)
 println("Phantom: $(length(phantom.x)) spins  (1.5 T calibration, " *
         "slab z=$(slice_center) ± $(slice_thick/2) mm)")
@@ -243,7 +243,10 @@ p_(x) = replace(string(x), "." => "p")
 cache_key  = "$(budget_tag)_npe$(Npe)fe$(Nfe)_$(water ? "water" : "dry")_" *
              "$(spoil ? "spoil" : "nospoil")_vox$(p_(VOXEL_MM))_" *
              "sl$(p_(slice_thick))c$(p_(slice_center))"
-cache_dir  = joinpath(@__DIR__, "runs", "t1_fit_vs_true", "_kspace_cache")
+# Override with RUNS_ROOT to target a version folder; inherited by the Python
+# render hooks so they write to the same place.
+runs_root  = get(ENV, "RUNS_ROOT", joinpath(@__DIR__, "runs"))
+cache_dir  = joinpath(runs_root, "t1_fit_vs_true", "_kspace_cache")
 cache_path = joinpath(cache_dir, cache_key * ".npz")
 
 if isfile(cache_path) && !refresh_cache
@@ -337,7 +340,7 @@ for σ in sigmas
 
     # ── Write run-dir (config + CSV + signals + recovery curves) ──────────────
     run_label = "$(budget_tag)_$(noise_tag(σ))$(grid_tag)$(ps_tag)$(clean_tag)$(spoil_tag)$(water_tag)"
-    outdir    = joinpath(@__DIR__, "runs", "t1_fit_vs_true", run_label)
+    outdir    = joinpath(runs_root, "t1_fit_vs_true", run_label)
     cfg_dict  = Dict{String,Any}(
         "budget_s"        => budget_s,
         "Npe"             => Npe,
