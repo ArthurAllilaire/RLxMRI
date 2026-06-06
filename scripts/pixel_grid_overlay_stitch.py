@@ -16,13 +16,17 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
 here = os.path.dirname(os.path.abspath(__file__))
-runs_root = os.path.join(here, "runs", "pixel_grid_overlay")
+# Override with RUNS_ROOT to target a version folder (see pixel_grid_overlay.py).
+runs_root = os.path.join(os.environ.get("RUNS_ROOT", os.path.join(here, "runs")),
+                         "pixel_grid_overlay")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--npe", type=int, default=64)
 parser.add_argument("--nfe", type=int, default=128)
 parser.add_argument("--fov", type=float, default=0.2)
 parser.add_argument("--voxel-mm", type=float, default=1.0)
+parser.add_argument("--tis", default=None,
+                    help="comma-separated TIs to include, e.g. 0.1,1,3 (default: all found)")
 parser.add_argument("--out", default=None,
                     help="output PNG path (default: runs_root/stitched_<base>.png)")
 args = parser.parse_args()
@@ -37,8 +41,12 @@ def ti_of(d):
     m = re.search(r"_TI([0-9p]+)", os.path.basename(d))
     return float(m.group(1).replace("p", ".")) if m else 0.0
 dirs = sorted({d for d in dirs if os.path.isdir(d)}, key=ti_of)
+if args.tis:
+    wanted = [float(x) for x in args.tis.split(",")]
+    dirs = [d for d in dirs if any(abs(ti_of(d) - w) < 1e-9 for w in wanted)]
 if not dirs:
-    raise SystemExit(f"no _TI* subdirs under {runs_root} matching {base}")
+    raise SystemExit(f"no _TI* subdirs under {runs_root} matching {base}"
+                     + (f" and TIs {args.tis}" if args.tis else ""))
 
 rows = [("raw FFT image",          "pixel_grid_overlay_image.png"),
         ("Hamming + 2× zero-pad",  "pixel_grid_overlay_image_clean.png"),

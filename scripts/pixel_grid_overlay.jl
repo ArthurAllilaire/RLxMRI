@@ -91,7 +91,7 @@ cfg     = PhantomConfig(
     voxel_size_mm      = VOXEL_MM,
     include_plates     = include_plates,
     slice_thickness_mm = slice_thick_mm,
-    slice_center_mm    = slice_center_mm,
+    slice_center_mm    = (0.0, 0.0, slice_center_mm),  # (x,y,z) point on slab plane
 )
 phantom = build_phantom(cfg)
 n_total = length(phantom.x)
@@ -119,7 +119,10 @@ for (i, d) in enumerate(descs)
     sphere_px[i, 2] = phys_to_pixel(cx, Nfe, FOV)  # ife
 end
 
-outdir = joinpath(@__DIR__, "runs", "pixel_grid_overlay", run_label)
+# Override with RUNS_ROOT to target a version folder; inherited by the Python
+# render hooks spawned below so they write to the same place.
+runs_root = get(ENV, "RUNS_ROOT", joinpath(@__DIR__, "runs"))
+outdir = joinpath(runs_root, "pixel_grid_overlay", run_label)
 mkpath(outdir)
 
 # Optional: simulate one IR-SE block at chosen TI and dump |image|. Same code
