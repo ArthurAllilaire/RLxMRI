@@ -20,10 +20,18 @@ seems like TR is assumed to be 0.5 seconds? turns out thats just hardcoded lowes
 
 # Next steps:
 
-## Todays TODO list:
-1. Start writing the E2 RL section while its fresh in my memory - use this as opportunity to understand:
-- 
+## What needs to be redone...
 
-## By Monday:
-1. Draft I can send Andreas of E2 section - including some more runs.
+Sections:
+
+1. fp_bugs.md - need to regenerate the plots. Then regenerate the writing
+How come nobody found this before? usually people use gradients not hard RF pulses - when not 2d
+
+2. k-space explanation - need to add it 
+
+3. Take a photo of the 3mm phantom T1 voxelised src/asset and add that
+
+Code that needs to be re-run:
+
+1. Multi-fidelity runs - all the plots haven't been saved...
 2. 
