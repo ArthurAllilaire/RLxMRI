@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "73ceef9b4722c3c0134074b3b4be504006947b55"
+project_hash = "55995e071eb20c58d7bc233f12176b0c125fd13b"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -658,8 +658,8 @@ version = "0.10.3"
 
 [[deps.KomaMRIBase]]
 deps = ["Interpolations", "MAT", "MRIBase", "Parameters", "Reexport"]
-git-tree-sha1 = "ef86dd6c463860f55b3e09d0ca6a4206acc93695"
-repo-rev = "fix/grad-fp"
+git-tree-sha1 = "bca377c5fa1e70c5c4590cb9c5fbac0f34a47614"
+repo-rev = "eae656a"
 repo-subdir = "KomaMRIBase"
 repo-url = "https://github.com/ArthurAllilaire/KomaMRI.jl.git"
 uuid = "d0bc0b20-b151-4d03-b2a4-6ca51751cb9c"
@@ -1020,6 +1020,12 @@ deps = ["AbstractFFTs", "AbstractNFFTs", "FFTW", "LinearAlgebra"]
 git-tree-sha1 = "e20ac21560b314a7c38c4cd2fdcece34c66f36b6"
 uuid = "7424e34d-94f7-41d6-98a0-85abaf1b6c91"
 version = "0.2.7"
+
+[[deps.NPZ]]
+deps = ["FileIO", "ZipFile"]
+git-tree-sha1 = "60a8e272fe0c5079363b28b0953831e2dd7b7e6f"
+uuid = "15e1cf62-19b3-5cfa-8e77-841668bca605"
+version = "0.4.3"
 
 [[deps.NetworkOptions]]
 uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
@@ -1626,6 +1632,12 @@ deps = ["Artifacts", "JLLWrappers", "Libdl", "Zlib_jll"]
 git-tree-sha1 = "58972370b81423fc546c56a60ed1a009450177c3"
 uuid = "a65dc6b1-eb27-53a1-bb3e-dea574b5389e"
 version = "0.19.0+0"
+
+[[deps.ZipFile]]
+deps = ["Libdl", "Printf", "Zlib_jll"]
+git-tree-sha1 = "f492b7fe1698e623024e873244f10d89c95c340a"
+uuid = "a5390f91-8eb1-5f08-bee0-b1d1ffed6cea"
+version = "0.10.1"
 
 [[deps.Zlib_jll]]
 deps = ["Libdl"]

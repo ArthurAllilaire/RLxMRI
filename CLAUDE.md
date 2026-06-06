@@ -1,5 +1,51 @@
 # CLAUDE.md — Research Assistant Context
 
+> **⚠️ This clone / `regen-fp-bug-figures` branch swaps the `KomaMRIBase` pin to
+> regenerate the KomaMRI-chapter figures (`report/komaMRI/fp_bugs.md`) at three
+> versions.** It is for figure regeneration only — do **not** merge to `main`
+> (which uses the fixed fork `7ceced7`/`fix/grad-fp`). `scripts/runs/` is gitignored,
+> so figures live on disk only.
+>
+> Each version lives in its own commit-named folder under `scripts/runs/`:
+>
+> | Folder | rev | version | FP bugs | t1_fit MAPE |
+> |---|---|---|---|---|
+> | `d0d5c5f_both-bugs/`     | `d0d5c5f` | v0.11.0 | #780 + #789 both present | ~924% |
+> | `eae656a_current-koma/`  | `eae656a` | v0.11.2 | only #789 (the unmerged fix) — **realistic baseline** | ~39% |
+> | `7ceced7_fixed/`         | `7ceced7` | v0.11.2 | none (fork `fix/grad-fp`) | ~sub-1% |
+>
+> **All scripts honour `$RUNS_ROOT`** (default `scripts/runs`). Set it to a version
+> folder and outputs — including the Python figures the `.jl` drivers auto-spawn —
+> land there directly. No moving files, no per-script path flags.
+>
+> **Regenerate a version** (`<rev>`/`<folder>` from the table; default pin is `eae656a`):
+> ```bash
+> source .venv/bin/activate
+> export RUNS_ROOT=scripts/runs/<folder>
+> julia --project=. -e 'using Pkg; Pkg.add(url="https://github.com/ArthurAllilaire/KomaMRI.jl.git", subdir="KomaMRIBase", rev="<rev>")'
+> julia --project=. scripts/t1_fit_vs_true.jl --manual --sigmas 0           # bMANUAL_nonoise
+> julia --project=. scripts/t1_fit_vs_true.jl --manual --sigmas 0 --spoil   # bMANUAL_nonoise_spoil
+> for ti in 0.1 0.5 1.0 2.0 3.0; do
+>   julia --project=. scripts/pixel_grid_overlay.jl --npe 64 --nfe 128 --voxel-mm 1.0 --ti $ti
+>   python scripts/pixel_grid_overlay.py --npe 64 --nfe 128 --voxel-mm 1.0 --run npe64_nfe128_fov0p2_vox1p0mm_TI${ti/./p}
+> done
+> python scripts/pixel_grid_overlay_stitch.py --npe 64 --nfe 128 --voxel-mm 1.0 --tis 0.1,1,3
+> ```
+> Re-render/re-stitch from saved `.npy` (no re-sim): same, but only the `python …` lines
+> (with `RUNS_ROOT` exported).
+>
+> **Script patches on this branch** (vs `main`):
+> - All figure scripts (`*.jl` + `*.py`) read the output root from `$RUNS_ROOT`.
+> - `t1_fit_vs_true.jl`, `pixel_grid_overlay.jl`: new `MRISystemPhantom` slice API —
+>   `slice_center_mm` is now an `(x,y,z)` tuple, not a scalar z.
+> - `Project.toml`: added script deps `JSON`, `NPZ`, `DelimitedFiles`, `Printf`.
+> - `pixel_grid_overlay.py`: k-space render emits three figures — `…_kspace.png`
+>   (2-panel measured|theory, used by the stitch), `…_kspace_diff.png` (1-panel symlog
+>   diff), `…_kspace_diff3.png` (3-panel measured|theory|symlog-diff).
+> - `pixel_grid_overlay_stitch.py`: `--tis` flag; the report stitch uses TIs `0.1,1,3`.
+>   Recovery-curve figure is `recovery_curves_koma.png` (vs the `recovery_curves.png`
+>   name referenced in `fp_bugs.md`).
+
 This is an Imperial College London BEng final-year project (FYP). The goal is to apply reinforcement learning to adaptive quantitative MRI sequence design, using a physics simulator and a digital phantom. **The primary objective is to maximise the final report mark while doing interesting, publishable work.**
 
 ---
