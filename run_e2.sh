@@ -17,7 +17,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
-# Activate venv + load PYTHON_JULIAPKG_* env vars written by setup.sh
+# Activate venv + load PYTHON_JULIAPKG_* env vars (see SETUP.md / .envrc.local)
 # shellcheck disable=SC1091
 source .venv/bin/activate
 # shellcheck disable=SC1091

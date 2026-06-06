@@ -922,7 +922,7 @@ version = "0.9.2"
 
 [[deps.MRISystemPhantom]]
 deps = ["FFTW", "KomaMRI", "KomaMRIBase", "LinearAlgebra", "MRIReco", "Random", "Statistics", "Suppressor"]
-path = "/home/arthur/y3/MRISystemPhantom.jl"
+path = "../MRISystemPhantom.jl"
 uuid = "550e846d-fc88-42d8-908f-a9f76e72de14"
 version = "0.1.0"
 
