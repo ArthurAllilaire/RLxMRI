@@ -4,9 +4,10 @@
 KomaMRI is the simulation environment that all RL agents in this project
 interact with, so simulator validation is a prerequisite for every result in
 this project. Although KomaMRI is a peer-reviewed, open-source, and actively
-maintained MRI simulation framework~\cite{komaMRI:23}, my validation experiments
-found two floating-point time-discretisation failures.
-Both were triggered by long cumulative sequence time. The bugs were reduced
+maintained MRI simulation framework~\cite{komaMRI:23}, the validation
+experiments in this project found two floating-point time-discretisation
+failures.
+Both were triggered by long cumulative sequence time. The failures were reduced
 to minimal reproducers and fixes were contributed upstream:
 \href{https://github.com/JuliaHealth/KomaMRI.jl/issues/779}{issue \#779} /
 \href{https://github.com/JuliaHealth/KomaMRI.jl/pull/780}{PR \#780}, now
@@ -46,7 +47,7 @@ raw = simulate(phantom, sequence, scanner; sim_params)
 Here \texttt{scanner} defines the scanner hardware used to play the sequence.
 In these experiments it is an idealised hardware model: eddy currents and field
 inhomogeneities are not modelled. This means RF pulses are treated as exact,
-although in reality a 180 degree refocus pulse can vary by a couple of degrees
+although in reality a 180$^\circ$ refocus pulse can vary by a couple of degrees
 across the excited volume.
 
 A \texttt{Sequence} is made up of RF pulses, which rotate the magnetisation
@@ -76,7 +77,7 @@ should plausibly generalise to real hardware.
 \label{sec:komamri-initial-validation-failure}
 
 The first validation test was deliberately simple. With no added noise, the
-test simulated an inversion-recovery sweep across the 14 T1 spheres and fitted
+test simulated an inversion-recovery sweep across the 14 $T_1$ spheres and fitted
 the standard monoexponential recovery model:
 
 \[
@@ -218,11 +219,9 @@ The collapsed points are not redundant: they represent the two sides of the RF
 step. At \texttt{t1}, RF is zero; at \texttt{t1}+$\epsilon$, RF has reached
 the pulse amplitude. Deduplicating them removes the edge, so the Bloch
 integrator applies the wrong RF value for one full $\Delta t_\mathrm{rf}$
-sample.
-
-For KomaMRI's default $\Delta t_\mathrm{rf}=5\times10^{-5}$ s and
-$T_\mathrm{RF}=1$ ms, one missing sample is 5\% of the RF area. The $10^{-14}$
-s timing collapse therefore becomes a 5\% flip-angle error, producing a
+sample. For KomaMRI's default $\Delta t_\mathrm{rf}=5\times10^{-5}$ s and
+$T_\mathrm{RF}=1$ ms, one missing sample is 5\% of the RF area. The
+$\epsilon$-scale timing collapse therefore becomes a 5\% flip-angle error, producing a
 20--25\% signal jump and later a biased $T_1$ fit.
 
 The fix in \href{https://github.com/JuliaHealth/KomaMRI.jl/pull/780}{PR
@@ -253,7 +252,7 @@ However, the full no-noise $T_1$ validation was still inaccurate. Further
 investigation revealed another fixed-$\epsilon$ collapse, but at a different
 point in the time pipeline. KomaMRI also separates a block's closing knot, or
 block edge, using the same fixed offset $\epsilon$ in block-relative time. This is
-initially safe because the local block times are small (e.g. 1ms RF pulses).
+initially safe because the local block times are small (e.g. 1 ms RF pulses).
 Later, however, \texttt{get\_variable\_times} and \texttt{get\_samples} rebase
 these local times to absolute sequence time using \texttt{T0 .+ t}, where
 \texttt{T0} is the absolute start time of the block. This creates the
@@ -388,7 +387,7 @@ $\Delta t_\mathrm{rf}$ sample is a large fraction of a 1 ms rectangular pulse.
 In practical slice-selective sequences, shaped RF pulses and gradient ramps
 make the same timing error a smaller perturbation.
 
-The other reason is that most MRI simulation checks are qualitative: a
+A second reason is that most MRI simulation checks are qualitative: a
 reconstructed image can still look plausible when noise and contrast variation
 hide small systematic signal errors. qMRI is stricter. The validation compares
 fitted $T_1$ values against known phantom ground truth, so a systematic signal
