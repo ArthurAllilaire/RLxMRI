@@ -1,177 +1,395 @@
-Prompt:
+<!--
+fp_bugs_final_2.md
 
-I need you to draft the KomaMRI chapter for my report - this should be relatively short - high level explanation of the simulator followed by how i found the bugs explanation of that bit of the simulator and how i fixed them and pushed PR. add it to fp_bugs_final.md file - I will then convert to latex and add to report. use the different figures below - caption them and add extra details in comments as you go through your investigation - the different scripts usually have headers as to what i was thinking. Also look at the scripts/koma_investigations folder for the investigations you did - i understand these less but if relevant add. make sure you can read the issues and PRs - if not i can paste it in. If the investigation looked at tranverse spoiling and there is a script with some numbers of how much that does play a role please add an indepth section of that in this - i will relocate it to my evaluation section. Please try and gather a rich context before writing and cutting/editing, leave only the most insightful but keep a good narrative arc and leave comments with bits you find and cut in case i would like to include later. 
+What I improved relative to fp_bugs_final.md:
+- Tightened the narrative from "debug diary" into a report section: motivation,
+  validation failure, hypothesis elimination, root cause, fix, outcome.
+- Matched the MRISystemPhantom chapter style more closely: direct paragraphs,
+  explicit design/validation rationale, compact technical explanation, and
+  quantified claims near the relevant figures.
+- Corrected the emphasis around bug #2: the final diagnosis is the same
+  absolute-epsilon / rebasing failure mode, not Float32 magnetisation drift.
+- Reduced implementation detail that belongs in an appendix or PR discussion,
+  while keeping enough mechanism to show engineering depth.
+- Added a short "report integration notes" block at the end saying where this
+  should sit and what can be cut if space is tight.
 
-I have already written this section but have since lost it so have addded my rough notes on the overall flow / what i can remember - bring it back to report ready! I have also lost the run folder - but if there are interesting scripts you would like to re-run to see what the output was - use the branch that can be found at (../../../fp_bugs_RLxMRI) and run them in there. see the CLAUDE.md in there for how to do that.
+Source checks used:
+- report/komaMRI/fp_bugs.md
+- report/komaMRI/fp_bugs_final.md
+- scripts/koma_investigations/first_bug/*
+- scripts/koma_investigations/second_bug/00_NOTES.md and bug.md
+- report/komaMRI/figs/*/t1_fit_vs_true/*/t1_fit_vs_true.csv
+- live GitHub status for JuliaHealth/KomaMRI.jl issues #779, #788 and PRs
+  #780, #789 as of 2026-06-07.
+-->
 
-The overall flow should be:
+# Validating KomaMRI: Two Floating-Point Bugs in Long Sequences
 
-# Koma MRI
-KomaMRI is the simulation environment used throughout. found a bug in the edge-boundaries that made them collapse - this chapter explains that - link back to challenge/achievement - and also describes how the bug was found
+<!-- TODO for LaTeX: cite the KomaMRI paper/package here and move GitHub star /
+maintenance claims to a footnote. -->
+KomaMRI is the simulation environment that all RL agents in this project
+interact with, so simulator validation is a prerequisite for every result in
+this project. Although KomaMRI is an open-source, actively maintained project with
+over 200 GitHub stars, my validation experiments found two floating-point
+time-discretisation bugs. Both were triggered by long cumulative sequence time.
+The failures were reduced to minimal reproducers and fixes were contributed upstream:
+<!-- TODO for LaTeX: convert issue/PR links to footnotes or bibliography-style
+software references to avoid cluttering the main prose. -->
+[issue #779](https://github.com/JuliaHealth/KomaMRI.jl/issues/779) /
+[PR #780](https://github.com/JuliaHealth/KomaMRI.jl/pull/780), now merged, and
+[issue #788](https://github.com/JuliaHealth/KomaMRI.jl/issues/788) /
+[PR #789](https://github.com/JuliaHealth/KomaMRI.jl/pull/789), open at the time
+of writing.
 
-## Initial explanation of KomaMRI
+This work is part of A1, the validated digital twin and simulator pipeline, and
+directly addresses C1: simulator validation for qMRI.
+For A1, the key contribution is the validation of the simulation pipeline rather
+than the bug reports alone. The two failures were reduced to minimal
+reproducers, traced to specific floating-point timing mechanisms, fixed
+upstream, and then verified by recovering the phantom's known $T_1$ values in
+the full qMRI pipeline.
 
-KomaMRI is built around the simulate call - a user calls:
+## KomaMRI simulation model
 
+KomaMRI simulates the magnetization of each spin of a `Phantom` for variable
+magnetic fields given by a `Sequence`. All `Phantom` objects used in this
+project were produced by `MRISystemPhantom.jl`. Each `Phantom` is a cloud of
+spin isochromats: groups of nearby nuclei that are assumed to share a single
+position $(x,y,z)$ and one set of tissue parameters
+$(T_1,T_2,T_2^*,\rho,\Delta\omega)$. Here $\rho$ is proton density and
+$\Delta\omega$ is off-resonance: the offset of that isochromat's Larmor
+frequency from the nominal scanner frequency. Each isochromat is therefore
+represented by a magnetisation vector $(M_x,M_y,M_z)$ evolving according to the
+Bloch equations.
+
+The user-facing interface is:
+
+```julia
 raw = simulate(phantom, sequence, scanner; sim_params)
-
-
-The explanation you give for koma should have the same starting sentence as the Koma docs see bottom: 
-
-KomaMRI simulates the magnetization of each spin of a Phantom for variable magnetic fields given by a Sequence. 
-
-Make it concrete a Phantom is a cloud of spins - we get our Phantoms for this project from MRISystemPhantom.jl. Each spin isochromat is a group of nearby nuclei assumed to have a single position (x,y,z), tissue parameters (T1,T2,T2*,RHO, DELTA W) and resonance frequency. magnetisation vector
-
-KomaMRI then splits sequence onto a discretised time grid by delta t_rf and delta t and uses that to simulate the bloch equations - then each adc reading it sums up over all spins for each t. splits based on RF active - then have to model full magnetisation vector rotations otherwise easier relaxation curves so saves memory/efficient. This is why we chose it along with CPU threads below.
-
-Assumption that eacah spin is independent - this is standard for MRI simulators. lets you parallelise across CPU threads and GPU kernels - just sum up at each ADC.
-
-Then go into other assumptions of simulator - model bulk T2* instead of microscopic spin to spin interaction. Hardware limits not taken into account - eddy currents, B0/1 inhomegenity, off resonance etc. and overall these are fine for our experiment. others that you can think of
-
-
-
-
-## Initial symptom: noisy recovery curves
-
-Simple experiment no-noise inversion recovery T1 fit. fit the the monoexponential recovery curve by smapling points by varying TI - include the M_z(TI) = equation. See per-shot variation that means the simple T1 recovery curve cannot fit. So the simulator, sequence or reconstruction/fit pipeline must be wrong - or there is some physical phenomena I haven't taken into account.
-
-Investigated and ruled out the MRI failure modes.
-
-Transverse spoil assumption - could have leftover magnetisation via RF pulse refocused and into ADC reading. tried a gradient spoiler added at TR and around refocus (i think double check) increased the error? see below for the figs
-
-Also increasing TR should be a solution allow relaxation so Mxy dies and Mz fully recovered - no shot drift. made error worse. in hindsight as longer simulation time which is what triggers the bug
-
-Then thought Gibbs ringing - hence the hamming window support in MRISystemPhantom and ROI - they didn't solve it either - also tried phase sensitive not magnitude and maybe we're assuming inital phase of 0 maybe we can't assume that or it changes - thought about a lot see the different scripts. 
-
-Contents:
-
-1. Bug #1
-2. Bug #2
-
-
-BELOW YOU HAVE EVEN ROUGHER NOTES THAT ARE me remembering what i did.
-
-# The debugging process:
-
-T1 fit with no noise - find the recovery curves - why are they so noisy? look at k-space. At some point acquisition time becomes meaningless. Turns out its a fp issue - the boundary used for interpolation of the RF pulses means that an extra delta t is getting RF/2 which leads to quite an issue.
-
-Couldn't get fit down to below 39%??
-
-![](figs/eae656a_current-koma/t1_fit_vs_true/bMANUAL_nonoise/t1_fit_vs_true.png)
-produced by t1_fit_vs_true
-
-
-![](figs/eae656a_current-koma/t1_fit_vs_true/bMANUAL_nonoise/recovery_curves_koma.png)
-
-Could it be the tranverse spoil assumption that is the issue? Bumped TR - didn't get rid of it made it worse! what is going on (obviously because time was bigger so more buggy pulses) and tried adding a spoil to the pulse:
-
-See this folder for spoil runs: scripts/runs/with_fp_bugs/t1_fit_vs_true/bMANUAL_nonoise_spoil
-
-Better but still 20% error? and why are those points not on the curve! This can't just be numerical imperfections there must be a physical reason.
-
-
-Initially thought it was Gibbs ringing or voxelisation error - so plotted the output of a signal:
-
-pixel_overlay
-This is where it finally cracked...
-![](figs/eae656a_current-koma/pixel_grid_overlay/stitched_npe64_nfe128_fov0p2_vox1p0mm.png)
-acquisition along y axis is time - we were doing so well and then....
-and also that is not gibbs ringing - that is way too much streaking.
-
-
-Maybe worth mentioning:
-- Thought it could be phase sensitive? magnitudes being mis-represented? 
-- Assumption about the starting phase phi
-- problem with pixel boundaries or interpolation: sampling 64x32 was that right?? could it be on the wrong place? 
-
-- Basically deep dive into every possible physical reason as to why this could be - i really should have plotted some iamges...
-
-
-Hmm lets run the simplest verification script
-see: scripts/koma_bug_minimal.jl - ah we've got an issue
-
-## Explain what we found and how we fixed - look at issues and PRs - explain how Koma works
-
-
-# Residual per-shot signal drift past ~270s
-Same FP collapse as the first bug, just in two different sites. Issue raised: https://github.com/JuliaHealth/KomaMRI.jl/issues/788 
-
-PR: https://github.com/JuliaHealth/KomaMRI.jl/pull/789 
-
-
-### Known issue: floating-point accumulation in KomaMRI
-
-During development two floating-point accumulation bugs were discovered in `KomaMRIBase.jl`. The first caused per-shot signal drift in long sequences (> ~270 s total duration) when the gradient moment accumulator overflowed. The second was the same root cause at a different accumulation site. Both were diagnosed, reported (GitHub issue #788), and fixed in a fork (`ArthurAllilaire/KomaMRI.jl`, branch `fix/grad-fp`, PR #789). The library currently depends on this fork at a pinned commit; the fix is awaiting upstream merge. This dependency is the only deviation from the registered Julia package registry.
-
-# First one accepted waiting on the second...
-
-## Happy ending!
-
-Better pixel_overlay - ringing should never be that big - but tbf i didn't know that - maybe no spin background vs big spin could cause these issues?
-
-![](figs/7ceced7_fixed/pixel_grid_overlay/stitched_npe64_nfe128_fov0p2_vox1p0mm.png)
-
-![](figs/7ceced7_fixed/t1_fit_vs_true/bMANUAL_nonoise/t1_fit_vs_true.png)
-
-![](figs/7ceced7_fixed/t1_fit_vs_true/bMANUAL_nonoise/recovery_curves_koma.png)
-
-Thats better!
-
-
-## Koma docs on simulate:
-
-
-
-General Overview
-KomaMRI simulates the magnetization of each spin of a Phantom for variable magnetic fields given by a Sequence. It is assumed that a single spin is independent of the state of the other spins in the system (a key feature that enables parallelization). Furthermore, there are defined two regimes in the Sequence: excitation and precession. During the latter, the excitation fields are nulled and are useful for simplifying some physical equations.
-
-The are more internal considerations in the KomaMRI implementation. The Figure 1 summarizes the functions called to perform the simulation.
-
-
-Figure 1: The sequence seq is discretized after calculating the required time points in the wrapper function simulate. The time points are then divided into simulation blocks to reduce the amount of memory used. The phantom obj is divided into Nthreads, and KomaMRI will use either run_spin_excitation! or run_spin_precession! depending on the regime. If an ADC object is present, the simulator will add the signal contributions of each thread to construct the acquired signal sig[t]. All the parameters: Nthreads, max_block_length, max_rf_block_length, Δt_rf, and Δt, are passed through a dictionary called sim_params as an optional parameter of the simulate function.
-
-From the programming perspective, it is needed to call the simulate function with the sim_params dictionary keyword argument. A user can change the values of the following keys:
-
-Parameter	Description
-"return_type"	defines the output of the simulate function. Possible values are "raw", "mat", and "state", corresponding to outputting a MRIReco RawAcquisitionData, the signal values, and the last magnetization state of the simulation, respectively.
-"sim_method"	defines the type of simulation. The default value is Bloch(). Other built-in methods include BlochDict(), BlochMagnus1(), BlochMagnus2(), and BlochMagnus4(). You can also define custom methods without altering the KomaMRI source code; for details, see Simulation Method Extensibility.
-"Δt"	raster time for gradients.
-"Δt_rf"	raster time for RFs.
-"precision"	defines the floating-point simulation precision. You can choose between "f32" and "f64" to use Float32 and Float64 primitive types, respectively. It's important to note that, especially for GPU operations, using "f32" is generally much faster.
-"max_block_length"	maximum number of time steps per precession block.
-"max_rf_block_length"	maximum number of time steps per RF excitation block.
-"Nthreads"	divides the Phantom into a specified number of threads. Because spins are modeled independently of each other, KomaMRI can solve simulations in parallel threads, speeding up the execution time.
-"gpu"	is a boolean that determines whether to use GPU or CPU hardware resources, as long as they are available on the host computer.
-"gpu_device"	sets the index ID of the available GPU in the host computer.
-For instance, if you want to perform a simulation on the CPU with float64 precision using the BlochDict() method (assuming you have already defined obj, seq and sys), you can do so like this:
-
-
-# Set non-default simulation parameters and run simulation
-sim_params = KomaMRICore.default_sim_params() 
-sim_params["gpu"] = false
-sim_params["precision"] = "f64"
-sim_params["sim_method"] = BlochDict()
-raw = simulate(obj, seq, sys; sim_params)
-Additionally, the user must be aware of the functions run_spin_excitation! and run_spin_precession! which defines the algorithm for excitation and precession regimes respectively and can be changed by the user without modifying the source code (more details at Simulation Method Extensibility).
-
-Previous simulation, the Sequence is discretized to consider specific time points which are critical for simulation. The user can control the time between intermediate gradient samples with the parameter Δt. Similarly, the parameter Δt_rf manages the time between RF samples, and can be relatively large for 2D imaging where the slice profile is less relevant.
-
-For RF excitation with rapidly changing fields, the BlochMagnus1(), BlochMagnus2(), and BlochMagnus4() methods can improve accuracy at the same Δt_rf, or allow a larger Δt_rf for faster simulations. See Magnus Bloch Methods.
-
-Computation Efficiency
-To reduce the memory usage of our simulator, we subdivide time into simulation blocks. KomaMRI classifies each block in either the excitation regime or the precession regime before the simulation.
-
-We increased the simulation speed by separating the calculations into Nthreads and then performing the GPU parallel operations with CUDA.jl . This separation is possible as all magnetization vectors are independent of one another.
-
-Simulation Method Extensibility
-In Julia, functions use different methods based on the input types via multiple dispatch. We used this to specialize the simulation functions for a given sim_method <:SimulationMethod specified in sim_params. For a given simulation method, the function initialize_spin_state outputs a variable Xt <: SpinStateRepresentation that is passed through the simulation (Figure 1). For the default simulation method Bloch, the spin state is of type Mag, but can be extended to a custom representation, like for example EPGs44 or others. Then, the functions run_spin_excitation! and run_spin_precession! can be described externally for custom types sim_method and Xt, extending Koma’s functionalities without the need of modifying the source code and taking advantage of all of Koma’s features.
-
-Bloch Simulation Method
-This is the default simulation method used by KomaMRI, however it can always be specified by setting the sim_method = Bloch() entry of the sim_params dictionary. In the following subsection, we will explain the physical and mathematical background and some considerations and assumptions that enables to speed up the simulation.
-
-Physical and Mathematical Background
-The Bloch method of KomaMRI simulates the magnetization of each spin by solving the Bloch equations in the rotating frame:
-
-with  the gyromagnetic ratio,     the magnetization vector, and
-
-the effective magnetic field.  is the proton density,  and  are the relaxation times, and  is the off-resonance, for each position.
+```
+
+Here `scanner` defines the scanner hardware used to play the sequence. In these
+experiments it is an idealised hardware model: eddy currents and field
+inhomogeneities are not modelled. This means RF pulses are treated as exact, although
+in reality a 180 degree refocus pulse can vary by a couple of degrees across
+the excited volume.
+
+A `Sequence` is made
+up of RF pulses, which rotate the magnetisation vector, as well as gradients,
+delays, and ADC readouts. Internally, `simulate` represents the continuous
+sequence on a discretised time grid. Gradient events use a time step
+$\Delta t$, while RF pulses are sampled more finely using
+$\Delta t_\mathrm{rf}$. These time points are then split into blocks. In
+excitation blocks, where RF is active, KomaMRI integrates the full
+magnetisation rotation. In precession blocks, where RF is off, the update
+reduces to relaxation and phase accrual, which can be computed analytically
+with exponentials and is cheaper to evaluate. At each ADC sample, the simulator
+sums the transverse magnetisation over all spins to form the complex received
+signal $\mathrm{sig}[t]$.
+
+The key computational assumption is that spins evolve independently and only
+interact through the final signal sum. This is a standard MRI simulation
+approximation and is less restrictive than the hardware idealisations above.
+It is also what makes KomaMRI practical for this project: spins can be
+partitioned across CPU threads or GPU kernels, then summed only at the
+receiver. This parallelism motivated the use of KomaMRI and helps overcome C2,
+the cost of simulation. KomaMRI also models bulk $T_2^*$ decay rather than
+microscopic spin-spin interaction. Overall, these are standard MRI simulator
+assumptions that model the relevant physics to an acceptable error, so learned
+policies should plausibly generalise to real hardware.
+
+## Initial validation failure
+
+The first validation test was deliberately simple. With no added noise, the test
+simulated an inversion-recovery sweep across the 14 T1 spheres and fitted the
+standard monoexponential recovery model:
+
+$$
+M_z(\mathrm{TI}) = M_0 \left(1 - 2e^{-\mathrm{TI}/T_1}\right).
+$$
+
+In a noise-free digital phantom, this should be almost exact. Instead, the
+fitted $T_1$ values had a mean absolute percentage error (MAPE) of 39.4%, with
+some spheres close to 100% error. The recovery points did not lie on a
+monoexponential curve. Either the simulator, sequence, reconstruction, or
+fitting pipeline was wrong, or there was relevant MRI physics not captured by
+the simple recovery model.
+
+![Buggy T1 fit](figs/eae656a_current-koma/t1_fit_vs_true/bMANUAL_nonoise/t1_fit_vs_true.png)
+
+**Figure 1. Noise-free $T_1$ recovery before the KomaMRI fixes.** The fitted
+values should lie on the diagonal. Instead the mean MAPE is 39.4%, with only two out of the 14 spheres in the +/-10% band.
+
+![Buggy recovery curves](figs/eae656a_current-koma/t1_fit_vs_true/bMANUAL_nonoise/recovery_curves_koma.png)
+
+**Figure 2. Recovery points before the KomaMRI fixes.** The simulated samples
+do not lie on the best-fit monoexponential curves. The deviation is structured,
+not random, so it points to a repeatable simulation or analysis error.
+
+The first step was to rule out plausible MRI explanations. Imperfect transverse
+spoiling was the most likely candidate: residual $M_{xy}$ can survive one shot,
+be refocused by later RF pulses, and contaminate the next echo. The standard
+way to suppress this is to add spoiler gradients, typically around the end of
+the shot and around refocusing pulses, to dephase any remaining transverse
+magnetisation. However, when implemented this did not remove the error; it changed mean MAPE from 39.4% to 44.0%. Increasing TR also made the fit worse, even though longer recovery
+time should reduce both residual transverse coherence and incomplete
+longitudinal recovery. This was the first strong clue that the failure was
+driven by total simulated time, not by the physical state at the start of each
+shot.
+
+Reconstruction explanations were also tested. Hamming-window filtering and ROI
+masking did not remove the error, making ordinary Gibbs ringing unlikely. A
+phase-sensitive reconstruction was also checked to ensure the magnitude image
+was not hiding a sign or phase convention error. These tests changed details of
+the images, but not the failure mode.
+
+The decisive diagnostic was to inspect k-space directly. Rather than showing
+random fitting error, the measured k-space collapsed after a fixed amount of
+simulated time, even though the acquisition should have remained symmetric.
+This shifted the investigation away from missing MRI physics and toward the
+simulator's handling of long absolute times.
+
+![Buggy pixel grid overlay](figs/eae656a_current-koma/pixel_grid_overlay/stitched_npe64_nfe128_fov0p2_vox1p0mm.png)
+
+**Figure 3. Image-space symptom of the bug.** The figure shows an IR-SE
+acquisition at three inversion times (TI = 0.1, 1.0, and 3.0 s). The first row
+shows the reconstructed image, the second row applies a Hamming window, and the
+bottom row compares theoretical and measured k-space. Because the phase-encode
+direction ($k_y$) is acquired shot by shot, moving along $k_y$ corresponds to
+advancing in simulated time. The early phase-encode lines reconstruct
+correctly, but later lines collapse into horizontal streaks after a fixed
+cumulative time. This is too large and structured to be ordinary ringing, and
+is not removed by the Hamming window. Generated by `pixel_grid_overlay.jl`.
+
+## Bug 1: RF edge markers collapse at large absolute time
+
+The first minimal reproducer was `koma_bug_minimal.jl`. It removed the phantom
+geometry and reconstruction and repeated the same simple shot at increasing
+absolute simulation times. The expected result was a constant per-shot signal.
+Instead, sharp jumps appeared once cumulative simulated time reached roughly
+70--150 s. For example, with TR = 15 s the signal jumped at shot 6
+(~90 s) by 21%; with TR = 8 s it jumped at shot 9 (~72 s) by 19%;
+and with TR = 30 s it jumped at shot 4 (~120 s) by 21%. This showed that
+the threshold was time-driven, not shot-count-driven, and raised the next
+question: was KomaMRI discretising the same RF pulse differently at large
+absolute time?
+
+The RF-edge investigation revealed that the first bug was caused by the way
+KomaMRI represents sharp RF edges on its simulation time grid. Tracing the RF
+pulse discretisation led to `points_from_key_times`, and then to the
+edge-handling logic inside `get_variable_times`. In `get_variable_times`,
+KomaMRI creates a small set of key times around each RF pulse:
+
+```julia
+points_from_key_times(sort([t1, t1 + MIN_RISE_TIME, tc,
+                            t2 - MIN_RISE_TIME, t2]); dt=Δt_rf)
+```
+
+where `t1` and `t2` are the start and end of the pulse, `tc` is the centre, and
+`MIN_RISE_TIME = 1e-14` s. The pair `(t1, t1 + MIN_RISE_TIME)` is used to
+encode the rising edge of the RF pulse. At `t1`, interpolation should return
+zero RF amplitude; immediately after the edge, at `t1 + MIN_RISE_TIME`, it
+should return the full RF amplitude. This creates a near-discontinuous step
+while still letting KomaMRI store the RF waveform using a small number of key
+points, with interpolation filling in the values between them.
+
+The problem is that `MIN_RISE_TIME` is a fixed absolute time, but Float64
+precision is relative. The spacing between $t$ and the next representable
+Float64 number, calculated by `eps(t)` in Julia, grows with the magnitude of
+$t$: $\mathrm{eps}(t) \approx t\cdot2^{-52}$. Once
+`eps(t)/2 > 1e-14` (`MIN_RISE_TIME`), adding `MIN_RISE_TIME` no longer produces
+a distinct Float64 value. In practice this happens at about $t \gtrsim 128$ s.
+Beyond this point, `t1 + MIN_RISE_TIME == t1` bit-for-bit. The two key times
+that should define the rising edge therefore collapse onto the same value.
+When the time vector is sorted and deduplicated, one of them is removed.
+
+The isolated test `koma_bug_isolate.jl` backed this up by asking whether the
+same 1 ms RF pulse is converted into the same time points at different absolute
+times:
+
+```text
+t0 [s]   nraw  nunique   eps(t0)
+0.0       24      23     5.0e-324
+3.0       24      23     4.44e-16
+67.0      24      23     1.42e-14
+99.0      24      23     1.42e-14
+200.0     26      21     2.84e-14
+1000.0    26      21     1.14e-13
+```
+
+The table shows the collapse directly: early pulses retain 23 unique time points, but at $t_0=200$ s this falls to 21 as $\frac{\mathrm{eps}(t_0)}{2}$ exceeds `MIN_RISE_TIME`. This confirms that the RF edge markers have collapsed before simulation.
+
+The collapsed points are not redundant: they represent the two sides of the RF
+step. At `t1`, RF is zero; at `t1 + MIN_RISE_TIME`, RF has reached the pulse
+amplitude. Deduplicating them removes the edge, so the Bloch integrator applies
+the wrong RF value for one full $\Delta t_\mathrm{rf}$ sample.
+
+For KomaMRI's default $\Delta t_\mathrm{rf}=5\times10^{-5}$ s and
+$T_\mathrm{RF}=1$ ms, one missing sample is 5% of the RF area. The $10^{-14}$ s timing collapse therefore becomes a 5% flip-angle error, producing a 20-25% signal jump and later a biased $T_1$ fit.
+
+<!-- Detail if needed: the IR signal scales approximately with
+cos(alpha_180) * sin(alpha_90), so the 5% flip-angle error explains the
+observed ~22% per-shot shift. -->
+
+The fix in [PR #780](https://github.com/JuliaHealth/KomaMRI.jl/pull/780) made
+the edge markers adaptive:
+
+```julia
+next_time(t) = max(t + MIN_RISE_TIME, nextfloat(t))
+prev_time(t) = min(t - MIN_RISE_TIME, prevfloat(t))
+```
+
+`nextfloat` and `prevfloat` step to the adjacent representable Float64 value,
+so the marker remains distinct even at large absolute time. At small times the
+original spacing is preserved; at large times the marker becomes one floating
+point step away rather than collapsing. This fixed the first failure and was
+merged into KomaMRI.
+
+## Bug 2: closing knots collapse after time rebasing
+
+After [PR #780](https://github.com/JuliaHealth/KomaMRI.jl/pull/780) the direct
+checks all passed: the isolated RF-edge script was stable to 1000 s, the
+minimal multi-shot reproducer no longer drifted over the tested shots, and the
+new RF-area regression test showed that the discretised pulse area matched the
+expected trapezium area at large absolute time. The original failure mechanism
+had genuinely been fixed.
+
+However, the full no-noise $T_1$ validation was still inaccurate. Further
+investigation revealed another fixed-epsilon collapse, but at a different point
+in the time pipeline. KomaMRI also separates a block's closing knot, or block
+edge, using a fixed `1e-14` s offset in block-relative time. This is initially
+safe because the local block times are small (e.g. 1ms RF pulses). Later, however,
+`get_variable_times` and `get_samples` rebase these local times to absolute
+sequence time:
+
+```julia
+T0 .+ t
+```
+
+where `T0` is the absolute start time of the block. This creates the same
+floating-point problem as before: at large values of `T0`, the `1e-14` s gap is
+below Float64 precision. The closing knot rounds onto the block-end knot, the
+two times become bit-identical, and a later `unique!` step removes one of them.
+The marker therefore disappears much later in the code than where it was first
+created, which made this second bug harder to track down.
+
+The reproducer showed that the remaining bug still mattered. It used one spin
+and a gradient-free repeated inversion-recovery shot:
+
+```text
+180 deg inversion -> TI -> 90 deg excitation -> one ADC sample -> TR delay
+```
+
+Every shot is physically identical. At TR = 15 s, all 24 shots should return
+the same signal. Instead, the first 17 shots were stable, shot 18 jumped by
+52%, and later shots settled to a new wrong plateau:
+
+```text
+shot  1..17  (sim_time <= 255 s): |signal| = 0.476267 stable
+shot 18      (sim_time  = 270 s): |signal| = 0.722479 +52%
+shot 19..24  (sim_time >= 285 s): |signal| = 0.677159 new wrong plateau
+```
+
+The fix in [PR #789](https://github.com/JuliaHealth/KomaMRI.jl/pull/789)
+re-separates the closing knot after rebasing, when the correct absolute-time
+spacing is known:
+
+```julia
+_reseparate_closing_knot!(t) =
+    t[end-1] = min(t[end-1], t[end] - max(MIN_RISE_TIME, eps(t[end])))
+```
+
+The new gap is adaptive: it remains `1e-14` s at small times, but widens when
+Float64 spacing becomes larger. The re-separation is also idempotent: if the
+closing knot is already distinct, it is left alone. The fix is applied at each
+rebasing site: both RF sampling paths in `get_samples`, and the gradient timing
+path in `get_variable_times`. The latter also re-applies an adaptive
+`_strictly_increasing_knots!` check so gradient knots remain ordered after
+rebasing. With this patch, the 24-shot reproducer is flat and the KomaMRI tests
+still pass.
+
+At the time of writing, [issue #779](https://github.com/JuliaHealth/KomaMRI.jl/issues/779)
+is merged upstream via [PR #780](https://github.com/JuliaHealth/KomaMRI.jl/pull/780).
+[Issue #788](https://github.com/JuliaHealth/KomaMRI.jl/issues/788) is fixed in
+a project fork pinned by this repository, with
+[PR #789](https://github.com/JuliaHealth/KomaMRI.jl/pull/789) still open.
+
+## Validation after the fixes
+
+With both fixes applied, the original no-noise phantom test behaves as expected.
+The reconstructed images no longer develop time-driven streaks, the recovery
+points lie on monoexponential curves, and the fitted $T_1$ values return to the
+diagonal. Mean MAPE falls from 39.4% to 0.48%, with a maximum sphere error of
+1.21%.
+
+![Fixed pixel grid overlay](figs/7ceced7_fixed/pixel_grid_overlay/stitched_npe64_nfe128_fov0p2_vox1p0mm.png)
+
+**Figure 4. Reconstructed images after both fixes.** The spheres remain
+well-localised across the full phase-encode direction. The time-dependent
+streaking in Figure 3 is removed.
+
+![Fixed T1 fit](figs/7ceced7_fixed/t1_fit_vs_true/bMANUAL_nonoise/t1_fit_vs_true.png)
+
+**Figure 5. Noise-free $T_1$ recovery after both fixes.** Mean MAPE decreases
+from 39.4% to 0.48%, and all spheres are within 1.21% of their true value.
+This is the expected accuracy for the noise-free validation case.
+
+![Fixed recovery curves](figs/7ceced7_fixed/t1_fit_vs_true/bMANUAL_nonoise/recovery_curves_koma.png)
+
+**Figure 6. Recovery curves after both fixes.** The simulated samples now lie
+on the fitted inversion-recovery curves.
+
+## Evaluation of the fixes
+
+The fixes were evaluated at multiple levels, from isolated timing behaviour to
+the full qMRI validation task.
+
+| Level | Test | Before fix | After fix |
+|---|---|---|---|
+| Timing representation | RF-edge discretisation at large absolute time | RF edge markers collapse once cumulative time reaches the 70--150 s regime | stable to 1000 s |
+| Minimal signal reproducer | identical IR shots, no gradients (`koma_bug_minimal.jl`) | 19--21% signal jump once cumulative time reaches 72--120 s | flat over tested shots |
+| Residual timing reproducer | 24 identical IR shots, no gradients (`koma_bug_residual.jl`) | +52% jump at shot 18 (270 s), then wrong plateau | flat over all 24 shots |
+| Full qMRI validation | no-noise 14-sphere $T_1$ recovery | 39.4% mean MAPE | 0.48% mean MAPE (1.2% max MAPE) |
+| Regression safety | KomaMRI test suite | new timing tests fail on buggy code | passes after both fixes |
+
+The minimal reproducers show that the specific floating-point failures were removed, while the phantom validation shows that the corrected simulator produces accurate quantitative maps.
+
+### Why this mattered for qMRI
+
+The bug had likely gone unnoticed because it is triggered by long cumulative
+sequence time, while most examples and tests are much shorter, never reaching
+the $\sim128$ s absolute-time regime where Float64 spacing becomes comparable
+to the fixed `1e-14` s marker. This threshold is still well within the duration
+of many clinical MRI acquisitions, which often last several minutes. The
+largest effect also appears for hard RF pulses with sharp edges: losing one
+$\Delta t_\mathrm{rf}$ sample is a large fraction of a 1 ms rectangular pulse.
+In practical slice-selective sequences, shaped RF pulses and gradient ramps
+make the same timing error a smaller perturbation.
+
+The other reason is that most MRI simulation checks are qualitative: a
+reconstructed image can still look plausible when noise and contrast variation
+hide small systematic signal errors. qMRI is stricter. The validation compares
+fitted $T_1$ values against known phantom ground truth, so a systematic signal
+error directly appears as parameter bias. This project exposed the bug because
+RL training needs long sequences and qMRI validation needs quantitative
+agreement, not just plausible images.
+
+This validation covers the IR-SE sequence family used for the main experiments;
+other sequence families would require the same timing and no-noise recovery
+checks before being used for quantitative claims.
+
+### Why spoiling was a convincing false lead
+
+Although presented here as a single validation narrative, the investigation
+happened in two stages. Before either fix, transverse spoiling looked plausible
+because it reduced the catastrophic 924.5% MAPE failure to 92.6%, suggesting
+that residual transverse magnetisation might be part of the problem. After the
+first bug was fixed, the remaining error was smaller, around 30--40%, and
+therefore more consistent with a possible sequence effect. Spoiling had to be
+rechecked before the second timing bug was isolated. In the intermediate
+simulator shown in Figures 1 to 3, however, spoiling increased mean MAPE from
+39.4% to 44.0%. After both fixes, spoiled and unspoiled no-noise fits are both
+sub-percent (0.43% and 0.48% mean MAPE respectively). Spoiling remains
+important for realistic sequence design, but it was not the cause of this
+validation failure.

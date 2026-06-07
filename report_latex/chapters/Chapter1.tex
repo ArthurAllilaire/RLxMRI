@@ -26,3 +26,21 @@ MRI and a linear accelerator (the source of radiation) have been coupled into a 
 There has been significant research into accelerating image acquisition, focusing mainly on using Deep Learning (computational neural network approaches) for image reconstruction (translating the raw MR signal into an image). Leading to significant improvements to image robustness, artifact reduction and image quality when using undersampled data.
 
 There is now a growing interest in using DL and Reinforcement Learning (agent-based approaches) to develop novel pulse sequences, which are currently designed by MR experts. Novel pulse sequences have shown promise in speeding up image acquisition while maintaining image quality. \cite{DLINMRI:24}
+
+\section{Research challenges and achievements}
+
+This project studies whether reinforcement learning can be used to design adaptive quantitative MRI (qMRI) sequences. Rather than only reconstructing an image from a fixed acquisition, the aim is to let an agent choose the next acquisition based on what has already been measured. This makes the problem attractive, but also exposes three practical challenges.
+
+\textbf{C1: simulator validation for qMRI.} The RL agent learns entirely from simulated MRI data, so the simulator must be numerically trustworthy before any learned policy can be evaluated. A visually plausible image is not sufficient: for qMRI, the pipeline must recover the correct quantitative tissue parameters, such as \(T_1\) and \(T_2\), from a known phantom.
+
+\textbf{C2: computational efficiency under expensive simulation.} A live Bloch-equation simulator is much slower than the analytical environments normally used in reinforcement learning. This makes training compute-bound. The project therefore needs a multi-fidelity strategy: fast, lower-fidelity configurations for learning, with more accurate simulations reserved for validation.
+
+\textbf{C3: adaptive sequence design from tissue-parameter estimates.} The final objective is not simply to run a fixed protocol faster, but to choose acquisitions based on the current estimate of the tissue parameters. The agent should use the signals observed so far to decide which inversion times, echo times, or flip angles are most informative next.
+
+The report is organised around three corresponding achievements.
+
+\textbf{A1: a validated digital twin and simulator pipeline.} The project built \texttt{MRISystemPhantom.jl}, a configurable digital twin of the QalibreMD MRI system phantom, and used it to validate the KomaMRI simulation, reconstruction, and fitting pipeline. This validation found two floating-point bugs in KomaMRI's long-sequence timing code, which were reduced to minimal reproducers and submitted upstream.
+
+\textbf{A2: a compute-aware, multi-fidelity RL environment.} The project developed a Python/Julia Gymnasium environment that connects reinforcement learning agents to KomaMRI while managing the cost of simulation. The key design is to separate fast training configurations from higher-fidelity evaluation, so that policies can be trained within the available compute budget and then checked under more realistic simulation settings.
+
+\textbf{A3: adaptive qMRI sequence design.} The project implements adaptive sequence-design experiments in which the agent selects acquisition parameters using the current tissue-parameter estimates. This links the validated simulator and multi-fidelity training loop to the central research question: whether learned adaptive protocols can outperform fixed conventional qMRI sequences.
