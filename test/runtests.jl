@@ -3,6 +3,8 @@ using Random
 using MRISystemPhantom
 using KomaMRI
 
+include(joinpath(@__DIR__, "..", "julia", "rl_boot.jl"))
+
 @testset "MRISystemPhantom" begin
     include("test_materials.jl")
     include("test_geometry.jl")
