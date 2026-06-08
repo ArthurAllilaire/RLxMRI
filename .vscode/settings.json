@@ -1,0 +1,30 @@
+{
+  // Make MacTeX binaries (lualatex, latexmk, biber, ...) findable by the
+  // LaTeX Workshop build process even when VS Code is launched from Finder/Dock
+  // (which does NOT inherit the shell $PATH where /Library/TeX/texbin lives).
+  "latex-workshop.latex.tools": [
+    {
+      "name": "latexmk-lualatex",
+      "command": "latexmk",
+      "args": [
+        "-synctex=1",
+        "-interaction=nonstopmode",
+        "-file-line-error",
+        "-lualatex",
+        "%DOC%"
+      ],
+      "env": {
+        "PATH": "/Library/TeX/texbin:/usr/local/bin:/usr/bin:/bin"
+      }
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "latexmk (lualatex)",
+      "tools": ["latexmk-lualatex"]
+    }
+  ],
+  "latex-workshop.latex.recipe.default": "latexmk (lualatex)",
+  // main.tex is the report root
+  "latex-workshop.latex.rootFile": "report_latex/main.tex"
+}
