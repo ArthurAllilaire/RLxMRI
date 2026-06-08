@@ -158,7 +158,34 @@ The `rng_seed` is the only source of stochasticity: fixing it makes `build_phant
 
 ---
 
-## 5. KomaMRI integration
+## 5. Shipped sequences and fitting models
+
+The background chapter explains what the main MRI sequence families are. This section instead documents what `MRISystemPhantom.jl` actually ships, why those routines are needed by the experiments, and which assumptions they encode. All sequence builders return standard `KomaMRI.Sequence` objects, so they can be passed directly to `KomaMRI.simulate`. The fitting routines are pure Julia and are shared by the conventional baselines and the RL environments, so reported gains are measured against the same estimators.
+
+| API | Purpose in this work | Main inputs | Output and assumptions |
+|-----|----------------------|-------------|-------------------------|
+| `ir_sequence` | Single-spin inversion-recovery signal model for simple T1 checks and the conventional T1 baseline helper | `TI`, RF amplitude, ADC length/window | 180° inversion, delay, 90° excitation, ADC. Tracks the textbook `|1 - 2 exp(-TI/T1)|` curve when the spin is fully recovered before the block. |
+| `se_sequence` | Single-spin spin-echo T2 baseline helper | `TE`, RF amplitude, ADC length/window | 90°--180° spin echo. Echo magnitude follows `S0 exp(-TE/T2)` after refocusing reversible static dephasing. |
+| `mse_sequence` | CPMG / multi-echo T2 baseline | echo spacing `ESP`, `n_echoes` | One 90° pulse followed by a train of 180° refocusing pulses. Echo `k` occurs at `k ESP`, sampling a whole T2 decay in one TR. |
+| `ir_se_2d_sequence` | Main spatial T1 acquisition for E2 and image-based baselines | `TI`, `TE`, `TR`, `α_exc`, `FOV`, `Nfe`, `Npe`, `SpoilerConfig` | Multi-shot Cartesian IR spin echo, one k-space row per shot. Fits should pass `Npe` to `fit_t1_generalized_ir` because the first `Npe` shots are a transient ramp, not steady state. |
+| `ir_tse_2d_sequence` | Faster multi-echo IR readout and joint T1/T2 experiments | `TI`, echo spacing `esp`, `TR`, echo-train length `etl`, `FOV`, `Nfe`, `Npe` | IR turbo spin echo. Acquires `etl` echoes per shot, so scan time is approximately divided by `etl`; `etl` must divide `Npe`. Varying TE across the train introduces T2 information. |
+| `se_2d_sequence` | Spatial T2 mapping baseline | `TE`, `TR`, `α_exc`, `FOV`, `Nfe`, `Npe`, `SpoilerConfig` | 2D Cartesian spin echo without inversion preparation. Sweeping TE gives a spatial T2 decay curve. |
+| `gre_2d_sequence` | Fast T1-weighted / T2*-weighted imaging reference | `TE`, `TR`, flip angle `α`, `FOV`, `Nfe`, `Npe`, `SpoilerConfig` | Multi-shot Cartesian gradient echo. No 180° refocus, so the signal is T2*-weighted. The implementation includes gradient spoiling only, not full RF-spoiled FLASH phase cycling. |
+| `generalized_ir_signal` | Analytical non-spatial IR signal for tests and fast training checks | `T1`, `T2`, `TI`, inversion angle `α`, ADC settings | Closed-form signal approximation for arbitrary inversion angle. `α = π` gives inversion recovery; `α = π/2` gives saturation recovery. |
+| `mse_signal` | Analytical CPMG echo train | `T2`, `ESP`, `n_echoes` | Closed-form `exp(-k ESP/T2)` echo magnitudes, used as a fast oracle for T2 tests. |
+| `fit_t2_se` | T2 estimator for SE/CPMG baselines | `TEs`, magnitudes | Log-linear fit of `|S| = S0 exp(-TE/T2)`. Requires at least two positive-magnitude samples. |
+| `fit_t1_ir` | Conventional T1 baseline estimator | `TIs`, magnitudes | Grid fit of `|A - B exp(-TI/T1)|`. Assumes the acquisition matches long-TR magnitude inversion recovery with fixed flip angles. |
+| `fit_t1_generalized_ir` | Main T1 estimator for E1/E2 RL and non-standard IR schedules | `TIs`, inversion angles, magnitudes; optional `TRs`, `α_excs`, `Npe`, noise model | Fits T1 under arbitrary inversion/excitation angles and finite-TR effects. With `Npe = nothing` it uses the steady-state model; with integer `Npe` it uses the transient mean over the acquired phase-encode shots. |
+| `fit_t1_t2_generalized_ir` | Joint T1/T2 estimator for IR-TSE-style data | `TIs`, inversion angles, `TEs`, magnitudes; optional `TRs`, `α_excs`, `Npe` | 2D grid over T1 and T2 with amplitude profiled out. T2 is identifiable only when TE varies; with constant TE the model correctly reports T2 as poorly determined. |
+| `steady_state_mz_at_excite`, `transient_mz_at_excite_npe`, `transient_mz_per_shot` | Forward models used by the generalised fitters and CR-style baselines | `T1`, `TI`, `TR`, inversion angle, excitation angle, optional `Npe` | Longitudinal magnetisation at excitation under hard-pulse and perfect-spoiling assumptions. Exposed so tests, baselines, and RL environments use the same signal model. |
+
+All image-producing sequences use the same reconstruction path: `raw_to_kspace(raw, Npe, Nfe)` followed by `kspace_to_image(ksp)`. Sphere-centre ROI extraction uses the same coordinate convention through `sphere_descriptor_pixels`, avoiding a separate hand-coded image-space mapping in the experiments.
+
+The algebra behind the fitters is intentionally kept out of the main implementation description. The key derivation steps are summarised in Appendix A; the full developer notes live in `report/mri_system_phantom/fits.md` and the public API docs in `../MRISystemPhantom.jl/docs/src/fitting.md`.
+
+---
+
+## 6. KomaMRI integration
 
 `MRISystemPhantom.jl` is built entirely on top of `KomaMRI.jl` and returns standard `KomaMRI.Phantom` objects. The whole phantom is assembled using a single operation: the concatenation operator `+` on `Phantom`. Each voxelised sphere becomes a small `Phantom`, the spheres of each T1, T2 and PD plate are concatenated into that plate, the three plates are concatenated into a sphere stack, and finally the water background is concatenated on top. The result is a single array of spins with heterogeneous relaxation values, which is exactly what `KomaMRI.simulate` expects.
 
@@ -168,7 +195,7 @@ The matching scanner is obtained from `scanner_for_field(cfg)`, which returns a 
 
 ---
 
-## 6. Library availability
+## 7. Library availability
 
 `MRISystemPhantom.jl` is developed as a standalone open-source Julia package, with source code hosted on [GitHub](https://github.com/ArthurAllilaire/MRISystemPhantom.jl) and [API documentation](https://arthurallilaire.github.io/MRISystemPhantom.jl) hosted on GitHub Pages. The package includes a complete test suite (~373 tests) and documentation pages covering phantom construction, sequence design, parameter fitting, and SNR diagnostics.
 
@@ -194,3 +221,52 @@ The package ships a set of runnable, self-contained demonstration scripts in `ex
 Because the output is a standard `KomaMRI.Phantom`/`Sequence`, these scripts rely only on KomaMRI's own interactive plotting, with no bespoke visualisation code in the library.
 
 ---
+
+## Appendix A. Fit-model derivation notes
+
+Every estimator above is a direct consequence of the Bloch-equation free-precession solutions under two simplifying assumptions: RF pulses are treated as instantaneous rotations, and residual transverse magnetisation is spoiled before the next block. This is why the code can carry only the scalar longitudinal magnetisation `Mz` between shots rather than the full vector state.
+
+For a spin echo, the 90° pulse tips equilibrium magnetisation into the transverse plane, the 180° pulse refocuses reversible static dephasing, and the echo magnitude is governed by irreversible T2 decay:
+
+$$
+|S(\mathrm{TE})| = S_0 e^{-\mathrm{TE}/T_2}.
+$$
+
+Taking logs gives a straight-line fit, `log |S| = log S0 - TE/T2`, which is the whole `fit_t2_se` model.
+
+For long-TR inversion recovery, a preparation pulse of angle $\theta_{\mathrm{inv}}$ leaves $M_z = M_0\cos\theta_{\mathrm{inv}}$. Recovery for inversion time TI gives
+
+$$
+M_z(\mathrm{TI}) =
+M_0\left[1 - \left(1 - \cos\theta_{\mathrm{inv}}\right)e^{-\mathrm{TI}/T_1}\right].
+$$
+
+For the textbook 180° inversion, this reduces to $M_0(1 - 2e^{-\mathrm{TI}/T_1})$. Magnitude reconstruction removes the sign around the null point, so `fit_t1_ir` fits the practical model
+
+$$
+|S| = |A - B e^{-\mathrm{TI}/T_1}|.
+$$
+
+The RL acquisitions cannot assume long TR or fixed flip angles. For one IR-prepared block, define
+$E_1 = e^{-\mathrm{TI}/T_1}$ and $E_2 = e^{-(\mathrm{TR}-\mathrm{TI})/T_1}$. With inversion angle $\theta_{\mathrm{inv}}$ and excitation angle $\alpha_{\mathrm{exc}}$, the scalar recurrence is
+
+$$
+\begin{aligned}
+M_z^{\mathrm{TI}} &= (1 - E_1) + \cos(\theta_{\mathrm{inv}})E_1M_z^{\mathrm{pre}},\\
+M_z^{\mathrm{pre}\prime} &= (1 - E_2) + \cos(\alpha_{\mathrm{exc}})E_2M_z^{\mathrm{TI}}.
+\end{aligned}
+$$
+
+Solving the fixed point gives the steady-state forward model. Iterating it for the first `Npe` shots and averaging `Mz_TI` gives `transient_mz_at_excite_npe`, which matches the actual 2D IR-SE acquisition: one phase-encode row is acquired per shot, starting from thermal equilibrium.
+
+The measured transverse signal also contains the excitation projection $\sin(\alpha_{\mathrm{exc}})$. When excitation angles vary across blocks, the caller divides magnitudes by this known factor before fitting; otherwise the fitter would confuse flip-angle scaling with T1 contrast.
+
+Finally, joint T1/T2 fitting becomes possible only when TE varies. The IR-TSE model is
+
+$$
+|S| =
+\left|A\,M_z^{\mathrm{exc}}(T_1;\mathrm{TI},\mathrm{TR},\theta_{\mathrm{inv}},\alpha_{\mathrm{exc}})
+e^{-\mathrm{TE}/T_2}\right|.
+$$
+
+If TE is constant, the exponential T2 factor is absorbed into the fitted amplitude `A`, so T2 is unidentifiable. This is why `fit_t1_t2_generalized_ir` is reserved for multi-echo schedules and reports a wide T2 uncertainty for constant-TE data.
