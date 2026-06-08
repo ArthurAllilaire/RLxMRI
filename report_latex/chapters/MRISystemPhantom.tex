@@ -89,10 +89,21 @@ the two slice-profile wedges.
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.52\linewidth]{imgs/mri_system_phantom/Premium-System-Phantom.png}
+\begin{minipage}[c]{0.48\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/mri_system_phantom/Premium-System-Phantom.png}
+\end{minipage}\hfill%
+\begin{minipage}[c]{0.48\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/mri_system_phantom/T1_voxel_plate.png}
+\end{minipage}
 \caption{\textbf{The QalibreMD NIST/ISMRM System Standard Model 130 hardware
-phantom.} Image reproduced from
-\href{https://qmri.com/product/premium-system-phantom/}{Caliber MRI}.}
+phantom and its digital T1 array.} The physical phantom photo (left) is
+reproduced from
+\href{https://qmri.com/product/premium-system-phantom/}{Caliber MRI}.
+The T1 array (right) is voxelised into a 3 mm-thick KomaMRI phantom: the
+yellow spots are background-water voxels, while the spheres contain differing
+T1 values.}
 \label{fig:premium-system-phantom}
 \end{figure}
 
@@ -129,15 +140,15 @@ The pipeline from \texttt{PhantomConfig} to \texttt{KomaMRI.simulate()}
 is:
 
 \begin{center}
-\resizebox{0.98\linewidth}{!}{%
+\resizebox{\linewidth}{!}{%
 \begin{tikzpicture}[
-  node distance=5mm and 7mm,
+  node distance=5mm and 4mm,
   flowbox/.style={
     draw,
     rounded corners=2pt,
     align=center,
-    font=\tiny,
-    inner xsep=5pt,
+    font=\footnotesize,
+    inner xsep=4pt,
     inner ysep=4pt,
     minimum height=10mm,
     text width=34mm
@@ -157,7 +168,7 @@ is:
     circle,
     inner sep=0pt,
     minimum size=5mm,
-    font=\tiny
+    font=\footnotesize
   },
   builderbox/.style={
     draw,
@@ -173,7 +184,7 @@ is:
 \node[groupbox, right=of cfg] (desc) {\texttt{sphere\_descriptors}\\{\tiny :T1/:T2/:PD/fiducials}};
 \node[flowbox, right=of desc, yshift=6mm] (vox) {\texttt{voxelise\_sphere}};
 \node[flowbox, right=of desc, yshift=-6mm] (water) {\texttt{build\_background\_water}};
-\node[plusbox, right=of desc, xshift=42mm] (merge) {\texttt{+}};
+\node[plusbox] (merge) at ($(vox.east)!0.5!(water.east)+(8mm,0)$) {\texttt{+}};
 \node[flowbox, right=of merge] (pose) {rotation\\translation\\\texttt{AugmentConfig}};
 \node[finalbox, right=of pose] (phantom) {\texttt{KomaMRI.Phantom}};
 \node[builderbox, fit=(desc)(vox)(water)(merge)(pose)] (builder) {};
@@ -541,6 +552,108 @@ always produces the same phantom. Fixing the seed reproduces the exact
 same phantom, making evaluation runs reproducible. Incrementing it each
 training episode draws a statistically independent phantom, preventing
 the agent from memorising a fixed configuration.
+
+\hypertarget{shipped-sequences-and-fitting-models}{%
+\section{Shipped sequences and fitting models}\label{shipped-sequences-and-fitting-models}}
+
+The background chapter explains what the main MRI sequence families are.
+This section instead documents what \texttt{MRISystemPhantom.jl} ships,
+why those routines are needed by the experiments, and which assumptions
+they encode. All sequence builders return standard
+\texttt{KomaMRI.\allowbreak Sequence} objects, so they can be passed directly to
+\texttt{KomaMRI.\allowbreak simulate}. The fitting routines are pure Julia and
+are shared by the conventional baselines and RL environments, so reported
+gains are measured against the same estimators.
+
+\textbf{Single-spin sequence helpers}
+\begin{itemize}
+\tightlist
+\item
+  \texttt{ir\_sequence(TI)}: 180° inversion, delay, 90° excitation and
+  ADC. Used for simple T1 checks and the conventional T1 helper; after
+  full recovery the first ADC sample follows
+  \(\lvert1 - 2e^{-\mathrm{TI}/T_1}\rvert\).
+\item
+  \texttt{se\_sequence(TE)}: 90°--180° spin echo for the T2 baseline.
+  The echo magnitude follows \(S_0e^{-\mathrm{TE}/T_2}\).
+\item
+  \texttt{mse\_sequence(ESP,\ n\_echoes)}: CPMG / multi-echo spin echo.
+  One excitation is followed by a train of 180° pulses; echo \(k\)
+  occurs at \(k\,\mathrm{ESP}\), so a whole T2 decay is sampled in one
+  TR.
+\end{itemize}
+
+\textbf{2D Cartesian sequence builders}
+\begin{itemize}
+\tightlist
+\item
+  \texttt{ir\_se\_2d\_sequence(TI,\ TE,\ TR;\ ...)}: main spatial T1
+  acquisition for E2. It is parameterised by
+  \(\alpha_{\mathrm{exc}}\), \texttt{FOV}, \texttt{Nfe} and
+  \texttt{Npe}; it acquires one k-space row per shot, so fits pass
+  \texttt{Npe} to account for the transient ramp from thermal
+  equilibrium.
+\item
+  \texttt{ir\_tse\_2d\_sequence(TI,\ esp,\ TR;\ ...)}: turbo spin-echo
+  variant with echo-train length \texttt{etl}. It is faster by
+  approximately \texttt{etl} and exposes T2 information when TE varies
+  across echoes.
+\item
+  \texttt{se\_2d\_sequence(TE,\ TR;\ ...)}: 2D spin echo without
+  inversion preparation, used for spatial T2 mapping by sweeping TE.
+\item
+  \texttt{gre\_2d\_sequence(TE,\ TR;\ ...)}: fast gradient-echo
+  reference with flip angle \(\alpha\). It has no 180° refocus, so it is
+  T2*-weighted; the implementation includes gradient spoiling only, not
+  full RF-spoiled FLASH phase cycling.
+\end{itemize}
+
+\textbf{Analytical signal models}
+\begin{itemize}
+\tightlist
+\item
+  \texttt{generalized\_ir\_signal}: non-spatial IR signal for arbitrary
+  inversion angle. \(\pi\) gives inversion recovery and \(\pi/2\) gives
+  saturation recovery.
+\item
+  \texttt{mse\_signal}: analytical CPMG echo train,
+  \(e^{-k\,\mathrm{ESP}/T_2}\). Used as a fast T2 oracle in tests.
+\end{itemize}
+
+\textbf{Fitters and forward models}
+\begin{itemize}
+\tightlist
+\item
+  \texttt{fit\_t2\_se(TEs,\ mags)}: log-linear estimator for
+  \(\lvert S\rvert=S_0e^{-\mathrm{TE}/T_2}\).
+\item
+  \texttt{fit\_t1\_ir(TIs,\ mags)}: conventional long-TR magnitude IR
+  estimator, fitting \(\lvert A - Be^{-\mathrm{TI}/T_1}\rvert\).
+\item
+  \texttt{fit\_t1\_generalized\_ir}: main RL estimator. It accepts
+  per-block inversion angles, optional \texttt{TRs}, excitation angles
+  and \texttt{Npe}; \texttt{Npe = nothing} selects the steady-state
+  model and integer \texttt{Npe} selects the transient mean over the
+  acquired phase-encode shots.
+\item
+  \texttt{fit\_t1\_t2\_generalized\_ir}: joint T1/T2 grid fit for
+  IR-TSE-style data. T2 is identifiable only when TE varies, because a
+  constant TE factor can be absorbed into the fitted amplitude.
+\item
+  \texttt{steady\_state\_mz\_at\_excite},
+  \texttt{transient\_mz\_at\_excite\_npe} and
+  \texttt{transient\_mz\_per\_shot}: shared longitudinal forward models
+  used by the fitters, tests and CR-style baselines.
+\end{itemize}
+
+All image-producing sequences use the same reconstruction path:
+\texttt{raw\_to\_kspace(raw,\ Npe,\ Nfe)} followed by
+\texttt{kspace\_to\_image(ksp)}. Sphere-centre ROI extraction uses the
+same coordinate convention through \texttt{sphere\_descriptor\_pixels},
+avoiding a separate hand-coded image-space mapping in the experiments.
+The heavier fit algebra is kept out of the main implementation chapter;
+Appendix~\ref{app:fit-model-derivations} summarises the derivations that
+matter for interpreting the estimators.
 
 \hypertarget{komamri-integration}{%
 \section{KomaMRI integration}\label{komamri-integration}}

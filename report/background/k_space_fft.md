@@ -11,7 +11,7 @@ the Fourier transform of the transverse spin density $m(\mathbf{r})$. The set of
 ## Reading k-space
 
 ![](figs/k_space_of_brain.png)
-> Image space and k-space. Any magnetic resonance image can be equivalently represented as a matrix of intensities $I(x,y)$ or a matrix of spatial-frequency amplitudes $S(k_x,k_y)$. The central portion of k-space describes the low-spatial-frequency components, and the outer edges the high frequencies, which determine image resolution. (Only the magnitude images are shown; there is a corresponding phase map in each space.)
+> Image space and k-space. Any magnetic resonance image can be equivalently represented as a matrix of intensities $I(x,y)$ or a matrix of spatial-frequency amplitudes $S(k_x,k_y)$. The central portion of k-space describes the low-spatial-frequency components, and the outer edges the high frequencies, which determine image resolution.
 > Source: Buxton RB. Mapping the MR signal. In: Introduction to Functional Magnetic Resonance Imaging: Principles and Techniques. Cambridge: Cambridge University Press; 2009. p. 205–31.
 
 There are two complementary ways to read a k-space matrix.
@@ -32,7 +32,7 @@ Two design numbers follow directly from the sampling geometry. The k-space **sam
 
 ## The fftshift: putting DC where the FFT expects it
 
-That convention creates a bookkeeping mismatch that must be handled before reconstruction. The simulator (KomaMRI) returns ADC profiles in *acquisition order*: after stacking the phase-encode rows, the resulting matrix has DC (k = 0) at its **centre**, index $(N_{pe}/2+1,\,N_{fe}/2+1)$. A standard FFT routine — Julia's `FFTW.ifft`, NumPy, MATLAB — instead assumes the DFT convention, in which index $(1,1)$ is DC, the array corners are low frequency, and the array centre is the Nyquist frequency. Feeding centre-DC data straight into `ifft` is therefore wrong: it multiplies the true image pointwise by a $(-1)^{i+j}$ chequerboard *and* wraps it by half a field of view in each direction.
+The simulator (KomaMRI) returns ADC profiles in *acquisition order*: after stacking the phase-encode rows, the resulting matrix has DC (k = 0) at its **centre**, index $(N_{pe}/2+1,\,N_{fe}/2+1)$. A standard FFT (Fast Fourier Transform) implementation, e.g. Julia's `FFTW.ifft` instead assumes the DFT convention, in which index $(1,1)$ is DC, the array corners are low frequency, and the array centre is the Nyquist frequency. Feeding centre-DC data straight into `ifft` is therefore wrong: it multiplies the true image pointwise by a $(-1)^{i+j}$ chequerboard *and* wraps it by half a field of view in each direction.
 
 The fix is to shift DC to the corner before the transform and shift the image centre back afterwards:
 
