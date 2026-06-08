@@ -26,4 +26,5 @@ report_latex/*.out
 report_latex/*.run.xml
 report_latex/*.toc
 report_latex/*.synctex.gz
+report_latex/*.synctex(busy)
 report_latex/*.pdf

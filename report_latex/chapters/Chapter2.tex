@@ -23,16 +23,18 @@ It is necessary to understand the current process of MRI Pulse Sequence design b
  The frequency of this rotation is known as the Larmor frequency ($\omega_0$) and is directly proportional to the magnetic field ($B_0$). The constant of proportionality is called the gyromagnetic ratio ($\gamma$). For protons, $\gamma/2\pi = 42.58\ \text{MHz}\ \text{T}^{-1}$. \cite{RobPio:99}
 \begin{equation}
     \omega_0 = \gamma B_0
-\end{equation}% Though there is a high concentration of Hydrogen atoms in human tissue, there is no net magnetisation as the protons are randomly orientated.
+\end{equation}
+Here $\gamma$ is the angular-frequency value. In the KomaMRI simulations later in this thesis, the cycle-frequency convention is used instead, with $\gamma = 42.58\ \text{MHz}\ \text{T}^{-1}$. Accidentally using the angular-frequency value in this context introduces an extra factor of $2\pi$, which shrinks the encoded field of view by $2\pi$.
+% Though there is a high concentration of Hydrogen atoms in human tissue, there is no net magnetisation as the protons are randomly orientated.
  \begin{figure}
      \centering
      \includegraphics[width=0.5\linewidth]{imgs/B0 Magnetic Field.jpg}
      \caption{Protons align in parallel or antiparallel to the external field. Parallel alignment is a lower energy state, thus slightly more popular, leading to a net magnetisation vector (Mz). Figure from \cite{RobPio:99}}
- \end{figure}
+\end{figure}
 \subsection{RF Pulses}
-The overall net magnetisation effect from all protons is a vector, $M$. This vector can be broken down into an x-y transverse magnetisation vector ($M_{xy}$) caused by the precession effect and the magnetisation vector aligned with the $B_0$ field ($M_z$).
+The overall net magnetisation from all protons is represented by the vector \(\mathbf{M}=(M_x,M_y,M_z)\). At equilibrium, \(M_z\) is aligned with the static \(B_0\) field. The transverse components \(M_x\) and \(M_y\), which rotate about \(B_0\), are usually grouped into the complex notation \(M_{xy}=M_x+iM_y\).
 
-The transverse magnetisation induces a signal (at the Larmor Frequency) in a pair of receiver coils placed perpendicular (as seen in Figure 2.2). To measure $M_z$, a second perpendicular magnetic field ($B_1$) must be applied at the Larmor Frequency (the resonance frequency) to flip $M$ into the transverse plane, which then rotates around $B_0$ at the Larmor Frequency. This induces a signal in the receiver coils. The $B_1$ pulses are commonly called radio frequency (RF) pulses since the Larmor frequency is in the radio frequency range. \cite{RobPio:99}\cite{MRI_Physics_Primer:12} 
+The receiver coils measure transverse magnetisation \(M_{xy}\), not longitudinal magnetisation \(M_z\) directly. A perpendicular radio-frequency field \(B_1\), applied at the Larmor frequency, tips some or all of \(M_z\) into the transverse plane. This creates \(M_{xy}\), which precesses about \(B_0\) and induces a voltage in receiver coils placed perpendicular to the main field, as shown in Figure 2.2. The \(B_1\) pulses are called radio-frequency (RF) pulses because the Larmor frequency lies in the radio-frequency range. \cite{RobPio:99}\cite{MRI_Physics_Primer:12} 
 
 The resulting angle between $M$ and $B_0$ is called the flip angle ($\alpha$) and can be calculated using:
 \begin{equation}
@@ -45,13 +47,32 @@ The resulting angle between $M$ and $B_0$ is called the flip angle ($\alpha$) an
     Figure from \cite{MRI_Physics_Primer:12}}
 \end{figure}
 \subsection{T1, T2 \& T2* Relaxation}
-After an RF pulse is switched off, $M$ will return to its equilibrium state (precessing with axis aligned with $B_0$). This will cause a reduction in the magnitude of $M_{xy}$ and, consequently, the MR signal measured; this decrease is known as the Free Induction Decay. The time it takes for the signal to return to its equilibrium state is known as the relaxation time. Two independent relaxation processes affect this time: longitudinal and transverse relaxation.
+After an RF pulse is switched off, \(M_z\) recovers towards thermal
+equilibrium along \(B_0\), while \(M_{xy}\) decays in the transverse plane
+(the free induction decay). These are independent processes: longitudinal
+relaxation transfers energy back to the surrounding lattice, while
+transverse relaxation describes loss of phase coherence between spins.
 
-The longitudinal relaxation process describes the reduction of the flip angle as $M$ re-aligns with $B_0$. The time it takes for $M_z$ to regain 63\% of its original amplitude from a $90^\circ$ flip angle is called the $T_1$ relaxation time. $T_1$ relaxation time is an intrinsic property that can be used to identify a tissue type.\cite{RobPio:99}
+Longitudinal, or spin-lattice, relaxation is characterised by \(T_1\): the
+time taken for \(M_z\) to recover 63\% of the way back to its equilibrium
+value \(M_0\) after excitation. Because this recovery depends on energy
+exchange with the local molecular environment, \(T_1\) is an intrinsic
+tissue parameter.\cite{RobPio:99}
 
-The transverse relaxation process describes the loss of signal from proton dephasing. During RF excitation, all protons are in phase. However, protons will have slightly different Larmor frequencies due to inhomogeneities in the $B_0$ field and local magnetic fields (caused by differing tissue magnetic susceptibilities). The relaxation time for this is called $T_2'$. Dephasing is also caused by interactions between neighbouring protons called spin-spin interactions. The relaxation time for this is called $T_2$. The dephasing reduces the amplitude of $M_{xy}$. The time it takes for the amplitude to reach 37\% ($1/e$) of its maximum amplitude is called the $T_2*$ relaxation time.
+Transverse, or spin-spin, relaxation describes the decay of \(M_{xy}\) as
+spins lose phase coherence after excitation. Irreversible dephasing from
+spin-spin interactions is characterised by \(T_2\), while reversible
+dephasing from static \(B_0\) inhomogeneity is written as \(T_2'\). The
+observed transverse decay \(T_2^*\) combines both effects:
 
-The effects of $T_2$ can be isolated using a "spin-echo" pulse sequence. Again, $T_2$ is an intrinsic property that can be used to identify a tissue type and is always shorter than $T_1$.\cite{MRI_Physics_Primer:12} 
+\begin{equation}
+    \frac{1}{T_2^*} = \frac{1}{T_2} + \frac{1}{T_2'}.
+\end{equation}
+
+A \(180^\circ\) refocusing pulse reverses the static dephasing term
+\(T_2'\), which is why spin-echo sequences measure a signal governed
+primarily by \(T_2\) relaxation. In biological tissue, \(T_2\) is generally
+shorter than \(T_1\).\cite{MRI_Physics_Primer:12}
 
 \begin{figure}
     \centering
@@ -62,80 +83,188 @@ The effects of $T_2$ can be isolated using a "spin-echo" pulse sequence. Again, 
     \label{fig:relaxation-properties}
 \end{figure}
 
-\subsection{Spatial Encoding \& k-Space Acquisition}
-We require extra information to deduce the coordinates of the source of the MR signals captured. To do this, we use magnetic gradient (z-plane), frequency encoding (x-plane), and phase encoding (y-plane).
+\paragraph{Bloch-equation model.}
+The Bloch equations formalise the relaxation behaviour above. In the
+rotating frame at \(\omega_0\), with equilibrium magnetisation \(M_0\)
+along \(+z\), the relaxation dynamics can be written as:
 
-Since the Larmor frequency is dependent on the magnetic field experienced, a magnetic gradient applied parallel to the $B_0$ field will create a similar procession frequency gradient along the z-plane. This is then exploited by using a small range of frequencies in the RF pulse to excite (i.e. flip) only a thin slice of protons. Each slice can be selected by using the corresponding band of RF.
+\begin{equation}
+    \frac{dM_z}{dt} = -\frac{M_z - M_0}{T_1},
+    \qquad
+    \frac{dM_{xy}}{dt} =
+    -\frac{M_{xy}}{T_2} + i\Delta\omega M_{xy}
+\end{equation}
 
-After the initial excitation, in which all protons are in phase, a temporary magnetic gradient is applied in the y-plane. In areas with higher magnetisation, this will increase precession frequency and, consequently, angular velocity. Different angular velocities will spread out the phase of protons along the y-axis. When the gradient is removed, they will all continue with the same frequency, keeping the range of phases.
+Here $\Delta\omega$ is the local off-resonance frequency relative to the
+rotating frame. The first equation describes longitudinal recovery:
+$M_z$ exponentially returns to $M_0$ with time constant $T_1$. The second
+describes transverse decay: the magnitude of $M_{xy}$ falls with time
+constant $T_2$, while off-resonance produces additional phase rotation.
 
-For frequency encoding, a magnetic gradient is applied in the x-plane while reading-out the MR signal. This creates a range of frequencies.
+Between RF pulses, these independent differential equations have the free-precession
+solutions:
 
-Plotting the amplitude of a particular phase and frequency is called K-space. Converting from k-space to image-space is achieved by a reconstruction algorithm that uses Fourier Transforms. However, each image line necessitates an extra signal acquisition cycle, hence creating a trade-off between image accuracy and acquisition time.
+\begin{equation}
+    M_z(t) = M_0 + \left(M_z(0) - M_0\right)e^{-t/T_1},
+    \qquad
+    \left|M_{xy}(t)\right| =
+    \left|M_{xy}(0)\right|e^{-t/T_2}
+\end{equation}
 
+These are the signal-decay relationships used by the conventional quantitative 
+MRI fitting methods used later in this work. Under the hard-pulse
+approximation, an RF pulse is treated as an instantaneous rotation by flip
+angle $\alpha$ about a transverse axis. If the longitudinal magnetisation
+immediately before excitation is $M_z^-$, the pulse leaves
+$\cos(\alpha)M_z^-$ on the longitudinal axis and tips
+$\sin(\alpha)M_z^-$ into the transverse plane. The received signal is 
+proportional to this transverse component.
+
+After readout, the sequence models used in this work assume that residual
+transverse magnetisation is removed by gradient spoiling or by relaxation
+before the next acquisition block. The only state carried between shots is
+therefore the scalar longitudinal magnetisation, updated by RF rotations and
+$T_1$ recovery. This reduces the Bloch dynamics to simple recurrence
+relations; without this assumption, transverse coherences would need to be
+tracked explicitly using a coherence-pathway method such as Extended Phase
+Graphs (EPG).
+
+\subsection{Spatial Encoding \& K-Space}
+Relaxation determines how much signal a spin can produce, but an image
+also requires spatial localisation. MRI does not measure image pixels
+directly. Instead, the scanner samples k-space: a spatial-frequency
+representation of the image, shown in Figure~\ref{fig:kspace-representation}.
+The centre sample of k-space, \(S(0,0)\), has no gradient moment along
+either axis, so all spins contribute without a spatial phase ramp. It is
+therefore the integral of the whole image, or mean signal,
+conventionally called the DC term.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.55\linewidth]{imgs/kspace/k_space_indvidual_pixel_real.png}
+    \caption{Image space and k-space are Fourier-pair representations of the same data: an MR image can be viewed either as a matrix of intensities \(I(x,y)\) or as spatial-frequency amplitudes \(S(k_x,k_y)\). Each k-space point weights a sinusoidal wave across the field of view; the vector angle \((k_x,k_y)\) sets the wave-pattern orientation, and its distance from the origin sets the spatial frequency. The centre of k-space contains low-spatial-frequency contrast and mean signal, while the outer samples contain high-spatial-frequency detail. Figure from \cite{buxton_fmri_2009}.}
+    \label{fig:kspace-representation}
+\end{figure}
+
+Let \(G_x\), \(G_y\), and \(G_z\) denote magnetic-field gradients along
+the scanner axes. These gradients make the Larmor frequency
+position-dependent by varying the local field strength, providing the
+spatial information missing from the raw MR signal.
+
+The \(G_z\) gradient performs slice selection. During the RF pulse,
+\(G_z\) maps \(z\)-position to Larmor frequency, so a narrow-band RF
+pulse excites only the spins whose frequencies lie within the RF
+bandwidth. This selects a thin slice of the object, as shown in
+Figure~\ref{fig:slice-selection}.
+
+The in-plane coordinates are then encoded using \(G_y\) and \(G_x\). A
+short \(G_y\) pulse before readout provides phase encoding: it gives
+spins at different \(y\)-positions different accumulated phases. A
+\(G_x\) gradient is kept on during ADC readout for frequency encoding:
+successive samples trace spatial frequency along \(k_x\). Repeating the
+sequence with different \(G_y\) amplitudes steps through \(k_y\), so each
+repetition fills a different row of k-space.
 
 \begin{figure}
     \centering
     \includegraphics[width=0.5\linewidth]{imgs/slice_selection.jpg}
-    \caption{Thin slices (3-8mm) can be excited by using a narrow range of RF pulses. Figure from \cite{RobPio:99}}
+    \caption{Slice selection using a narrow-band RF pulse applied during a gradient. Only spins whose shifted Larmor frequencies lie within the RF bandwidth are excited. Figure from \cite{RobPio:99}.}
     \label{fig:slice-selection}
 \end{figure}
 
-\subsection{K-space \& Gibbs (truncation) ringing}
+For a gradient waveform \(\mathbf{G}(t)\), the sampled k-space location
+is determined by the accumulated gradient moment:
 
-\begin{figure}
-    \centering
-    \includegraphics[width=0.5\linewidth]{image.png}
-    \caption{Illustrative k-space representation used to motivate the relationship between finite sampling and image-domain ringing.}
-    \label{fig:kspace-representation}
-\end{figure}
+\begin{equation}
+    \mathbf{k}(t) = \gamma\int_0^t \mathbf{G}(\tau)\,d\tau.
+\end{equation}
 
-A typical k-space diagram looks like:
+Stronger or longer gradients move the acquisition further through
+k-space. At a given k-space location, the acquired signal is
 
-% INSERT DIAGRAM %
-% TODO: MOVE THIS VIEW TO DIAGNOSING THE KOMA-MRI BUG? %
-Couple of different ways of reading k-space diagrams. Firstly, each horizontal row is one signal acquisition (at least for traditional sequences such as IR-SE) at a specific phase encoding. So time up the y-axis and so harder to get higher pixel resolution in that direction as increases scan time. While across each is a different x gradient - which is done by adding a Gx during ADC and a pre-winder to acquire a signal across all gradients.
+\begin{equation}
+    S(\mathbf{k}) =
+    \int m(\mathbf{r})e^{-i2\pi\mathbf{k}\cdot\mathbf{r}}\,d\mathbf{r}.
+\end{equation}
 
-Another way of thinking of k-space: is that each pixel has a weighting and an x,y value. This [x,y] vector uniquely describes a wave across the FOV - in the same orientation as the vector with spatial frequency magnitude of vector. This means a couple of things:
+Here \(m(\mathbf{r})\) is the transverse magnetisation at position
+\(\mathbf{r}\). The exponential term applies a position-dependent phase
+rotation to each complex \(M_{xy}\) contribution before the receiver sums
+over the object. Changing \(\mathbf{k}\) changes this phase pattern, so
+each measurement extracts a different spatial-frequency component of the
+image. The image is recovered by applying an inverse Fourier transform to
+the sampled k-space.
 
-- The further out you go in k-space the higher the spatial frequency i.e. the finer details
-- The center row was acquired with Gx=0 i.e. no gradient so this is the sum of that row in the image - so brightest and where most information is
-- The center (0,0) pixel has neither gradient - sets overall average signal strength and is called the DC shot.
+Two design quantities follow directly from this sampling geometry. The
+k-space sample spacing determines the field of view:
+\(\mathrm{FOV}=1/\Delta k\). If the object extends beyond this FOV, it
+aliases back into the image. The k-space extent determines the nominal
+pixel size, \(\Delta x=\mathrm{FOV}/N\approx 1/(2k_{\max})\). Acquiring
+a wider k-space window improves spatial resolution, but it requires more
+samples. In particular, higher \(k_y\) resolution means acquiring more
+phase-encode rows, which usually requires additional sequence
+repetitions.
 
-- Acquisition convention - go from -N, -N+1, ..., 0, ..., +N-1 - so one more negative shot. E.g. for 32: -16, .., 0, .., 15
+\paragraph{FFT ordering.}
+The Fourier relationship above defines the k-space/image-space mapping,
+but not the array ordering used to store samples. KomaMRI returns
+Cartesian ADC data in acquisition order, with the DC sample \(S(0,0)\)
+near the centre of the stacked k-space matrix. For an even matrix size
+\(N\), the standard acquisition convention samples one extra negative
+line,
+\[
+    -N/2,\,-N/2+1,\,\dots,\,0,\,\dots,\,N/2-1,
+\]
+so for \(N=32\) this is \(-16,\dots,0,\dots,15\). DC therefore lies at
+index \(N/2+1\) in one-based indexing. Standard FFT routines instead
+expect DC at the first array index, so reconstruction requires
 
-K-space is spatial frequency encoding of pixels (an image) to get there you had to do a Fourier Transform:
+\[
+    I = \mathrm{fftshift}\left(
+        \mathrm{ifft}\left(\mathrm{ifftshift}(S)\right)
+    \right),
+\]
 
-Finite sampling of an infinite sequence:
--> We sample frequencies which we then use to reconstruct the image using an inverse fourier transform - i.e. go from k-space to image space. However, we only sample a limited range/band of frequencies (Npe x Nfe) so there will be some inacurracies in the reconstructed images.
+Here \(\mathrm{ifftshift}\) converts the centre-DC acquisition ordering
+to FFT ordering, and \(\mathrm{fftshift}\) recentres the reconstructed
+image. Without these shifts, the image is reconstructed under the wrong
+indexing convention, causing a half-FOV shift and possible checkerboard
+phase modulation.
 
-To properly understand these it helps to think of sampling a limited range of frequencies as the same as knowing exact, infinite K-space and then multiplying by a box function - one that is 1 if [x,y] < [Nfe, Npe] and 0 outside as this would similarly restrict our sampling. We then can properly quantify what this box function multiplication will do to our reconstructed image.
-%TODO: SHOULD I ADD THE 3B1B POLYNOMIAL VISUAL?? %
-It turns out the K-space multiplication is equivalent to image space convolution - by the convolution theorem. A useful intuition for why this is true is multiplication of two polynomial functions, which is pointwise multiplication if you multiply pointwise each of the two curves. However, to combine the actual polynomials: that is a convolution. With polynomials with their powers being a similar decomposition or fourier transform into discrete powers of x if you will.
+\subsection{Gibbs (Truncation) Ringing}
+\paragraph{Finite k-space support.}
+The Fourier relationship is exact only if all of k-space is measured. In
+practice, the acquisition covers a finite \(N_{pe}\times N_{fe}\)
+rectangle. This is equivalent to multiplying the ideal infinite k-space
+by a rectangular window. By the convolution theorem, multiplication in
+k-space becomes convolution in image space:
 
-%TODO: INCLUDE CONVOLUTION THEOREM FORMULA %
+\begin{equation}
+    I_{\mathrm{recon}}(\mathbf{r})
+    =
+    I_{\mathrm{true}}(\mathbf{r}) * \mathrm{PSF}(\mathbf{r}).
+\end{equation}
 
-This means multiplying by bin is equivalent to convolving by the fourier transform of the bin function - this turns out is a famous result called the dirilecht kernel. And this will be done for every pixel and the resulting spread that pixel will have is called the PSF function - which is governed by this equation:
-%TODO: INCLUDE PSF EQUATION - 1D only %
-Side note on scaling with N: as you can this is periodic with cycle = FOV, but there are N lobes - with the first lobe being at 21\% of main lobe strength and then down from there. This is usually fine in uniform areas - two neighbouring pixels if they have the same signal intensity will cancel each other out - negative lobe will constructively intefere with positive lobe of other pixel. The issue is at boundaries/discontinuities where on pixels value is higher than another - that pixel will leak its signal to the other ones - creating lobes and waves.
+The point-spread function (PSF) is the Fourier transform of the sampling
+window. For a one-dimensional rectangular window, it is the Dirichlet
+kernel,
 
-% CAMBRIDGE DIAGRAM (visual diagram including 2D convolution saved as psf.png) %
+\begin{equation}
+    \mathrm{PSF}(x) =
+    \frac{\sin(\pi N x/\mathrm{FOV})}
+         {N\sin(\pi x/\mathrm{FOV})}.
+\end{equation}
 
-
-How do you reduce this? 
-
-Natural question: lets just increase N - bigger box surely helps? Depends what the convolution of a bigger box is? Turns out its same function but the lobes are closer together - so don't actually remove the ringing - you just make it die down in less distance by having more pixels in that distance.
-
-One solution is to not use a discrete box but instead use something with softer edges - as the fourier transform (so PSF) of that will have side lobes that are much smaller, still decreasing by 1/x i think. One example is the hamming window:
-
-% HAMMING EQUATION plus 2d diagram? %
-Can see wider peak - so spreads out signal.
-
-Which is a trade-off though as you can see those edges are properly dimmed and edge of k-space is that finer detail so you lose resolution - blurrier image - but also reduce ringing.
-
-You can also round neighbouring pixels - smooth the image by using an average - e.g. ROI of 3x3 vs 1x1 equivalent of smoothing and so the lobes cancel each other out - even at edges - but you slightly remove the edges.
-
-The oscillatory side-lobes are therefore a pixel-domain manifestation of the finite k-space support: each sharp transition contributes a ringing pattern whose lobe spacing is set by the sampled matrix size and field of view.
+This PSF has a narrow main lobe but slowly decaying side-lobes. At sharp
+intensity transitions, such as the water--sphere boundaries in the
+phantom, those side-lobes do not cancel and appear as Gibbs ringing.
+Increasing \(N\) makes the ringing finer in physical units, but it does
+not remove the side-lobes; the artefact is caused by the rectangular
+truncation itself. The usual suppression method is apodisation, such as a
+Hamming window, which down-weights outer k-space to reduce ringing at the
+cost of a wider PSF and therefore slightly lower spatial resolution.
+Appendix~\ref{app:kspace-apodisation} derives this trade-off, since it is
+used directly by the phantom library's Hamming reconstruction option.
 
 
 \subsection{Pulse Sequences}
