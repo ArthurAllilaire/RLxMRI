@@ -346,66 +346,65 @@ e2_action_hi(::E2Env) = Float64[3.000, 0.080, 5.0, 180.0,   60.0]
 # ── Internal helpers ─────────────────────────────────────────────────────────
 
 function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=nothing)
-    rng_ep = MersenneTwister(rng_seed)
+    # Episode-level domain randomisation via the MRISystemPhantom random-phantom
+    # API. The selector → material → pose RNG consumption order (subset randperm →
+    # per-sphere T1 randn → pose randn) matches the previous hand-rolled version,
+    # so episode selection, T1 jitter and pose are byte-identical for a given seed.
+    # See MRISystemPhantom.jl/RANDOM_PHANTOM_PLAN.md.
+    cache_globally = _e2_cache_globally(env)
 
-    if forced_indices !== nothing
-        env.sphere_indices = sort(Int.(forced_indices))
-    elseif env.subset_size === nothing
-        env.sphere_indices = collect(eachindex(env.base_descs_pool))
-    else
-        env.sphere_indices = sort(randperm(rng_ep, length(env.base_descs_pool))[1:env.subset_size])
-    end
+    # Deterministic build settings. Contrast plate :T1 is generated then moved
+    # into custom_sphere_descriptors by the API; :water (if any) and the slab
+    # stay deterministic, so the resulting cfg matches the old phantom_cfg.
+    base = PhantomConfig(
+        field               = env.cfg_field,
+        voxel_size_mm       = env.voxel_size_mm,
+        water_voxel_size_mm = env.water_voxel_size_mm,
+        include_plates      = env.include_water ? [:T1, :water] : [:T1],
+        augment             = AugmentConfig(B0_sigma_Hz = 5.0),
+        slice_thickness_mm  = env.voxel_size_mm,
+        slice_center_mm     = (0.0, 0.0, PLATE_Z_MM.T1),
+    )
+
+    # Sphere selection: explicit forced set, all spheres, or a random k-subset.
+    selector = forced_indices !== nothing ?
+                   E2SphereSelector(subset_size = length(forced_indices),
+                                    forced_indices = sort(Int.(forced_indices))) :
+               env.subset_size === nothing ? nothing :
+                   E2SphereSelector(subset_size = env.subset_size)
+
+    # IN-PLANE ONLY pose: we acquire a single thin axial slab, so out-of-plane
+    # tilt (rx, ry) and z-translation (tz) would move spheres out of the slab.
+    # In-plane rotation rz + translation tx, ty still relocate every sphere on the
+    # image each episode — enough to stop the agent memorising fixed pixels.
+    #
+    # Under :cached_perline with a T1-only observation we cache the water template
+    # ONCE globally, which requires a fixed geometry — so the pose is pinned to
+    # zero. The agent never sees pixel positions in that mode, so fixing the pose
+    # costs no exploitable information.
+    pose = cache_globally ? FixedPose() :
+           InPlanePoseSampler(rotation_sigma_rad   = env.rotation_sigma_rad,
+                              translation_sigma_mm = env.translation_sigma_mm)
+
+    rpcfg = RandomPhantomConfig(
+        base             = base,
+        sphere_selector  = selector,
+        material_sampler = RatioPreservingLogNormalT1(env.T1_sigma_rel),
+        pose_sampler     = pose,
+    )
+    episode = sample_phantom_config(rpcfg; rng_seed = rng_seed)
+
+    # Env side effects + episode truth. `custom_sphere_descriptors` holds the
+    # sampled T1 descriptors in stable label order, aligned with sphere_indices.
+    env.sphere_indices    = sort(episode.truth.active_indices_by_plate[:T1])
     env.active_base_descs = env.base_descs_pool[env.sphere_indices]
 
-    # Per-sphere T1 jitter (log-normal, centred on nominal values)
-    T1_ep = [d.T1 * exp(env.T1_sigma_rel * randn(rng_ep))
-             for d in env.active_base_descs]
+    active_descs = episode.cfg.custom_sphere_descriptors
+    T1_ep        = [d.T1 for d in active_descs]
 
-    # Per-sphere T2 (preserve T2/T1 ratio)
-    T2_ep = [T1_ep[i] * env.active_base_descs[i].T2 / env.active_base_descs[i].T1
-             for i in eachindex(T1_ep)]
-
-    active_descs = SphereDescriptor[]
-    for (i, d) in enumerate(env.active_base_descs)
-        push!(active_descs, with_sphere_relaxation(d, T1_ep[i], T2_ep[i]))
-    end
-
-    # Episode pose (domain randomisation). IN-PLANE ONLY: we acquire a single
-    # thin axial slab, so out-of-plane tilt (rx, ry) and z-translation (tz) would
-    # move spheres out of the constructed slab. In-plane rotation rz + translation
-    # tx, ty still relocate every sphere on the image each episode — enough to stop
-    # the agent memorising fixed pixel locations.
-    #
-    # Under :cached_perline with a T1-only observation (include_image=false) we cache
-    # the water template ONCE globally, which requires a fixed geometry — so the pose
-    # is pinned to zero. The agent never sees pixel positions in that mode, so fixing
-    # the pose costs no exploitable information. When the image IS in the obs, the
-    # pose is randomised as usual and the template is rebuilt each reset.
-    if _e2_cache_globally(env)
-        rz = tx = ty = 0.0
-    else
-        rz = env.rotation_sigma_rad * randn(rng_ep)
-        tx = env.translation_sigma_mm * randn(rng_ep)
-        ty = env.translation_sigma_mm * randn(rng_ep)
-    end
-    rx = ry = 0.0
-    tz = 0.0
-
-    episode_rotation = (rx, ry, rz)
-    episode_translation_m = (tx, ty, tz) .* 1e-3
-    phantom_cfg = PhantomConfig(
-        field = env.cfg_field,
-        voxel_size_mm = env.voxel_size_mm,
-        water_voxel_size_mm = env.water_voxel_size_mm,
-        include_plates = env.include_water ? [:water] : Symbol[],
-        rotation = episode_rotation,
-        translation_mm = (tx, ty, tz),
-        augment = AugmentConfig(B0_sigma_Hz = 5.0),
-        rng_seed = rng_seed,
-        custom_sphere_descriptors = active_descs,
-        slice_thickness_mm = env.voxel_size_mm,
-        slice_center_mm = (0.0, 0.0, PLATE_Z_MM.T1),
-    )
+    episode_rotation      = episode.truth.rotation
+    episode_translation_m = episode.truth.translation_mm .* 1e-3
+    phantom_cfg           = episode.cfg
 
     # :bloch → simulate spheres+water together. :cached_perline → simulate only the
     # spheres (dry, keeping B0σ) and add the cached water k-space; split the same cfg

@@ -200,15 +200,28 @@ The isolated test \texttt{koma\_bug\_isolate.jl} backed this up by asking
 whether the same 1 ms RF pulse is converted into the same time points at
 different absolute times:
 
-\begin{verbatim}
-t0 [s]   nraw  nunique   eps(t0)
-0.0       24      23     5.0e-324
-3.0       24      23     4.44e-16
-67.0      24      23     1.42e-14
-99.0      24      23     1.42e-14
-200.0     26      21     2.84e-14
-1000.0    26      21     1.14e-13
-\end{verbatim}
+\begin{wraptable}[7]{l}{0.38\textwidth}
+\vspace{-\baselineskip}
+\begingroup
+\small
+\setlength{\tabcolsep}{4pt}
+\setlength{\columnsep}{10pt}
+\centering
+\begin{tabular}{rrrr}
+\toprule
+$t_0$ [s] & \texttt{nraw} & \texttt{nunique} & $\mathrm{eps}(t_0)$ \\
+\midrule
+0.0    & 24 & 23 & $5.0{\times}10^{-324}$ \\
+3.0    & 24 & 23 & $4.44{\times}10^{-16}$ \\
+67.0   & 24 & 23 & $1.42{\times}10^{-14}$ \\
+99.0   & 24 & 23 & $1.42{\times}10^{-14}$ \\
+200.0  & 26 & 21 & $2.84{\times}10^{-14}$ \\
+1000.0 & 26 & 21 & $1.14{\times}10^{-13}$ \\
+\bottomrule
+\end{tabular}
+\endgroup
+\vspace{-0.5\baselineskip}
+\end{wraptable}
 
 The table shows the collapse directly: early pulses retain 23 unique time
 points, but at $t_0=200$ s this falls to 21 as
@@ -312,31 +325,30 @@ recovery points lie on monoexponential curves, and the fitted $T_1$ values
 return to the diagonal. Mean MAPE falls from 39.4\% to 0.48\%, with a maximum
 sphere error of 1.21\%.
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.95\linewidth]{imgs/komaMRI/fixed_pixel_grid_overlay.png}
-\caption{Reconstructed images after both fixes. The spheres remain
+\begin{center}
+\includegraphics[width=0.82\linewidth]{imgs/komaMRI/fixed_pixel_grid_overlay.png}
+\captionof{figure}{Reconstructed images after both fixes. The spheres remain
 well-localised across the full phase-encode direction. The time-dependent
 streaking in Figure~\ref{fig:komamri-buggy-pixel-grid} is removed.}
 \label{fig:komamri-fixed-pixel-grid}
-\end{figure}
+\end{center}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.72\linewidth]{imgs/komaMRI/fixed_t1_fit_vs_true.png}
-\caption{Noise-free $T_1$ recovery after both fixes. Mean MAPE decreases from
+\begin{center}
+\includegraphics[width=0.62\linewidth]{imgs/komaMRI/fixed_t1_fit_vs_true.png}
+\captionof{figure}{Noise-free $T_1$ recovery after both fixes. Mean MAPE decreases from
 39.4\% to 0.48\%, and all spheres are within 1.21\% of their true value. This
 is the expected accuracy for the noise-free validation case.}
 \label{fig:komamri-fixed-t1-fit}
-\end{figure}
+\end{center}
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.9\linewidth]{imgs/komaMRI/fixed_recovery_curves_koma.png}
-\caption{Recovery curves after both fixes. The simulated samples now lie on the
+\begin{center}
+\includegraphics[width=0.68\linewidth]{imgs/komaMRI/fixed_recovery_curves_koma.png}
+\captionof{figure}{Recovery curves after both fixes. The simulated samples now lie on the
 fitted inversion-recovery curves.}
 \label{fig:komamri-fixed-recovery-curves}
-\end{figure}
+\end{center}
+
+\FloatBarrier
 
 \section{Evaluation of the fixes}
 \label{sec:komamri-fix-evaluation}
@@ -344,10 +356,17 @@ fitted inversion-recovery curves.}
 The fixes were evaluated at multiple levels, from isolated timing behaviour to
 the full qMRI validation task.
 
-\begin{table}[t]
-\centering
+\begin{center}
+\begingroup
 \small
-\begin{tabularx}{\linewidth}{p{0.18\linewidth}p{0.25\linewidth}X X}
+\setstretch{1}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\linewidth}{%
+  >{\raggedright\arraybackslash}p{0.17\linewidth}
+  >{\raggedright\arraybackslash}p{0.25\linewidth}
+  >{\raggedright\arraybackslash}X
+  >{\raggedright\arraybackslash}X}
 \toprule
 Level & Test & Before fix & After fix \\
 \midrule
@@ -366,9 +385,10 @@ Regression safety & KomaMRI test suite & New timing tests fail on unfixed code &
 Passes after both fixes \\
 \bottomrule
 \end{tabularx}
-\caption{Summary of KomaMRI timing-fix validation.}
+\captionof{table}{Summary of KomaMRI timing-fix validation.}
 \label{tab:komamri-fix-evaluation}
-\end{table}
+\endgroup
+\end{center}
 
 The minimal reproducers show that the specific floating-point failures were
 removed, while the phantom validation shows that the corrected simulator
