@@ -405,6 +405,9 @@ def main():
                    help="Phase-encode steps (image height) AND the per-block shot "
                         "count: block scan-time = Npe·TR. Threaded into the CR "
                         "solver so its budget/Fisher use the same Npe as the env.")
+    p.add_argument("--use-gpu", action="store_true",
+                   help="Run KomaMRI's Bloch simulation on the GPU "
+                        "(requires a CUDA-enabled Julia runtime/project).")
     p.add_argument("--fix-te", action="store_true",
                    help="Match the RL action mode: pin TE=20ms (TI,TR[,α] only). "
                         "Required for an apples-to-apples comparison with a "
@@ -494,6 +497,8 @@ def main():
             env_kwargs["translation_sigma_mm"] = args.translation_sigma_mm
         if args.rotation_sigma_rad is not None:
             env_kwargs["rotation_sigma_rad"] = args.rotation_sigma_rad
+        if args.use_gpu:
+            env_kwargs["use_gpu"] = True
         print(f"[baseline_e2] env config loaded from "
               f"{args.match_run}/run_config.json")
     else:
@@ -501,6 +506,7 @@ def main():
             cfg_field=args.field,
             Nfe=args.nfe,
             Npe=args.npe,
+            use_gpu=args.use_gpu,
             max_blocks=args.max_blocks,
             time_budget_s=args.time_budget,
             subset_size=args.subset_size,

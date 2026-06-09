@@ -28,6 +28,18 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+def _stage0_wall_origin(entries: list[dict]) -> float:
+    """Wallclock origin for MF histories.
+
+    train_e2_mf.py records `wall_s` as absolute Unix epoch seconds. Older
+    histories do not emit a stage_start row for stage 0, so the stage-0 start is
+    represented by the earliest timestamp in the file. If future histories add
+    an explicit stage-0 start event, it will also be the earliest timestamp.
+    """
+    walls = [float(e["wall_s"]) for e in entries if "wall_s" in e]
+    return min(walls) if walls else 0.0
+
+
 def _load_curve(run_dir: Path):
     """Return (wall_rel, mape_full, switches) for a run.
 
@@ -38,8 +50,7 @@ def _load_curve(run_dir: Path):
     fh = run_dir / "fidelity_history.json"
     if fh.exists():
         entries = json.loads(fh.read_text())
-        walls = [e["wall_s"] for e in entries if "wall_s" in e]
-        t0 = min(walls) if walls else 0.0
+        t0 = _stage0_wall_origin(entries)
         xs, ys, switches = [], [], []
         for e in entries:
             w = e.get("wall_s", t0) - t0
