@@ -1,0 +1,17 @@
+/home/arthur/y3/icr/.venv/lib/python3.10/site-packages/juliacall/__init__.py:61: UserWarning: torch was imported before juliacall. This may cause a segfault. To avoid this, import juliacall before importing torch. For updates, see https://github.com/pytorch/pytorch/issues/78829.
+  warnings.warn(
+[diagnose] Collecting 24 rollouts from runs/e2/mf_v2_runA_cpu_9h/stage0_analytic/policy.zip …
+[diagnose] SNR report unavailable (AttributeError): Julia: type ImageSNRReport has no field background_std!
+[diagnose] Episodes saved to runs/e2/mf_v2_runA_cpu_9h/stage0_analytic/diagnostics/episodes.json
+[diagnose] Plotting …
+[diagnose] Done. Plots and summary in runs/e2/mf_v2_runA_cpu_9h/stage0_analytic/diagnostics
+  ep_len_mean             = 9.38
+  final MAPE              = 15.89%
+  TI intra-episode log-σ  = 0.333
+  TI inter-episode log-σ  = 0.340
+  Modal-bin share         = 11.1%  (range 0.018-0.019s)
+  log–log Pearson r (T1_est_at_decision) = +0.679  (N=201)
+  log–log Pearson r (T1_est_min_at_decision) = -0.525  (N=201)
+  log–log Pearson r (T1_est_unc_at_decision) = +0.331  (N=177)
+
+  → Spread across TI bins; could be genuinely adaptive — check ti_vs_t1est.png correlation.

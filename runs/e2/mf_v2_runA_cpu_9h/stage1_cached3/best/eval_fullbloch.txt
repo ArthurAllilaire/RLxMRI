@@ -1,0 +1,63 @@
+/home/arthur/y3/icr/.venv/lib/python3.10/site-packages/juliacall/__init__.py:61: UserWarning: torch was imported before juliacall. This may cause a segfault. To avoid this, import juliacall before importing torch. For updates, see https://github.com/pytorch/pytorch/issues/78829.
+  warnings.warn(
+============================================================
+E2 Evaluation — policy: runs/e2/mf_v2_runA_cpu_9h/stage1_cached3/best/best_policy.zip
+============================================================
+
+Evaluating PPO agent on 24 held-out configs …
+  MAPE        = 8.36%
+  p90 MAPE    = 9.96%
+  Success<5%  = 4.2%
+  Mean time   = 230.6s
+
+  Per-active-slot MAPE [%]:
+    Slot  1: 42.23%
+    Slot  2: 14.52%
+    Slot  3: 10.31%
+    Slot  4: 7.74%
+    Slot  5: 7.74%
+    Slot  6: 5.97%
+    Slot  7: 3.97%
+    Slot  8: 3.59%
+    Slot  9: 2.65%
+    Slot 10: 1.93%
+    Slot 11: 2.43%
+    Slot 12: 2.87%
+    Slot 13: 3.91%
+    Slot 14: 7.23%
+
+  Per-pool-index MAPE [%] (T1_ARRAY index 1..14):
+    Pool  1:   42.23%   (n_eps = 24)
+    Pool  2:   14.52%   (n_eps = 24)
+    Pool  3:   10.31%   (n_eps = 24)
+    Pool  4:    7.74%   (n_eps = 24)
+    Pool  5:    7.74%   (n_eps = 24)
+    Pool  6:    5.97%   (n_eps = 24)
+    Pool  7:    3.97%   (n_eps = 24)
+    Pool  8:    3.59%   (n_eps = 24)
+    Pool  9:    2.65%   (n_eps = 24)
+    Pool 10:    1.93%   (n_eps = 24)
+    Pool 11:    2.43%   (n_eps = 24)
+    Pool 12:    2.87%   (n_eps = 24)
+    Pool 13:    3.91%   (n_eps = 24)
+    Pool 14:    7.23%   (n_eps = 24)
+
+  TI histogram (log10 s): mean=0.254  std=0.204
+    [0.195-0.227s]: █
+    [0.227-0.265s]: ███
+    [0.265-0.308s]: ██████████████████████████████
+    [0.308-0.359s]: ██████
+    [0.359-0.418s]: ██████
+    [0.418-0.486s]: ████████
+    [0.486-0.566s]: ██████████
+    [0.566-0.659s]: ████████████████
+    [0.659-0.768s]: ████████████████
+    [0.768-0.894s]: ██████████████
+
+Evaluating fixed-TI grid baseline on same configs …
+  MAPE        = 100.00%
+  p90 MAPE    = 100.00%
+
+  Agent  MAPE = 8.36%  (baseline = 100.00%, speedup factor = 12.0×)
+
+Summary saved to runs/e2/mf_v2_runA_cpu_9h/stage1_cached3/best/eval_summary.json

@@ -1,0 +1,53 @@
+{
+  "label": "npe32fe64_v1p0",
+  "alphas_deg": [
+    90.0,
+    30.0,
+    17.0,
+    5.0
+  ],
+  "FOV_m": 0.2,
+  "timing_s": {
+    "rescale": 5.4683e-5,
+    "full": 4.468804226,
+    "bank_build": 152.74317941,
+    "cached": 0.559626586,
+    "per_step_speedup": 7.985332251531022
+  },
+  "B0_spheres_Hz": 5.0,
+  "n_spins": {
+    "water": 37822,
+    "dry": 4816
+  },
+  "n_grid": 36,
+  "water_variants": [
+    "water5",
+    "water0",
+    "water_cached"
+  ],
+  "TE_s": 0.02,
+  "voxel_size_mm": 1.0,
+  "grid_step_deg": 5.0,
+  "ground_truth": "koma_water0",
+  "B0_water_Hz": 0.0,
+  "field": "T15",
+  "Nfe": 64,
+  "Npe": 32,
+  "img_variants": [
+    "koma_water5",
+    "koma_water0",
+    "cached"
+  ],
+  "TIs_s": [
+    0.05,
+    0.1,
+    0.2,
+    0.4,
+    0.7,
+    1.1,
+    1.6,
+    2.2
+  ],
+  "TR_s": 5.0
+}
+

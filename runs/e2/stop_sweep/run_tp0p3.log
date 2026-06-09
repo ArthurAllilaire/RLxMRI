@@ -1,0 +1,9 @@
+
+==============================================================================
+LEVEL 2 — SHORT PPO SCREEN (200000 steps/config, γ∈[0.99])
+==============================================================================
+  delta_log_mape|λ=0.3|α=1|σ=1|stop=1|T=240|γ=0.99 finalMAPE=0.0783 meanTR=0.74 time=237.1 nblk=10.0
+    ↳ saved policy + vecnorm → runs/e2/stop_sweep/models/delta_log_mape_lam0p3_a1_sig1_stop1_T240_g0p99
+
+[csv] wrote runs/e2/stop_sweep/results.csv (1 rows)
+[plot] wrote runs/e2/stop_sweep/stop_sweep.png

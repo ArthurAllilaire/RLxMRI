@@ -1,0 +1,12 @@
+{
+  "voxel_size_mm": 1.0,
+  "FOV_m": 0.2,
+  "TI_s": 3.0,
+  "water": false,
+  "n_spins": 24304,
+  "TE_s": 0.02,
+  "Nfe": 129,
+  "Npe": 33,
+  "TR_s": 4.0
+}
+

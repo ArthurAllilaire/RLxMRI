@@ -1,0 +1,23 @@
+[cache] loaded 49 prior rows from runs/e2/reward_screen/results.csv (reuse unless --force)
+[probe] skipped (--skip-probe)
+
+==============================================================================
+LEVEL 2 — SHORT PPO SCREEN (30000 steps/config, γ∈[0.99])
+==============================================================================
+  delta_log_mape|λ=0|α=1|γ=0.99            [cached] finalMAPE=0.8303
+  delta_log_mape|λ=0|α=0.75|γ=0.99         finalMAPE=0.9148 meanTR=0.50 time=112.0 nblk=7.0
+  delta_log_mape|λ=0|α=0.5|γ=0.99          finalMAPE=0.9416 meanTR=0.50 time=112.0 nblk=7.0
+  delta_log_mape|λ=0|α=0.25|γ=0.99         finalMAPE=0.9707 meanTR=0.50 time=112.0 nblk=7.0
+  delta_mape|λ=0|α=1|γ=0.99                [cached] finalMAPE=0.8391
+  delta_mape|λ=0|α=0.5|γ=0.99              [cached] finalMAPE=0.8664
+  terminal_only|λ=0|α=1|γ=0.99             [cached] finalMAPE=0.8959
+  terminal_only|λ=0|α=0.5|γ=0.99           finalMAPE=0.9183 meanTR=0.51 time=110.1 nblk=6.8
+  neg_mape|λ=0|α=1|γ=0.99                  [cached] finalMAPE=1.0000
+[plot] wrote runs/e2/reward_screen/pareto.png
+
+[csv] wrote runs/e2/reward_screen/results.csv (53 rows)
+
+==============================================================================
+SUMMARY
+==============================================================================
+  No reward config ranked a high-TR/dawdling/degenerate policy on top, and return tracked final MAPE in every config.

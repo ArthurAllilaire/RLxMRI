@@ -1,0 +1,14 @@
+{
+  "FOV_m": 0.2,
+  "n_spins_total": 24304,
+  "dy_pe_m": 0.00625,
+  "n_spins_in_slice": 4816,
+  "voxel_size_mm": 1.0,
+  "z_plate_m": 0.0565,
+  "Nfe": 64,
+  "Npe": 32,
+  "plate": "T1",
+  "dx_fe_m": 0.003125,
+  "slice_half_m": 0.0005
+}
+

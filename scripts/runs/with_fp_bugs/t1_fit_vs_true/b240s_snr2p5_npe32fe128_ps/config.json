@@ -1,0 +1,26 @@
+{
+  "manual": false,
+  "budget_s": 240.0,
+  "TRs_s": [
+    0.8162,
+    1.2586,
+    0.6331,
+    4.7717
+  ],
+  "target_snr": 2.5,
+  "unlimited": false,
+  "n_blocks": 4,
+  "noise_sigma_abs": 13.093882751464843,
+  "phase_sensitive": true,
+  "Npe": 32,
+  "Nfe": 128,
+  "scan_time_s": 239.3,
+  "TIs_s": [
+    0.0358,
+    0.148,
+    0.031,
+    0.5866
+  ],
+  "clean_recon": false
+}
+

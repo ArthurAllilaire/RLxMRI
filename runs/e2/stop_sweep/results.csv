@@ -1,0 +1,2 @@
+level,config,reward_mode,time_penalty,mape_alpha,gamma,allow_stop,include_sigma,time_budget,policy,mean_return,final_mape,mean_tr,total_time,n_blocks,mape_spread,action_repeat
+ppo,delta_log_mape|λ=0.1|α=1|σ=1|stop=1|T=240|γ=0.99,delta_log_mape,0.1,1.0,0.99,1,1,240.0,ppo_agent,0.9376024190823825,0.09674473400159,0.7105225348327722,236.01453952325716,10.5,0.35709000225410814,nan

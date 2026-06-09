@@ -1,0 +1,53 @@
+[
+  {
+    "git_commit": "8244dbb994ba984d8462ba9bd3eeba6b35ad09a8",
+    "git_dirty": true,
+    "date": "2026-05-26",
+    "timestamp": "2026-05-26T13:59:43+01:00",
+    "args": {
+      "timesteps": 300000,
+      "n_envs": 1,
+      "nthreads": 1,
+      "eval_episodes": 30,
+      "eval_interval": 10000,
+      "warmup": 2,
+      "steps": 4,
+      "seed": 0,
+      "out": "runs/bench/bench_results.json",
+      "field": "T15",
+      "max_blocks": 30,
+      "time_budget": 160.0,
+      "subset_size": null,
+      "noise": 50.0,
+      "Nfe": 64,
+      "Npe": 32,
+      "voxel_mm": 2.0,
+      "use_gpu": false,
+      "reward_mode": "neg_mape",
+      "log_ti_action": false,
+      "simplified_action": false,
+      "fix_te": true,
+      "learn_alpha": true,
+      "terminal_bonus": 0.5,
+      "mape_alpha": 1.0,
+      "phase_sensitive": false,
+      "sigma_method": "bootstrap",
+      "include_image": false,
+      "include_sigma": false,
+      "include_water": true
+    },
+    "metrics": {
+      "n_spins": 5383,
+      "mean_step_s": 0.3071856637502606,
+      "median_step_s": 0.29840928300018277,
+      "p90_step_s": 0.6210854116001429,
+      "mean_sim_s": 0.6143713275005211,
+      "mean_ep_len": 2.0,
+      "n_no_sim": 2,
+      "eff_step_s": 0.3071856637502606,
+      "rollout_s": 92155.69912507817,
+      "eval_s": 552.934194750469,
+      "total_s": 92708.63331982864
+    }
+  }
+]

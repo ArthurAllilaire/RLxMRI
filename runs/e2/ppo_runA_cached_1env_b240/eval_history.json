@@ -1,0 +1,9 @@
+[
+  {
+    "step": 10000,
+    "mape_pct": 100.0,
+    "p90_pct": 100.0,
+    "success_rate": 0.0,
+    "mean_time_s": 160.0
+  }
+]

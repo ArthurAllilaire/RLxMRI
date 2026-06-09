@@ -1,0 +1,63 @@
+/home/arthur/y3/icr/.venv/lib/python3.10/site-packages/juliacall/__init__.py:61: UserWarning: torch was imported before juliacall. This may cause a segfault. To avoid this, import juliacall before importing torch. For updates, see https://github.com/pytorch/pytorch/issues/78829.
+  warnings.warn(
+============================================================
+E2 Evaluation — policy: runs/e2/ppo_runA_deltamape/best/best_policy.zip
+============================================================
+
+Evaluating PPO agent on 20 held-out configs …
+  MAPE        = 10.90%
+  p90 MAPE    = 13.37%
+  Success<5%  = 0.0%
+  Mean time   = 230.5s
+
+  Per-active-slot MAPE [%]:
+    Slot  1: 23.87%
+    Slot  2: 10.11%
+    Slot  3: 12.91%
+    Slot  4: 10.12%
+    Slot  5: 8.15%
+    Slot  6: 7.72%
+    Slot  7: 5.78%
+    Slot  8: 6.29%
+    Slot  9: 4.59%
+    Slot 10: 4.04%
+    Slot 11: 5.48%
+    Slot 12: 9.63%
+    Slot 13: 29.99%
+    Slot 14: 13.86%
+
+  Per-pool-index MAPE [%] (T1_ARRAY index 1..14):
+    Pool  1:   23.87%   (n_eps = 20)
+    Pool  2:   10.11%   (n_eps = 20)
+    Pool  3:   12.91%   (n_eps = 20)
+    Pool  4:   10.12%   (n_eps = 20)
+    Pool  5:    8.15%   (n_eps = 20)
+    Pool  6:    7.72%   (n_eps = 20)
+    Pool  7:    5.78%   (n_eps = 20)
+    Pool  8:    6.29%   (n_eps = 20)
+    Pool  9:    4.59%   (n_eps = 20)
+    Pool 10:    4.04%   (n_eps = 20)
+    Pool 11:    5.48%   (n_eps = 20)
+    Pool 12:    9.63%   (n_eps = 20)
+    Pool 13:   29.99%   (n_eps = 20)
+    Pool 14:   13.86%   (n_eps = 20)
+
+  TI histogram (log10 s): mean=0.278  std=0.264
+    [0.135-0.165s]: █████████████████████████
+    [0.165-0.202s]: █
+    [0.202-0.246s]: █
+    [0.246-0.300s]: ██████████████████████
+    [0.300-0.367s]: █
+    [0.367-0.448s]: ████
+    [0.448-0.546s]: █████████
+    [0.546-0.667s]: ██████████
+    [0.667-0.814s]: ██████████████████████████████
+    [0.814-0.993s]: ████████████
+
+Evaluating fixed-TI grid baseline on same configs …
+  MAPE        = 100.00%
+  p90 MAPE    = 100.00%
+
+  Agent  MAPE = 10.90%  (baseline = 100.00%, speedup factor = 9.2×)
+
+Summary saved to runs/e2/ppo_runA_deltamape/best/eval_summary.json

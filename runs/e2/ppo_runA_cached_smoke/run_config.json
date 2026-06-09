@@ -1,0 +1,36 @@
+{
+  "env_kwargs": {
+    "cfg_field": "T15",
+    "Nfe": 64,
+    "Npe": 32,
+    "voxel_size_mm": 1.0,
+    "use_gpu": false,
+    "max_blocks": 15,
+    "time_budget_s": 120.0,
+    "subset_size": null,
+    "noise_sigma_abs": 50.0,
+    "reward_mode": "neg_mape",
+    "simplified_action": false,
+    "fix_te": true,
+    "learn_alpha": true,
+    "log_ti_action": false,
+    "terminal_bonus": 0.5,
+    "mape_alpha": 1.0,
+    "phase_sensitive": false,
+    "sigma_method": "bootstrap",
+    "include_image": false,
+    "include_sigma": false,
+    "include_water": true,
+    "water_model": "cached_perline"
+  },
+  "train": {
+    "timesteps": 5000,
+    "n_envs": 2,
+    "n_steps": 512,
+    "batch_size": 64,
+    "train_seed": 0,
+    "eval_seed": 500000,
+    "eval_episodes": 5,
+    "eval_interval": 2500
+  }
+}

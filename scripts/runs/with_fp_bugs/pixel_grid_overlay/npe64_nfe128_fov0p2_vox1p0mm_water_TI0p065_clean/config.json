@@ -1,0 +1,23 @@
+{
+  "FOV_m": 0.2,
+  "image": {
+    "img_npe": 64,
+    "TI_s": 0.065,
+    "img_nfe": 128,
+    "TE_s": 0.02,
+    "clean": true,
+    "rendered": true,
+    "TR_s": 5.0
+  },
+  "n_spins_total": 42638,
+  "dy_pe_m": 0.003125,
+  "n_spins_in_slice": 42638,
+  "voxel_size_mm": 1.0,
+  "z_plate_m": 0.0565,
+  "Nfe": 128,
+  "Npe": 64,
+  "plate": "T1",
+  "dx_fe_m": 0.0015625,
+  "slice_half_m": 0.0005005
+}
+
