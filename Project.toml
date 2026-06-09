@@ -1,5 +1,6 @@
 [deps]
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 KomaMRI = "6a340f8b-2cdf-4c04-99be-4953d9b66d0a"

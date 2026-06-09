@@ -120,7 +120,10 @@ class QalibreMDE2Env(gym.Env):
         # "asymptotic" | "profile_likelihood" | "bootstrap"
         sigma_method: str = "bootstrap",
         subset_size: Optional[int] = None,
+        forced_sphere_indices: Optional[list[int]] = None,
         log_ti_action: bool = False,
+        t1_sampler: str = "lognormal",
+        pose_mode: str = "auto",
         # D2 diagnostic (EXPERT_REPORT_TRAC §17): narrows the fitter's T1
         # grid to a log-band of ±oracle_band around T1_true per sphere.
         oracle_fit: bool = False,
@@ -134,6 +137,7 @@ class QalibreMDE2Env(gym.Env):
         # include_sigma to append the per-sphere fitter-σ channel (n_spheres).
         include_image: bool = False,
         include_sigma: bool = False,
+        roi_radius: int = 0,
         include_water: bool = True,
         water_voxel_size_mm: Optional[float] = None,
         # Background-water simulation model (src/water_cache.jl):
@@ -188,8 +192,14 @@ class QalibreMDE2Env(gym.Env):
             success_tol=float(success_tol),
             noise_sigma_abs=float(noise_sigma_abs),
             T1_sigma_rel=float(T1_sigma_rel),
+            t1_sampler=jl.Symbol(t1_sampler),
+            forced_sphere_indices=(
+                [] if forced_sphere_indices is None
+                else [int(i) for i in forced_sphere_indices]
+            ),
             translation_sigma_mm=float(translation_sigma_mm),
             rotation_sigma_rad=float(rotation_sigma_rad),
+            pose_mode=jl.Symbol(pose_mode),
             reward_mode=jl.Symbol(reward_mode),
             mape_alpha=float(mape_alpha),
             phase_sensitive=bool(phase_sensitive),
@@ -199,6 +209,7 @@ class QalibreMDE2Env(gym.Env):
             fitter_n_grid=int(fitter_n_grid),
             include_image=bool(include_image),
             include_sigma=bool(include_sigma),
+            roi_radius=int(roi_radius),
             include_water=bool(include_water),
             water_model=jl.Symbol(water_model),
             forward_model=jl.Symbol(forward_model),

@@ -632,10 +632,12 @@ matching human-readable logs, rerun eval_e2 with stdout redirected to fresh
       `best_meta.json`. Four-episode switch/stage probes only screen candidates;
       an independent confirmation eval (`--mf-global-best-episodes`, default 12)
       must beat the previous confirmed best before the checkpoint is overwritten.
-- [ ] **5-sphere adaptivity run.** Reduce 14 → 5 spheres so the task genuinely
-      rewards adaptivity (the current 14-sphere policy sacrifices the long-T1
-      sphere to 40% error). Keep phantom positions fixed so the water cache is
-      reusable (§4.2).
+- [ ] **5-sphere adaptivity run.** Reduce 14 → 5 active spheres so the task
+      genuinely rewards adaptivity (the current 14-sphere policy sacrifices the
+      long-T1 sphere to 40% error). Keep the active sphere labels/positions fixed,
+      but sample their T1 values continuously across the phantom T1 range each
+      episode. This makes the task easier than arbitrary 14-pool mapping but
+      harder to memorise than a fixed five-value phantom.
 - [ ] **Confidence vs no-confidence ablation** on the 5 spheres — does passing the
       fitter uncertainty into the observation improve accuracy? Natural follow-up:
       *which* confidence estimate (and where does it come from — needs the fitter
@@ -646,7 +648,7 @@ matching human-readable logs, rerun eval_e2 with stdout redirected to fresh
       fidelity to the probe's (1 mm). Test whether `cached3` + short `full` polish
       beats the 4-stage ladder.
 
-### Run B plan — water-resolution ladder with fixed geometry
+### Run B plan — water-resolution ladder with fixed five-sphere identities
 
 **Goal.** Separate "cheap stage found the right policy" from "coarse-water bias
 destroyed it" by making the fidelity ladder smoother:
@@ -662,30 +664,46 @@ before paying for full Bloch, we ask whether the policy can transfer from cheap
 coarse cached water to cheap target-resolution cached water. If `full3` is still
 harmful, the new global-best checkpoint protects the best cached policy.
 
-**Geometry constraint.** Cached water is keyed on spin positions. For this ladder
-to mean anything, the sphere subset and pose must stay fixed across the cached
-and full stages; otherwise changes in MAPE confound water fidelity with geometry.
-Current behaviour:
+**Five-sphere task definition.** The agent observes fitted T1 estimates and
+budget state, not image pixels. Therefore the scientific point of this run is
+not localisation generalisation; it is to make the adaptive sequence-design
+problem small enough that one shared block can help all active targets. The
+planned active sphere labels are:
 
-- `cached_perline` with T1-only observations already pins pose to `FixedPose()`
-  so a global water cache can be reused.
-- `full3`/`full` currently use the ordinary in-plane pose sampler, so they will
-  not necessarily match the cached-stage geometry.
-- Python `reset(..., forced_sphere_indices=...)` exists for eval, but training
-  does not yet expose a `--forced-sphere-indices` / `--fixed-pose` run-level flag.
-
-**Implementation gate before launch:** add an explicit fixed-geometry mode for
-training/eval, ideally:
-
-```bash
---fixed-pose
---forced-sphere-indices 1,2,3,4,5      # if doing the 5-sphere version
+```text
+1, 3, 6, 8, 14
 ```
 
-For the all-14 version, only `--fixed-pose` is needed because the active sphere
-set is already fixed. For the 5-sphere adaptivity version, either force a chosen
-5-sphere subset or deliberately sample subsets but rebuild the water cache per
-episode; the latter is cleaner scientifically but loses the global-cache speedup.
+These labels cover the long, mid and short ends of the T1 plate while keeping the
+physical positions fixed. The material sampler is not the old nominal-value
+lognormal jitter. Instead, each active sphere samples T1 from a continuous linear
+uniform distribution over the field-specific phantom T1 range, with T2 and T2*
+preserving their nominal ratios to T1:
+
+```julia
+MaterialDistributionSampler(
+    T1  = Uniform(minimum(T1_ARRAY[field]), maximum(T1_ARRAY[field])),
+    T2  = PreserveNominalRatio(:T2, :T1),
+    T2s = PreserveNominalRatio(:T2s, :T1),
+)
+```
+
+This deliberately makes the task easier than the full 14-sphere problem: the
+policy only has to serve five ROIs and the physical layout is stable. The benefit
+is that adaptivity has a fairer chance to emerge, because the same action budget
+is no longer spread across fourteen heterogeneous targets. The risk is that the
+result is a controlled subtask, not a direct replacement for the 14-pool phantom
+headline; the report should label it as an adaptivity probe.
+
+**Pose / cache constraint.** Add only small in-plane jitter after slice selection:
+`translation_sigma_mm = 2.0`, `rotation_sigma_rad = 0.05`, with no out-of-plane
+tilt or z-translation. This guards against brittle centre-pixel / ROI extraction
+without turning the run into a localisation experiment. In cached-water stages
+with T1-only observations, the implementation still pins pose to zero so the
+global water cache is valid. In full-Bloch stages and full-Bloch probes,
+`--pose-mode inplane_jitter` applies the small jitter above. This is a fidelity
+compromise: cached stages optimise under fixed geometry, while target-fidelity
+checks include mild geometry variation.
 
 **Budget / switch parameters.** Keep the min-step gates much smaller than Run A
 because steps are not comparable across fidelities (`analytic` ≈0.03 s/step,
@@ -693,7 +711,7 @@ because steps are not comparable across fidelities (`analytic` ≈0.03 s/step,
 target progress per wallclock; hard min-steps should only prevent obviously noisy
 one-probe switches.
 
-Candidate 9 h command once fixed-geometry flags exist:
+Candidate 9 h command:
 
 ```bash
 PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
@@ -704,6 +722,10 @@ PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
   --reward-mode delta_log_mape --mape-alpha 1.0 \
   --fix-te --learn-alpha --log-ti-action \
   --n-envs 1 --field T15 --time-budget 240 --max-blocks 20 \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
   --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
   --mf-min-steps 4096,8192,8192,8192,0 \
   --mf-max-steps 20000,160000,160000,80000,300000 \
@@ -713,17 +735,41 @@ PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
   --mf-global-best-episodes 12 \
   --mf-use-lookahead --mf-lookahead-rollouts 1 \
   --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
-  --fixed-pose
+  2>&1 | tee runs/e2/mf_runB_cached3_cached_full3_full/run.log
 ```
 
-If this is run as a 5-sphere adaptivity experiment, add the forced subset once the
-flag exists. Candidate subsets:
+GPU variant to try the same run with KomaMRI GPU simulation enabled:
 
-- Long/mid coverage: pools `1,2,3,4,8` to force the policy to care about long T1.
-- Balanced log coverage: pools `1,3,5,8,12`.
-- Use 1-based pool labels in the Julia/report text; Python reset's existing
-  `forced_sphere_indices` argument is 0-based, so the CLI must be explicit about
-  indexing to avoid another off-by-one trap.
+```bash
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+  --out runs/e2/mf_runB_cached3_cached_full3_full_gpu \
+  --multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+  --reward-mode delta_log_mape --mape-alpha 1.0 \
+  --fix-te --learn-alpha --log-ti-action \
+  --n-envs 1 --field T15 --time-budget 240 --max-blocks 20 \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+  --mf-min-steps 4096,8192,8192,8192,0 \
+  --mf-max-steps 20000,160000,160000,80000,300000 \
+  --n-steps 512 --batch-size 64 \
+  --eval-interval 10000 --eval-episodes 8 \
+  --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+  --mf-global-best-episodes 12 \
+  --mf-use-lookahead --mf-lookahead-rollouts 1 \
+  --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+  2>&1 | tee runs/e2/mf_runB_cached3_cached_full3_full_gpu/run.log
+```
+
+The CLI `--forced-sphere-indices` uses 1-based pool labels, matching Julia and
+the report tables. The lower-level Python `reset(..., forced_sphere_indices=...)`
+path remains eval-only and historically used 0-based indices internally; do not
+mix the two conventions in report commands.
 
 **ROI=1 / clean recon branch.** I think `ROI=1` is worth testing before spending a
 full Run B budget. The current training hot path samples a single centre pixel
@@ -737,10 +783,16 @@ measurement extraction, not the k-space point-spread function.
 Suggested order:
 
 1. Add an env knob `roi_radius` and use `roi_mean(image_mag, ipe, ife; r=roi_radius)`
-   instead of the centre pixel in `_e2_sphere_signals`.
+   instead of the centre pixel in `_e2_sphere_signals`. Done.
 2. Run a cheap eval-only ablation on the existing final/cached-best policies with
-   `ROI=0` vs `ROI=1` if possible. If eval improves or long/mid pools stabilise,
-   train Run B with `--roi-radius 1`.
+   `ROI=0` vs `ROI=1` if possible. Rough 8-episode closed-loop check:
+   final policy `ROI=1` = **10.22%** [8.71, 11.77], p90 13.02; cached-best
+   `ROI=1` = **8.03%** [7.39, 8.64], p90 8.93. Compare only cautiously against
+   the 24-episode `ROI=0` references (final 11.68%, cached-best 9.44%), because
+   this is not a paired 24-episode ablation and ROI changes the fitted T1 state
+   seen by the policy. The useful signal is qualitative: ROI averaging did not
+   break the loop and appears to stabilise the mid-long pools, especially for the
+   cached-best checkpoint.
 3. Keep Hamming/zero-pad as a second ablation (`--clean-recon` or
    `--hamming-recon`) because it changes the effective image resolution and signal
    amplitude. If used, it should be applied consistently in training, baselines,
@@ -784,9 +836,18 @@ Suggested order:
   conventional protocol. The 5-sphere adaptive policy should sit better on this
   frontier than the all-14 policy.
 - **Joint T1/T2 estimation.** Add T2 plates and mix T1/T2 readings.
-- **Expanded action space / multiple DoF.** Let the agent choose the *sequence
-  family* (spin echo vs turbo spin echo vs gradient echo), not just timings — this
-  would require keying the water cache on shot type as well.
+- **Expanded action space / sequence-family choice.** The present E2 action space
+  only tunes one IR-SE-style block (`TI, TR, α`, with TE fixed in Run A). A richer
+  adaptive protocol should let the agent choose the acquisition family at each
+  block — e.g. inversion-recovery spin echo, multi-spin-echo trains, turbo spin
+  echo, gradient echo / spoiled GRE — plus the relevant parameters for that
+  family (`TI`, `TE`, echo train length, echo spacing, `TR`, flip angle, etc.).
+  This is a larger and more realistic action space, and would test whether RL's
+  advantage comes from choosing *which contrast mechanism* to deploy, not merely
+  choosing timings inside one sequence family. It would require sequence-specific
+  forward models, fitting/state updates that can combine heterogeneous
+  measurements, and water-cache keys that include sequence family and echo train
+  structure.
 - **End-to-end (skip the fitter).** Let the policy regress T1 directly rather than
   through the LM fitter.
 

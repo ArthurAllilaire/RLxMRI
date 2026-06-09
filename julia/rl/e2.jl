@@ -87,14 +87,17 @@ mutable struct E2Env
                                             # false (default) == prior CPU behaviour.
     n_spheres::Int                         # active spheres per episode
     subset_size::Union{Nothing,Int}        # nothing = all spheres; k = random k-subset
+    forced_sphere_indices::Vector{Int}     # fixed 1-based T1-pool labels; empty = none
     max_blocks::Int
     time_budget_s::Float64
     terminal_bonus::Float64
     success_tol::Float64                   # MAPE threshold for terminal bonus
     noise_sigma_abs::Float64               # absolute complex-Gaussian σ on k-space
     T1_sigma_rel::Float64                  # per-sphere T1 jitter (relative)
+    t1_sampler::Symbol                     # :lognormal | :linear_uniform_range
     translation_sigma_mm::Float64          # pose translation σ per axis [mm]
     rotation_sigma_rad::Float64            # pose rotation σ per axis [rad]
+    pose_mode::Symbol                      # :auto | :fixed | :inplane_jitter
     T1_sample_range::NTuple{2,Float64}     # T1 search range for fitting [s]
     reward_mode::Symbol                    # :neg_mape | :delta_mape
     mape_alpha::Float64                    # MAPE aggregation: α·mean + (1−α)·max
@@ -129,6 +132,9 @@ mutable struct E2Env
                                             # the obs. Default false (E2_RERUN_PLAN §6.3):
                                             # the σ-uncertainty machinery was a red herring
                                             # of the pre-fix sim.
+    roi_radius::Int                        # square ROI half-width for per-sphere signal
+                                            # extraction from the reconstructed image.
+                                            # 0 = legacy centre pixel; 1 = 3×3 mean.
     include_water::Bool                    # include background-water spins in the phantom
                                             # slab. Default true. Set false to benchmark
                                             # sim cost without the water background, or for
@@ -234,8 +240,11 @@ function E2Env(;
     success_tol::Real              = 0.05,
     noise_sigma_abs::Real          = 50.0,    # σ* for NEMA dual-acq SNR ≈ 25 (E2_RERUN_PLAN §3.1)
     T1_sigma_rel::Real             = 0.05,
+    t1_sampler::Symbol             = :lognormal,
+    forced_sphere_indices = Int[],
     translation_sigma_mm::Real     = 5.0,
     rotation_sigma_rad::Real       = 0.15,   # ~8.6°
+    pose_mode::Symbol              = :auto,
     T1_sample_range::NTuple{2,<:Real} = (0.01, 3.0),
     reward_mode::Symbol            = :neg_mape,
     mape_alpha::Real               = 1.0,
@@ -248,6 +257,7 @@ function E2Env(;
     fitter_n_grid::Integer         = 200,
     include_image::Bool            = false,            # E2_RERUN_PLAN §6.2
     include_sigma::Bool            = false,            # E2_RERUN_PLAN §6.3
+    roi_radius::Integer             = 0,                # 0 = centre pixel; 1 = 3×3 mean
     include_water::Bool            = true,             # background-water spins on/off
     water_model::Symbol            = :bloch,           # :bloch | :cached_perline (water_cache.jl)
     forward_model::Symbol          = :bloch,           # :bloch | :analytic (fast surrogate)
@@ -265,12 +275,18 @@ function E2Env(;
         error("sigma_method must be :asymptotic, :profile_likelihood, or :bootstrap")
     water_model ∈ (:bloch, :cached_perline) ||
         error("water_model must be :bloch or :cached_perline")
+    t1_sampler ∈ (:lognormal, :linear_uniform_range) ||
+        error("t1_sampler must be :lognormal or :linear_uniform_range")
+    pose_mode ∈ (:auto, :fixed, :inplane_jitter) ||
+        error("pose_mode must be :auto, :fixed, or :inplane_jitter")
     (water_model === :bloch || include_water) ||
         error("water_model = :cached_perline requires include_water = true")
     water_voxel_size_mm === nothing || Float64(water_voxel_size_mm) > 0.0 ||
         error("water_voxel_size_mm must be > 0")
     0.0 <= Float64(mape_alpha) <= 1.0 ||
         error("mape_alpha must be in [0, 1]")
+    Int(roi_radius) >= 0 ||
+        error("roi_radius must be >= 0")
 
     # Base sphere info (no rotation/translation/jitter)
     base_cfg = PhantomConfig(field = cfg_field, include_plates = [:T1])
@@ -279,17 +295,27 @@ function E2Env(;
     subset_size !== nothing &&
         (1 <= Int(subset_size) <= n_pool ||
          error("subset_size must be between 1 and $n_pool, or nothing"))
-    n_spheres  = subset_size === nothing ? n_pool : Int(subset_size)
+    forced_indices = sort(unique(Int.(forced_sphere_indices)))
+    all(i -> 1 <= i <= n_pool, forced_indices) ||
+        error("forced_sphere_indices must be 1-based labels in 1:$n_pool")
+    subset_size !== nothing && length(forced_indices) > Int(subset_size) &&
+        error("forced_sphere_indices length cannot exceed subset_size")
+    n_spheres  = subset_size === nothing ?
+                 (isempty(forced_indices) ? n_pool : length(forced_indices)) :
+                 Int(subset_size)
 
     env = E2Env(
         cfg_field, Float64(voxel_size_mm),
         water_voxel_size_mm === nothing ? nothing : Float64(water_voxel_size_mm),
         Float64(FOV), Nfe, Npe, Bool(use_gpu),
         n_spheres, subset_size === nothing ? nothing : n_spheres,
+        forced_indices,
         Int(max_blocks), Float64(time_budget_s),
         Float64(terminal_bonus), Float64(success_tol),
         Float64(noise_sigma_abs), Float64(T1_sigma_rel),
+        t1_sampler,
         Float64(translation_sigma_mm), Float64(rotation_sigma_rad),
+        pose_mode,
         Float64.(T1_sample_range),
         reward_mode,
         Float64(mape_alpha),
@@ -300,6 +326,7 @@ function E2Env(;
         Int(fitter_n_grid),
         Bool(include_image),
         Bool(include_sigma),
+        Int(roi_radius),
         Bool(include_water),
         water_model,
         forward_model,
@@ -366,10 +393,14 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
         slice_center_mm     = (0.0, 0.0, PLATE_Z_MM.T1),
     )
 
+    active_forced = forced_indices !== nothing ? sort(Int.(forced_indices)) :
+                    env.forced_sphere_indices
+
     # Sphere selection: explicit forced set, all spheres, or a random k-subset.
-    selector = forced_indices !== nothing ?
-                   E2SphereSelector(subset_size = length(forced_indices),
-                                    forced_indices = sort(Int.(forced_indices))) :
+    selector = !isempty(active_forced) ?
+                   E2SphereSelector(subset_size = env.subset_size === nothing ?
+                                                  length(active_forced) : env.subset_size,
+                                    forced_indices = active_forced) :
                env.subset_size === nothing ? nothing :
                    E2SphereSelector(subset_size = env.subset_size)
 
@@ -382,14 +413,28 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
     # ONCE globally, which requires a fixed geometry — so the pose is pinned to
     # zero. The agent never sees pixel positions in that mode, so fixing the pose
     # costs no exploitable information.
-    pose = cache_globally ? FixedPose() :
-           InPlanePoseSampler(rotation_sigma_rad   = env.rotation_sigma_rad,
-                              translation_sigma_mm = env.translation_sigma_mm)
+    pose = if env.pose_mode === :fixed || cache_globally
+        FixedPose()
+    else
+        InPlanePoseSampler(rotation_sigma_rad   = env.rotation_sigma_rad,
+                           translation_sigma_mm = env.translation_sigma_mm)
+    end
+
+    material_sampler = if env.t1_sampler === :linear_uniform_range
+        vals = T1_ARRAY[env.cfg_field]
+        MaterialDistributionSampler(
+            T1  = Uniform(minimum(vals), maximum(vals)),
+            T2  = PreserveNominalRatio(:T2, :T1),
+            T2s = PreserveNominalRatio(:T2s, :T1),
+        )
+    else
+        RatioPreservingLogNormalT1(env.T1_sigma_rel)
+    end
 
     rpcfg = RandomPhantomConfig(
         base             = base,
         sphere_selector  = selector,
-        material_sampler = RatioPreservingLogNormalT1(env.T1_sigma_rel),
+        material_sampler = material_sampler,
         pose_sampler     = pose,
     )
     episode = sample_phantom_config(rpcfg; rng_seed = rng_seed)
@@ -526,10 +571,10 @@ end
     _e2_sphere_signals(env, TI, TE, TR, α_exc_deg) -> Vector{Float64}
 
 Per-sphere reconstructed magnitude for one block. Dispatches on `forward_model`:
-`:bloch` runs the full KomaMRI sim + 2D recon and samples the sphere-centre
-pixels (and caches the image in `last_image_mag`); `:analytic` synthesises the
-signal directly from `transient_mz_at_excite_npe` — the same closed form the
-fitter inverts — with no Koma call.
+`:bloch` runs the full KomaMRI sim + 2D recon and samples each sphere with
+`roi_mean(...; r=env.roi_radius)` (and caches the image in `last_image_mag`);
+`:analytic` synthesises the signal directly from `transient_mz_at_excite_npe` —
+the same closed form the fitter inverts — with no Koma call.
 """
 function _e2_sphere_signals(env::E2Env, TI::Real, TE::Real, TR::Real,
                             α_exc_deg::Real)
@@ -541,7 +586,7 @@ function _e2_sphere_signals(env::E2Env, TI::Real, TE::Real, TR::Real,
     sig = Vector{Float64}(undef, env.n_spheres)
     for i in 1:env.n_spheres
         ipe, ife = env.sphere_px[i]
-        sig[i] = Float64(image_mag[ipe, ife])
+        sig[i] = roi_mean(image_mag, ipe, ife; r = env.roi_radius)
     end
     sig
 end

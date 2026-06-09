@@ -15,6 +15,16 @@ import json
 from pathlib import Path
 
 
+def parse_int_csv(value) -> list[int] | None:
+    """Parse comma-separated 1-based pool labels. None/empty means unset."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)):
+        return [int(v) for v in value]
+    parts = [p.strip() for p in str(value).split(",") if p.strip()]
+    return [int(p) for p in parts] if parts else None
+
+
 def load_run_env_kwargs(run_dir) -> dict:
     """Load the saved QalibreMDE2Env constructor kwargs from a run's
     run_config.json. Supports both trainers: train_e2 writes them under
@@ -43,6 +53,10 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--subset-size", type=int, default=None,
                    help="Draw this many T1 spheres without replacement per "
                         "episode. Omit for the full 14-sphere plate.")
+    p.add_argument("--forced-sphere-indices", type=str, default=None,
+                   help="Comma-separated 1-based T1-pool labels that must be "
+                        "active every episode, e.g. 1,3,6,8,14. If the count "
+                        "equals --subset-size, positions are fixed.")
     p.add_argument("--noise", type=float, default=50.0,
                    help="Absolute complex-Gaussian σ on k-space (FIX_SIM_PLAN §2). "
                         "Default σ*=50 → NEMA dual-acq SNR ≈ 25 (E2_RERUN_PLAN §3.1).")
@@ -90,6 +104,23 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--log-ti-action", action="store_true",
                    help="Log-spaced TI action mapping (constant density per "
                         "decade). See EXPERT_REPORT_TRAC §9.2.")
+    p.add_argument("--t1-sampler", type=str, default="lognormal",
+                   choices=["lognormal", "linear_uniform_range"],
+                   help="Episode material sampler for active T1 spheres. "
+                        "lognormal keeps the nominal pool values with "
+                        "T1_sigma_rel jitter; linear_uniform_range samples "
+                        "continuous T1 uniformly between the field-specific "
+                        "phantom min/max and preserves T2/T1 ratio.")
+    p.add_argument("--pose-mode", type=str, default="auto",
+                   choices=["auto", "fixed", "inplane_jitter"],
+                   help="Episode pose sampler. auto preserves legacy behavior; "
+                        "fixed pins zero pose; inplane_jitter uses rz plus x/y "
+                        "translation except cached-water global-cache stages, "
+                        "which remain fixed-pose.")
+    p.add_argument("--translation-sigma-mm", type=float, default=5.0,
+                   help="In-plane x/y translation σ for pose jitter.")
+    p.add_argument("--rotation-sigma-rad", type=float, default=0.15,
+                   help="In-plane rz rotation σ for pose jitter.")
     p.add_argument("--simplified-action", action="store_true",
                    help="3-dim action [TI, TE, TR]; fixes α_exc=90°")
     p.add_argument("--fix-te", action="store_true",
@@ -118,6 +149,10 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--include-sigma", action="store_true",
                    help="Append the per-sphere fitter-σ channel to the "
                         "observation (E2_RERUN_PLAN §6.3). Default off.")
+    p.add_argument("--roi-radius", type=int, default=0,
+                   help="Square ROI half-width for per-sphere signal extraction "
+                        "from the reconstructed image. 0 = centre pixel; "
+                        "1 = 3x3 mean.")
     p.add_argument("--no-water", dest="include_water", action="store_false",
                    help="Build the phantom WITHOUT background-water spins "
                         "(spheres only). Default keeps water. Mainly a bench "
@@ -158,7 +193,12 @@ def e2_env_kwargs(args: argparse.Namespace) -> dict:
         max_blocks=args.max_blocks,
         time_budget_s=args.time_budget,
         subset_size=args.subset_size,
+        forced_sphere_indices=parse_int_csv(args.forced_sphere_indices),
         noise_sigma_abs=args.noise,
+        t1_sampler=args.t1_sampler,
+        translation_sigma_mm=args.translation_sigma_mm,
+        rotation_sigma_rad=args.rotation_sigma_rad,
+        pose_mode=args.pose_mode,
         reward_mode=args.reward_mode,
         time_penalty_coef=args.time_penalty,
         allow_stop=args.allow_stop,
@@ -174,6 +214,7 @@ def e2_env_kwargs(args: argparse.Namespace) -> dict:
         sigma_method=args.sigma_method,
         include_image=args.include_image,
         include_sigma=args.include_sigma,
+        roi_radius=args.roi_radius,
         include_water=args.include_water,
         water_model=args.water_model,
     )

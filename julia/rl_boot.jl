@@ -3,6 +3,7 @@
 # are in scope. Defines E1Env, E2Env and their step/reset functions.
 using Random, Statistics, LinearAlgebra
 using Suppressor
+using Distributions
 # KomaMRI is not re-exported by MRISystemPhantom, so bring its symbols
 # (simulate, Phantom, Scanner, …) into Main for the RL env step code below.
 using KomaMRI

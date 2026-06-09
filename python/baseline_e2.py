@@ -31,6 +31,7 @@ import numpy as np
 
 from qalibremd_gym.env_e2 import QalibreMDE2Env
 from qalibremd_gym.schedules import log_ti_grid
+from e2_config import parse_int_csv
 
 
 def _active_nominal_t1s(env: QalibreMDE2Env) -> list[float]:
@@ -383,6 +384,17 @@ def main():
     p.add_argument("--time-budget", type=float, default=120.0)
     p.add_argument("--subset-size", type=int, default=None,
                    help="Evaluate schedules on random k-sphere subsets.")
+    p.add_argument("--forced-sphere-indices", type=str, default=None,
+                   help="Comma-separated 1-based T1-pool labels active every "
+                        "episode, e.g. 1,3,6,8,14.")
+    p.add_argument("--t1-sampler", type=str, default=None,
+                   choices=["lognormal", "linear_uniform_range"],
+                   help="Override matched/default T1 material sampler.")
+    p.add_argument("--pose-mode", type=str, default=None,
+                   choices=["auto", "fixed", "inplane_jitter"],
+                   help="Override matched/default pose mode.")
+    p.add_argument("--translation-sigma-mm", type=float, default=None)
+    p.add_argument("--rotation-sigma-rad", type=float, default=None)
     p.add_argument("--noise", type=float, default=50.0,
                    help="Absolute complex-Gaussian σ on k-space (FIX_SIM_PLAN §2). "
                         "Default σ*=50 → NEMA dual-acq SNR ≈ 25 (E2_RERUN_PLAN §3.1).")
@@ -450,6 +462,10 @@ def main():
     p.add_argument("--include-sigma", action="store_true",
                    help="Append the per-sphere fitter-σ channel to the obs "
                         "(E2_RERUN_PLAN §6.3). Default off.")
+    p.add_argument("--roi-radius", type=int, default=0,
+                   help="Square ROI half-width for per-sphere signal extraction. "
+                        "0 = centre pixel; 1 = 3x3 mean. Can be overlaid on "
+                        "--match-run for eval-only ablations.")
     args = p.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
@@ -464,9 +480,20 @@ def main():
         # Overlay baseline-only diagnostic knobs (not in a training config), and
         # let an explicit --subset-size override (for oracle/subset evals).
         env_kwargs.update(oracle_fit=args.oracle_fit, oracle_band=args.oracle_band,
-                          fitter_n_grid=args.fitter_n_grid)
+                          fitter_n_grid=args.fitter_n_grid,
+                          roi_radius=args.roi_radius)
         if args.subset_size is not None:
             env_kwargs["subset_size"] = args.subset_size
+        if args.forced_sphere_indices is not None:
+            env_kwargs["forced_sphere_indices"] = parse_int_csv(args.forced_sphere_indices)
+        if args.t1_sampler is not None:
+            env_kwargs["t1_sampler"] = args.t1_sampler
+        if args.pose_mode is not None:
+            env_kwargs["pose_mode"] = args.pose_mode
+        if args.translation_sigma_mm is not None:
+            env_kwargs["translation_sigma_mm"] = args.translation_sigma_mm
+        if args.rotation_sigma_rad is not None:
+            env_kwargs["rotation_sigma_rad"] = args.rotation_sigma_rad
         print(f"[baseline_e2] env config loaded from "
               f"{args.match_run}/run_config.json")
     else:
@@ -477,6 +504,15 @@ def main():
             max_blocks=args.max_blocks,
             time_budget_s=args.time_budget,
             subset_size=args.subset_size,
+            forced_sphere_indices=parse_int_csv(args.forced_sphere_indices),
+            t1_sampler=args.t1_sampler or "lognormal",
+            pose_mode=args.pose_mode or "auto",
+            translation_sigma_mm=(
+                5.0 if args.translation_sigma_mm is None
+                else args.translation_sigma_mm),
+            rotation_sigma_rad=(
+                0.15 if args.rotation_sigma_rad is None
+                else args.rotation_sigma_rad),
             noise_sigma_abs=args.noise,
             phase_sensitive=args.phase_sensitive,
             sigma_method=args.sigma_method,
@@ -485,6 +521,7 @@ def main():
             fitter_n_grid=args.fitter_n_grid,
             include_image=args.include_image,
             include_sigma=args.include_sigma,
+            roi_radius=args.roi_radius,
             fix_te=args.fix_te,
             learn_alpha=args.learn_alpha,
             log_ti_action=args.log_ti_action,

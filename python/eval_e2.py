@@ -29,6 +29,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 from qalibremd_gym.env_e2 import QalibreMDE2Env
 from qalibremd_gym.schedules import log_ti_grid
 from baseline_e2 import _mape_uncertainty  # episode-level bootstrap CI/SEM
+from e2_config import parse_int_csv
 
 
 # ── Fixed-TI grid baseline ─────────────────────────────────────────────────
@@ -154,6 +155,17 @@ def main():
     p.add_argument("--subset-size", type=int, default=None,
                    help="Evaluate on random k-sphere subsets instead of the "
                         "full 14-sphere plate.")
+    p.add_argument("--forced-sphere-indices", type=str, default=None,
+                   help="Comma-separated 1-based T1-pool labels active every "
+                        "episode, e.g. 1,3,6,8,14.")
+    p.add_argument("--t1-sampler", type=str, default=None,
+                   choices=["lognormal", "linear_uniform_range"],
+                   help="Override run/default T1 material sampler.")
+    p.add_argument("--pose-mode", type=str, default=None,
+                   choices=["auto", "fixed", "inplane_jitter"],
+                   help="Override run/default pose mode.")
+    p.add_argument("--translation-sigma-mm", type=float, default=None)
+    p.add_argument("--rotation-sigma-rad", type=float, default=None)
     p.add_argument("--phase-sensitive", action="store_true")
     p.add_argument("--sigma-method", type=str, default="bootstrap",
                    choices=["asymptotic", "profile_likelihood", "bootstrap"])
@@ -189,6 +201,10 @@ def main():
     p.add_argument("--include-sigma", action="store_true",
                    help="Required if the policy was trained with --include-sigma "
                         "(obs appends the per-sphere fitter-σ channel).")
+    p.add_argument("--roi-radius", type=int, default=0,
+                   help="Square ROI half-width for per-sphere signal extraction. "
+                        "0 = centre pixel; 1 = 3x3 mean. Can be overlaid on "
+                        "--from-run for eval-only ablations.")
     p.add_argument("--water-model", type=str, default="bloch",
                    choices=["bloch", "cached_perline", "analytic"])
     p.add_argument("--noise-sigma-abs", type=float, default=50.0)
@@ -199,6 +215,13 @@ def main():
     p.add_argument("--use-gpu", action="store_true")
     p.add_argument("--nfe", type=int, default=None)
     p.add_argument("--npe", type=int, default=None)
+    p.add_argument("--summary-name", type=str, default=None,
+                   help="Output JSON filename in the policy directory. Defaults "
+                        "to eval_summary.json or eval_summary_oracle.json.")
+    p.add_argument("--skip-fixed-baseline", action="store_true",
+                   help="Only evaluate the agent policy. Useful for quick "
+                        "eval-only ablations where the fixed-grid baseline is "
+                        "unchanged or not needed.")
     args = p.parse_args()
 
     if args.from_run is not None:
@@ -212,13 +235,35 @@ def main():
             args.vecnorm = args.from_run / "vecnorm.pkl"
         # Diagnostic eval-only knobs aren't in the training config; overlay them.
         env_kwargs.update(oracle_fit=args.oracle_fit, oracle_band=args.oracle_band,
-                          fitter_n_grid=args.fitter_n_grid)
+                          fitter_n_grid=args.fitter_n_grid,
+                          roi_radius=args.roi_radius)
+        if args.subset_size is not None:
+            env_kwargs["subset_size"] = args.subset_size
+        if args.forced_sphere_indices is not None:
+            env_kwargs["forced_sphere_indices"] = parse_int_csv(args.forced_sphere_indices)
+        if args.t1_sampler is not None:
+            env_kwargs["t1_sampler"] = args.t1_sampler
+        if args.pose_mode is not None:
+            env_kwargs["pose_mode"] = args.pose_mode
+        if args.translation_sigma_mm is not None:
+            env_kwargs["translation_sigma_mm"] = args.translation_sigma_mm
+        if args.rotation_sigma_rad is not None:
+            env_kwargs["rotation_sigma_rad"] = args.rotation_sigma_rad
         print(f"[eval_e2] env config loaded from {args.from_run}/run_config.json")
     else:
         env_kwargs = dict(cfg_field=args.field,
                            max_blocks=args.max_blocks,
                            time_budget_s=args.time_budget,
                            subset_size=args.subset_size,
+                           forced_sphere_indices=parse_int_csv(args.forced_sphere_indices),
+                           t1_sampler=args.t1_sampler or "lognormal",
+                           pose_mode=args.pose_mode or "auto",
+                           translation_sigma_mm=(
+                               5.0 if args.translation_sigma_mm is None
+                               else args.translation_sigma_mm),
+                           rotation_sigma_rad=(
+                               0.15 if args.rotation_sigma_rad is None
+                               else args.rotation_sigma_rad),
                            phase_sensitive=args.phase_sensitive,
                            sigma_method=args.sigma_method,
                            simplified_action=args.simplified_action,
@@ -230,6 +275,7 @@ def main():
                            fitter_n_grid=args.fitter_n_grid,
                            include_image=args.include_image,
                            include_sigma=args.include_sigma,
+                           roi_radius=args.roi_radius,
                            water_model=args.water_model,
                            noise_sigma_abs=args.noise_sigma_abs,
                            reward_mode=args.reward_mode,
@@ -285,17 +331,19 @@ def main():
     # decodes the fixed [TI, TE, TR, α] schedule correctly under any mode, so we no
     # longer strip fix_te/learn_alpha/log_ti_action (doing so used to silently
     # mis-route action channels — see the 2026-06 fix).
-    print(f"\nEvaluating fixed-TI grid baseline on same configs …")
-    env_base = QalibreMDE2Env(rng_seed=args.seed, **env_kwargs)
-    base = evaluate_fixed_grid(env_base, args.episodes, args.seed)
-    _bci = base["mape_ci95_pct"]
-    print(f"  MAPE        = {base['mape_pct']:.2f}%  "
-          f"(95% CI {_bci[0]:.2f}–{_bci[1]:.2f}%, SEM ±{base['mape_sem_pct']:.2f}%)")
-    print(f"  p90 MAPE    = {base['mape_p90_pct']:.2f}%")
+    base = None
+    if not args.skip_fixed_baseline:
+        print(f"\nEvaluating fixed-TI grid baseline on same configs …")
+        env_base = QalibreMDE2Env(rng_seed=args.seed, **env_kwargs)
+        base = evaluate_fixed_grid(env_base, args.episodes, args.seed)
+        _bci = base["mape_ci95_pct"]
+        print(f"  MAPE        = {base['mape_pct']:.2f}%  "
+              f"(95% CI {_bci[0]:.2f}–{_bci[1]:.2f}%, SEM ±{base['mape_sem_pct']:.2f}%)")
+        print(f"  p90 MAPE    = {base['mape_p90_pct']:.2f}%")
 
-    print(f"\n  Agent  MAPE = {res['mape_pct']:.2f}%  "
-          f"(baseline = {base['mape_pct']:.2f}%, "
-          f"speedup factor = {base['mape_pct']/max(res['mape_pct'], 0.01):.1f}×)")
+        print(f"\n  Agent  MAPE = {res['mape_pct']:.2f}%  "
+              f"(baseline = {base['mape_pct']:.2f}%, "
+              f"speedup factor = {base['mape_pct']/max(res['mape_pct'], 0.01):.1f}×)")
 
     # ── Optional noise sweep ──────────────────────────────────────────────
     if args.noise_sweep:
@@ -321,13 +369,15 @@ def main():
         "agent_mape_p90_pct": res["mape_p90_pct"],
         "agent_mape_ci95_pct": res["mape_ci95_pct"],
         "agent_mape_sem_pct": res["mape_sem_pct"],
-        "baseline_mape_pct": base["mape_pct"],
-        "baseline_mape_ci95_pct": base.get("mape_ci95_pct"),
+        "baseline_mape_pct": None if base is None else base["mape_pct"],
+        "baseline_mape_ci95_pct": None if base is None else base.get("mape_ci95_pct"),
         "per_sphere":    res["per_sphere_mape_pct"].tolist(),
         "per_pool":      {str(k): list(v)
                            for k, v in res.get("per_pool_mape_pct", {}).items()},
     }
-    out_name = "eval_summary_oracle.json" if args.oracle_fit else "eval_summary.json"
+    out_name = (args.summary_name if args.summary_name is not None else
+                ("eval_summary_oracle.json" if args.oracle_fit
+                 else "eval_summary.json"))
     with (out_dir / out_name).open("w") as f:
         json.dump(summary, f, indent=2)
     print(f"\nSummary saved to {out_dir / out_name}")
