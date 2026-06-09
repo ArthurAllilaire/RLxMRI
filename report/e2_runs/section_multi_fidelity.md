@@ -564,6 +564,74 @@ overwritten by the latest rerun; use the JSON summaries for current values.
 matching human-readable logs, rerun eval_e2 with stdout redirected to fresh
 *_current.txt files; the old eval_fullbloch.txt files still show June 1 values. -->
 
+### 6.7 Baseline definitions and five-sphere CR-oracle status
+
+The baseline names in `baseline_e2.py` are easy to misread, so the report should
+define exactly what each one is:
+
+- `log_grid`: a fixed log-spaced TI grid with TR = 4 s and α = 90°. Under the E2
+  budget (`Npe=32`, 240 s), this is budget-starved and should be reported only
+  as a failure mode.
+- `clinical_irse`: a conventional long-TR IRSE-style schedule with TR = 5 s.
+  Also budget-starved under the short E2 budget.
+- `log_grid_trmatched`: the meaningful simple fixed-grid comparator. It keeps a
+  broad log-TI grid, sets α = 90°, and uses TR = 1.7 s so several blocks fit
+  inside 240 s. This is deliberately not adaptive, but it is robust.
+- `cr_optimal`: a Cramer-Rao schedule over `(TI, TR)` with α fixed at 90°. It is
+  solved using the analytic F1+ signal model and a local Fisher-information
+  objective, then evaluated through the full E2 simulator/fitter.
+- `ernst_fixed`: the `cr_optimal` timing with α replaced by the Ernst angle at a
+  fleet-median T1. In this IR spin-echo T1 objective it was worse than α = 90°;
+  the spoiled-GRE Ernst intuition is not directly predictive here.
+- `cr_optimal_alpha`: a larger CR search over `(TI, TR, α)`. It often still
+  chooses α = 90°, but it is not the same as `cr_optimal` because the search can
+  choose a different number of blocks and different timing.
+- `cr_oracle`: an intentionally unfair diagnostic lower bound for the five-sphere
+  task. For each evaluation episode it reads the active subset's true sampled
+  `T1_true` values from `QalibreMDE2Env.reset`, solves a fresh CR schedule for
+  that truth vector, and then evaluates that one-shot schedule. With
+  `t1_sampler=linear_uniform_range`, almost every episode has a distinct truth
+  vector, so `n_unique_subsets_solved` should be close to the episode count. This
+  is not a deployable baseline because it sees the answer before acquisition; it
+  is a sanity check on how much the local CR surrogate can do with perfect prior
+  knowledge.
+
+**Important CR feasibility fix (2026-06-09).** E2's action space has
+`TR ∈ [0.5, 5.0]` and the step function enforces
+
+```
+TR >= max(0.5, (TI + TE) / 0.90)
+```
+
+with `TE = 20 ms` in `--fix-te` mode. The `0.5 s` term is the RL action-space
+floor, not a physical constant; the `(TI + TE)/0.90` term is the E2 sequence
+headroom rule. These values belong in the E2 baseline wrapper, not inside the
+generic CR library: `baseline_e2.py` now constructs a live `QalibreMDE2Env` and
+reads the CR timing dict from the E2 wrapper (`tr_lo_floor` from
+`e2_action_lo`, fixed `te_s` from the fixed-TE action mode, and `tr_headroom`
+from `e2_tr_headroom`). It then passes those values into MRISystemPhantom's
+generic timing-constraint keywords. The old CR run used `max(0.5, TI + 0.05)`,
+which was looser than the environment for some long-TI blocks. The result was a
+near-budget CR schedule that looked feasible to the optimiser but was silently
+lengthened by the evaluator and could lose its final block.
+
+This explains the pulled five-sphere oracle run in
+`runs/e2/baseline_5sphere_runB`: it reports `n_unique_subsets_solved = 24`, so
+the oracle is now using the per-episode true T1 values correctly, but its
+`mean_ep_len = 3.75` shows that some nominal four-block schedules were truncated.
+Static inspection of `cr_oracle_schedules.json` found **11/24** oracle schedules
+that were nominally under 240 s but over budget after applying the E2 TR lift
+(worst excess ≈ 2.7 s). Therefore the pulled oracle number (`MAPE = 12.93%`,
+p90 25.13%, success<5% 29.2%) should **not** be cited as the final CR-oracle
+baseline. Rerun it after the CR optimiser and environment share the same TR
+bound.
+
+The lower TR floor does matter but does not dominate every CR schedule. In the
+pulled artifacts, `cr_optimal` had 0/4 TRs exactly at 0.5 s,
+`cr_optimal_alpha` had 0/6, and the oracle schedules had 6/96. The old
+`TI + 0.05` lower bound was more active (19/96 oracle TRs), which is why the
+feasibility mismatch mainly hurt the oracle rerun.
+
 ---
 
 ## 7. Honest caveats
@@ -576,7 +644,10 @@ matching human-readable logs, rerun eval_e2 with stdout redirected to fresh
    TR). **Do not cite the old speedup.** With the fix the fixed schedules score
    4.70–5.80% (§6.6) — and currently *beat* the agent, so the quantified-benefit
    claim must come from the 5-sphere task or from the multi-fidelity speedup
-   mechanism, not from "14-pool RL beats fixed".
+   mechanism, not from "14-pool RL beats fixed". Separately, the first
+   five-sphere CR-oracle rerun exposed a CR/environment TR-feasibility mismatch
+   (§6.7); rerun the oracle after the bound fix before quoting a five-sphere
+   CR-oracle number.
 2. **Simulator version drift changed the policy number.** Run A was analysed on
    2026-06-01 as 10.16% MAPE; the same saved policy re-evaluated after the
    2026-06-08/09 digital-twin changes is 11.68% [10.42, 13.03]. This is expected:
@@ -611,6 +682,13 @@ matching human-readable logs, rerun eval_e2 with stdout redirected to fresh
 - [x] **Fix the fixed-grid baseline** — done (TR/budget + action-conversion bugs;
       now `log_grid_trmatched` = 5.80% [5.24–6.40], `cr_optimal_alpha` = 4.70%
       [4.42–5.00], §6.6). Fixed schedules beat the current 14-pool policy.
+- [ ] **Rerun the five-sphere CR oracle after the TR-bound fix.** The pulled
+      oracle artifacts solve one schedule per true T1 vector (`n_unique=24`), but
+      11/24 schedules were truncated because the CR optimiser used the old
+      `TI + 0.05` feasibility rule while E2 evaluates with
+      `max(0.5, (TI + TE)/0.90)`. Use `--cr-only --cr-oracle` and replace the
+      stale oracle summary before citing the five-sphere fixed-schedule lower
+      bound.
 - [ ] **Re-evaluate the C2 claim on a task where adaptivity pays.** Fixed beats the
       agent on the 14-sphere pool (§6.6); the quantified-benefit must come from the
       5-sphere task below (one shared TI per block can't exploit a 14-sphere fleet).
@@ -814,19 +892,61 @@ Suggested order:
 - [ ] **`learn_alpha` decision:** confirm the fitter works for α≠90° (caching
       confound, §4.2), then either fix α = 90° or add a scan-time reward term that
       makes the Ernst-angle trade worthwhile.
+      Follow-up check: the α-aware CR baseline also chooses 90° for every block.
+      For the printed 14-pool CR timing, sweeping constant α gives objective
+      `L(15°,30°,45°,60°,75°,90°) = 32.52, 31.82, 30.78, 29.53, 28.25, 27.10`;
+      for active labels `1,3,6,8,14`, the same timing gives
+      `16.51, 16.00, 15.23, 14.33, 13.43, 12.63`. This is not just PPO
+      saturation: the current IR-SE CR objective prefers the 90° bound. Ernst
+      theory applies directly to spoiled GRE, not necessarily to this finite-Npe
+      IR spin-echo T1 objective without SAR/flip-cost penalties.
 - [ ] **Extend the TI/TR range** so long-T1 spheres reach an informative inversion
       null — where the 40% errors live.
+
+### Next-step options for testing real adaptivity
+
+The 14-sphere E2 task rewards robust global design: every episode contains the
+whole T1 ladder, so a well-covered fixed schedule is naturally strong. The next
+experiment should make the *right* action depend more sharply on what has already
+been measured.
+
+1. **Five-sphere continuous-T1 adaptivity probe.** Keep labels `1,3,6,8,14` fixed
+   for stable geometry, but sample their T1 values continuously across the full
+   phantom range each episode. This is the smallest defensible task where
+   adaptivity can matter: after a short probe, the policy can spend later blocks
+   on the episode's realised long/mid/short T1 distribution rather than serving
+   all 14 pools simultaneously. Compare against `log_grid_trmatched` and the
+   rerun `cr_oracle`.
+2. **Many-DoF sequence-family task.** Give the agent a choice among acquisition
+   families, not just `(TI, TR, α)` inside one IR-SE block. Candidate actions:
+   IRSE block, conventional spin echo, multi-spin-echo/CPMG train, and possibly a
+   spoiled-GRE-like readout. This tests a more publishable adaptivity claim:
+   choose *which contrast mechanism* to deploy based on current uncertainty.
+3. **Joint T1/T2 or T1/T2-family estimation.** Add multi-spin-echo reads where
+   echo spacing, echo train length, and TE allocation are controllable. Adaptivity
+   should matter more when the agent must decide whether the next acquisition
+   should reduce T1 uncertainty or T2 uncertainty.
+4. **Variable spatial budget (`Npe`) as an action.** Let the policy trade scan
+   time/SNR/resolution by choosing `Npe` or a small set of PE budgets per block.
+   This is attractive because it introduces a genuine resource-allocation choice,
+   but it needs careful normalisation: changing `Npe` changes scan time, noise,
+   image quality, and the F1+ transient model.
+5. **Accuracy-time Pareto objective.** Add a scan-time penalty or stop action and
+   report a Pareto curve instead of one fixed 240 s point. A fixed log-grid may be
+   hard to beat at exactly 240 s, but an adaptive policy may reach "good enough"
+   accuracy earlier.
 
 <!-- REVIEW QUESTIONS FOR ARTHUR (raised in plan.md, not yet resolved):
  - Investigate WHY the switch mechanism let the run save a worse final policy —
    is it just "final ≠ best" or did the controller mis-time the cached3→full3
    promotion? (The plateau was real, but full3 was the wrong rung.)
- - fidelity_history.json wall_s is an absolute epoch timestamp (1.78e9), not a
-   relative time — the old multi_fidelity.md "20,000 days for the smoke test"
-   TODO was a misreading of that. Confirm plot_mf_curriculum.py subtracts the
-   stage-0 start before plotting.
  - Cadence: how often do we probe full-Bloch? (mf_decision_rollouts=4.) Could we
    probe the layer below full instead of full itself to cut probe cost? Open. -->
+
+<!-- RESOLVED: fidelity_history.json wall_s is an absolute epoch timestamp
+(~1.78e9), not a relative duration. python/plot_mf_curriculum.py subtracts the
+first recorded event timestamp (the stage-0 wallclock origin for existing
+histories) before plotting cumulative hours. -->
 
 ---
 
@@ -933,6 +1053,77 @@ PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia \
     --mf-use-lookahead --mf-lookahead-rollouts 1 \
     --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25
 NOTE: Run A used --mf-budget-hours 9 (the dir name) not 24 as some old docs say. -->
+<!--
+optional before the below
+export PYTHON_JULIAPKG_EXE=~/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia
+-->
+
+<!-- Five-sphere CR-oracle rerun only (GPU; after 2026-06-09 TR-bound fix):
+source .venv/bin/activate
+export PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu"
+export PYTHON_JULIAPKG_OFFLINE=yes
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+mkdir -p runs/e2/baseline_5sphere_runB_gpu
+rm -f runs/e2/baseline_5sphere_runB_gpu/baseline_summary.json \
+      runs/e2/baseline_5sphere_runB_gpu/cr_oracle_schedules.json \
+      runs/e2/baseline_5sphere_runB_gpu/run_oracle.log
+PYTHONUNBUFFERED=1 python -u python/baseline_e2.py \
+  --episodes 24 --field T15 --nfe 64 --npe 32 \
+  --time-budget 240 --max-blocks 20 \
+  --noise 50 --fix-te --learn-alpha --log-ti-action \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu --cr-only --cr-oracle \
+  --out runs/e2/baseline_5sphere_runB_gpu \
+  2>&1 | tee runs/e2/baseline_5sphere_runB_gpu/run_oracle.log
+Expected sanity checks: `n_unique_subsets_solved ≈ 24`, mean blocks close to
+the designed oracle `n_blocks` (no systematic truncation), and all saved
+`TRs[k] >= max(0.5, (TIs[k] + 0.020)/0.90)`. -->
+
+<!-- Five-sphere baseline sweep for Run B / adaptivity probe:
+source .venv/bin/activate
+export PYTHON_JULIAPKG_OFFLINE=yes
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+mkdir -p runs/e2/baseline_5sphere_runB
+PYTHONUNBUFFERED=1 python -u python/baseline_e2.py \
+  --episodes 24 --field T15 --nfe 64 --npe 32 \
+  --time-budget 240 --max-blocks 20 \
+  --noise 50 --fix-te --learn-alpha --log-ti-action \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --cr-optimal --cr-optimize-alpha --ernst-baseline --cr-oracle \
+  --out runs/e2/baseline_5sphere_runB \
+  2>&1 | tee runs/e2/baseline_5sphere_runB/run.log
+NOTE: --cr-optimal / --cr-optimize-alpha solve against the legacy 14-pool
+fleet and then evaluate on the fixed five active labels. --cr-oracle solves
+the exact active five-sphere subset and is the lower-bound fixed-schedule
+comparator for this adaptivity probe. -->
+
+<!-- Five-sphere baseline sweep, GPU variant:
+source .venv/bin/activate
+export PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu"
+export PYTHON_JULIAPKG_OFFLINE=yes
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+mkdir -p runs/e2/baseline_5sphere_runB_gpu
+PYTHONUNBUFFERED=1 python -u python/baseline_e2.py \
+  --episodes 24 --field T15 --nfe 64 --npe 32 \
+  --time-budget 240 --max-blocks 20 \
+  --noise 50 --fix-te --learn-alpha --log-ti-action \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --cr-optimal --cr-optimize-alpha --ernst-baseline --cr-oracle \
+  --out runs/e2/baseline_5sphere_runB \
+  2>&1 | tee runs/e2/baseline_5sphere_runB_gpu/run.log
+NOTE: this needs the CUDA-enabled Julia runtime project. Keep it separate from
+the CPU output dir so the summaries and CR schedule files do not overwrite each
+other. -->
 
 ---
 

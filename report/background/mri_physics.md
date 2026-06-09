@@ -130,7 +130,14 @@ $$
 $$
 
 - Short TR or long T1 → small $\alpha_E$. This is why GRE runs at small flips.
-- It is T1-dependent, so a *fixed* α is only Ernst-optimal for one T1 — directly relevant to C1 (no fixed-protocol optimum): the agent could in principle learn to ride the Ernst angle adaptively as it narrows its T1 estimate. (The `test_cr_optimal_alpha` testset already shows the single-sphere optimum sitting away from a flat 90°.)
+- It is T1-dependent, so a *fixed* α is only Ernst-optimal for one T1. This is
+  directly relevant to spoiled-GRE / MRF-style designs, where an agent could in
+  principle ride the Ernst angle as it narrows its T1 estimate.
+- Do not over-apply this intuition to the E2 IR spin-echo readout. In E2,
+  α is the excitation angle after a 180° inversion preparation, and the CR
+  objective estimates T1 from the finite-Npe longitudinal transient. Under the
+  current no-SAR/no-flip-cost objective, the optimiser can legitimately prefer
+  the 90° upper bound.
 
 ## Spin Echo sequences (inversion recovery)
 
@@ -204,4 +211,3 @@ Cons:
 Variants:
 - **Multi-echo / CPMG** — many 180° refocuses after one excitation, sampling the T2 curve in a single TR. The fast-and-cheap way to get a full T2 fit; the analogue of the "Multiple Acquisition" trick noted above for IR.
 - **Multi-acquisition** — repeat for SNR (averages), or interleave TEs to amortise the long TR.
-

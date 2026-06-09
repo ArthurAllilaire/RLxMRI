@@ -137,6 +137,12 @@ def _skip_too_short_long_tr_schedules(
     return skipped
 
 
+def _cr_timing_constraints_from_env(env_kwargs: dict, *, seed: int) -> dict[str, float]:
+    """Read CR timing constraints from the live E2 environment wrapper."""
+    env = QalibreMDE2Env(rng_seed=seed, **env_kwargs)
+    return env.cr_timing_constraints()
+
+
 def nominal_fleet_t1s(field: str) -> list[float]:
     """Full 14-sphere nominal T1 fleet for `field`, read from Julia's
     `T1_ARRAY` (the single source of truth — no Python copy)."""
@@ -149,7 +155,10 @@ def nominal_fleet_t1s(field: str) -> list[float]:
 
 def make_cr_optimal_schedule(T1s, budget_s, Npe=8,
                               n_block_grid=(4, 6, 8, 10, 14, 18),
-                              n_starts=1000, n_refine=10, rng_seed=0):
+                              n_starts=1000, n_refine=10, rng_seed=0,
+                              tr_lo_floor=0.0,
+                              te_s=0.0,
+                              tr_headroom=1.0):
     """Solve the CR-optimal fixed-block schedule for the given fleet via Julia.
 
     Returns a (TIs_list, TRs_list, n_blocks, L) tuple. TE = 20 ms, alpha = 90°
@@ -170,6 +179,9 @@ def make_cr_optimal_schedule(T1s, budget_s, Npe=8,
         n_block_grid = nbg_jl,
         n_starts     = int(n_starts),
         n_refine     = int(n_refine),
+        TR_lo_floor  = float(tr_lo_floor),
+        TE_s         = float(te_s),
+        TR_headroom  = float(tr_headroom),
     )
     TIs = [float(t) for t in res.schedule.TIs]
     TRs = [float(t) for t in res.schedule.TRs]
@@ -190,7 +202,10 @@ def _cr_optimal_factory(TIs, TRs):
 
 def make_cr_optimal_alpha_schedule(T1s, budget_s, Npe=8,
                                     n_block_grid=(4, 6, 8, 10, 14, 18),
-                                    n_starts=1000, n_refine=10):
+                                    n_starts=1000, n_refine=10,
+                                    tr_lo_floor=0.0,
+                                    te_s=0.0,
+                                    tr_headroom=1.0):
     """α-aware CR-optimal schedule (ALPHA_DOF.md, reference point (c)). Optimises (TI, TR, α)
     jointly; α is a design variable, the Fisher stays 2×2 over (T1, A).
 
@@ -209,6 +224,9 @@ def make_cr_optimal_alpha_schedule(T1s, budget_s, Npe=8,
         n_block_grid = nbg_jl,
         n_starts     = int(n_starts),
         n_refine     = int(n_refine),
+        TR_lo_floor  = float(tr_lo_floor),
+        TE_s         = float(te_s),
+        TR_headroom  = float(tr_headroom),
     )
     TIs = [float(t) for t in res.schedule.TIs]
     TRs = [float(t) for t in res.schedule.TRs]
@@ -319,6 +337,7 @@ def evaluate(name: str, sched_fn, n_episodes: int, seed_offset: int,
 def evaluate_cr_oracle(n_episodes: int, seed_offset: int,
                        cr_budget: float, cr_block_grid: list[int],
                        cr_starts: int, cr_refine: int,
+                       cr_timing: dict[str, float],
                        **env_kwargs) -> dict:
     """Evaluate Formulation B: solve a CR-optimal schedule for each subset.
 
@@ -347,6 +366,7 @@ def evaluate_cr_oracle(n_episodes: int, seed_offset: int,
                 n_block_grid=tuple(cr_block_grid),
                 n_starts=cr_starts,
                 n_refine=cr_refine,
+                **cr_timing,
             )
         return cache[key]
 
@@ -366,7 +386,8 @@ def evaluate_cr_oracle(n_episodes: int, seed_offset: int,
         })
         schedules[sched_key] = {"TIs": TIs, "TRs": TRs,
                                 "n_blocks": n_blocks, "L": L,
-                                "T1s": T1s_true}
+                                "T1s": T1s_true,
+                                "timing_constraints": cr_timing}
 
         done, step, info = False, 0, {}
         while not done:
@@ -588,6 +609,11 @@ def main():
     # config so they can't disagree with what's being evaluated.
     field = env_kwargs.get("cfg_field", args.field)
     npe = int(env_kwargs.get("Npe", args.npe))
+    cr_timing = _cr_timing_constraints_from_env(env_kwargs, seed=args.seed)
+    print("[baseline_e2] CR timing constraints from E2 env: "
+          f"TR_lo_floor={cr_timing['tr_lo_floor']:.3f}s, "
+          f"TE={cr_timing['te_s']:.3f}s, "
+          f"TR_headroom={cr_timing['tr_headroom']:.2f}")
     skipped_schedules = _skip_too_short_long_tr_schedules(
         schedules,
         time_budget_s=float(env_kwargs["time_budget_s"]),
@@ -620,7 +646,8 @@ def main():
                 T1s_fleet, budget_s=cr_budget, Npe=npe,
                 n_block_grid=tuple(args.cr_block_grid),
                 n_starts=args.cr_starts,
-                n_refine=args.cr_refine)
+                n_refine=args.cr_refine,
+                **cr_timing)
         print(f"  best n_blocks = {n_blocks}, L = {L:.4f}")
         print(f"  TIs (sorted)  = {sorted(round(t, 4) for t in TIs)}")
         print(f"  TRs (sorted)  = {sorted(round(t, 4) for t in TRs)}")
@@ -630,6 +657,7 @@ def main():
         with (args.out / "cr_optimal_schedule.json").open("w") as f:
             json.dump({"TIs": TIs, "TRs": TRs, "n_blocks": n_blocks, "L": L,
                        "T1s": T1s_fleet, "budget_s": cr_budget,
+                       "timing_constraints": cr_timing,
                        "formulation": "expected_loss_all_14_pool",
                        "subset_size_eval": args.subset_size,
                        "n_block_grid": args.cr_block_grid}, f, indent=2)
@@ -646,7 +674,8 @@ def main():
         TIs_a, TRs_a, alphas_a, n_blocks_a, L_a = make_cr_optimal_alpha_schedule(
             T1s_fleet, budget_s=cr_budget, Npe=npe,
             n_block_grid=tuple(args.cr_block_grid),
-            n_starts=args.cr_starts, n_refine=args.cr_refine)
+            n_starts=args.cr_starts, n_refine=args.cr_refine,
+            **cr_timing)
         print(f"  best n_blocks = {n_blocks_a}, L = {L_a:.4f}")
         print(f"  α (deg, sorted) = {sorted(round(a, 1) for a in alphas_a)}")
         schedules["cr_optimal_alpha"] = _cr_optimal_alpha_factory(
@@ -656,6 +685,7 @@ def main():
             json.dump({"TIs": TIs_a, "TRs": TRs_a, "alphas_deg": alphas_a,
                        "n_blocks": n_blocks_a, "L": L_a, "T1s": T1s_fleet,
                        "budget_s": cr_budget,
+                       "timing_constraints": cr_timing,
                        "n_block_grid": args.cr_block_grid}, f, indent=2)
 
     if args.cr_oracle and args.subset_size is None:
@@ -691,7 +721,7 @@ def main():
               f"{args.episodes} sampled subsets")
         r = evaluate_cr_oracle(
             args.episodes, args.seed, cr_budget, args.cr_block_grid,
-            args.cr_starts, args.cr_refine, **env_kwargs)
+            args.cr_starts, args.cr_refine, cr_timing, **env_kwargs)
         results["cr_oracle"] = r
         print(f"  MAPE       = {r['mape_pct']:.2f}%")
         print(f"  p90 MAPE   = {r['mape_p90_pct']:.2f}%")

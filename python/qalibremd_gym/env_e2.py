@@ -286,6 +286,20 @@ class QalibreMDE2Env(gym.Env):
     _ALPHA_LO_DEG = 5.0
     _ALPHA_HI_DEG = 90.0
 
+    def cr_timing_constraints(self) -> dict[str, float]:
+        """Timing constraints a fixed-TE CR schedule must satisfy to match E2.
+
+        The TR floor comes from the live Julia action bounds. The headroom comes
+        from the Julia E2 step logic. Fixed TE is owned by this Python action
+        wrapper because it is the one that pins TE before passing actions to
+        Julia.
+        """
+        return {
+            "tr_lo_floor": float(self._ACT_LO[2]),
+            "te_s": float(self._FIXED_TE_S),
+            "tr_headroom": float(_env_mod._JL_QMD.e2_tr_headroom(self._env)),
+        }
+
     def _denorm_action(self, action: np.ndarray) -> tuple[np.ndarray, bool]:
         """Map agent output in [-1, 1] to a (physical 4-vector, stop) pair.
         The physical vector is [TI, TE, TR, α_deg].

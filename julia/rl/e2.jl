@@ -370,6 +370,9 @@ e2_obs_dim(env::E2Env) =
 e2_action_lo(::E2Env) = Float64[0.010, 0.005, 0.5,   5.0]
 e2_action_hi(::E2Env) = Float64[3.000, 0.080, 5.0, 180.0]
 
+"Fraction of TR available to contain TI + TE before recovery headroom."
+e2_tr_headroom(::E2Env) = 0.90
+
 # ── Internal helpers ─────────────────────────────────────────────────────────
 
 function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=nothing)
@@ -817,7 +820,7 @@ function e2_step!(env::E2Env, action_vec, stop::Bool = false)
     # Ensure TR can accommodate the requested TI + TE with recovery headroom.
     # Lift TR up rather than capping TI down — capping TI silently removed
     # the long-T1 regime when the agent chose a small TR (E1-style failure).
-    TR = max(TR, (TI + TE) / 0.90)
+    TR = max(TR, (TI + TE) / e2_tr_headroom(env))
     TE = min(TE, TR * 0.30)
 
     # Scan time for this block (Npe shots × TR per shot).

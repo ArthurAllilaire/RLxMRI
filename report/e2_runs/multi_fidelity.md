@@ -1,8 +1,12 @@
 # Multi-Fidelity Curriculum Training
 
 Todo:
-1. The wall_s in fidelity_history.json is way too high - 20,000 days for the smoke test? maybe not relative time
-2. How often do we check the MAPE on full bloch? could we just check the sim layer above?
+1. How often do we check the MAPE on full Bloch? Could we probe the layer below
+   full instead of full itself to cut probe cost?
+
+Note: `fidelity_history.json["wall_s"]` is an absolute Unix epoch timestamp,
+not a relative duration. `python/plot_mf_curriculum.py` subtracts the first
+recorded event timestamp, i.e. the stage-0 wallclock origin, before plotting.
 
 > **Challenge addressed:** C2 — *scalable simulation-in-the-loop RL*.
 > **Novelty:** a literature-grounded, bias-aware rule for *when* to switch
