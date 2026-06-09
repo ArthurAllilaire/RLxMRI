@@ -163,6 +163,16 @@
         @test abs(f_good.T1 - T1_true) <= abs(f_bad.T1 - T1_true) + 1e-9
     end
 
+    @testset "fit_t1_generalized_ir: sin-corrected magnitudes scale noise floor" begin
+        σ = 50.0
+        @test isapprox(_sin_corrected_abs_noise(σ, [π/2]), σ; rtol = 1e-12)
+        @test isapprox(_sin_corrected_abs_noise(σ, [π/6]), 2σ; rtol = 1e-12)
+
+        αs = [π/2, π/6]
+        expected = sqrt(mean((σ / abs(sin(a)))^2 for a in αs))
+        @test isapprox(_sin_corrected_abs_noise(σ, αs), expected; rtol = 1e-12)
+    end
+
     @testset "steady_state_mz_at_excite: analytic identities" begin
         T1 = 0.8
 

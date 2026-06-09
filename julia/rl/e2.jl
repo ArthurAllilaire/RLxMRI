@@ -58,11 +58,11 @@
 #   Profile-likelihood σ (E2_5_PLAN.md §3) reports the resulting ambiguity
 #   honestly without changing the point estimate.
 #
-# * Fitter noise floor: `abs_noise_sigma = env.noise_sigma_abs` is passed
-#   directly — the same absolute σ the env injects on k-space, propagated
-#   to the fitter for σ_T1 estimation. Profile-likelihood σ is used by
-#   default (E2_5_PLAN §3) which is more robust to misspecification than
-#   the asymptotic J^T J formula.
+# * Fitter noise floor: the env injects an absolute σ, but the fitter receives
+#   magnitudes divided by sin(α_exc). The noise floor passed to the fit is
+#   therefore the RMS of σ / sin(α_exc,k) over the samples in that sphere's
+#   running fit. Profile-likelihood σ is used by default (E2_5_PLAN §3), which
+#   is more robust to misspecification than the asymptotic J^T J formula.
 
 
 
@@ -622,6 +622,13 @@ function _e2_analytic_signals(env::E2Env, TI::Real, TE::Real, TR::Real,
     sig
 end
 
+function _sin_corrected_abs_noise(abs_noise_base::Real,
+                                  α_excs::AbstractVector{<:Real})
+    isempty(α_excs) && return Float64(abs_noise_base)
+    return sqrt(mean((Float64(abs_noise_base) /
+                      max(abs(sin(Float64(a))), 1e-3))^2 for a in α_excs))
+end
+
 function _e2_update_t1_estimates!(env::E2Env, signals::AbstractVector{<:Real},
                                    TI::Real, TR::Real, α_exc::Real)
     # Excitation flip angle scales transverse signal by sin(α_exc) per shot.
@@ -641,10 +648,15 @@ function _e2_update_t1_estimates!(env::E2Env, signals::AbstractVector{<:Real},
         if length(env.block_TIs[i]) >= 2
             # θ_inv = π for standard 180° inversion prep
             αs = fill(π, length(env.block_TIs[i]))
-            # Fitter noise floor = the absolute σ on the data: the k-space σ in
-            # :bloch (FIX_SIM_PLAN §2.2), the analytic-signal σ in :analytic.
-            abs_noise = env.forward_model === :analytic ?
-                        env.analytic_noise_sigma : env.noise_sigma_abs
+            # Fitter noise floor after the sin(α) magnitude correction above.
+            # The measured signal has absolute noise σ, but the fit sees
+            # signal/sin(α), so each sample's σ scales by 1/sin(α). The fitter
+            # currently uses a scalar floor, so pass the RMS corrected σ for
+            # this sphere's accumulated mixed-α measurements.
+            abs_noise_base = env.forward_model === :analytic ?
+                             env.analytic_noise_sigma : env.noise_sigma_abs
+            abs_noise = _sin_corrected_abs_noise(abs_noise_base,
+                                                 env.block_α_excs[i])
             # F1+ (`E2_4_PLAN.md` §2.2): pass env.Npe so the fitter uses the
             # finite-Npe transient closed form that matches what
             # ir_se_2d_sequence actually feeds the simulator.

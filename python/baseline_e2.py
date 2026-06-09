@@ -99,6 +99,43 @@ SCHEDULES = {
     "log_grid_trmatched":  _log_grid_trmatched,
 }
 
+LONG_TR_FIXED_SCHEDULES = {
+    "log_grid": 4.0,
+    "clinical_irse": 5.0,
+}
+
+
+def _skip_too_short_long_tr_schedules(
+    schedules: dict, *, time_budget_s: float, max_blocks: int, npe: int,
+) -> dict[str, dict]:
+    """Drop long-TR fixed protocols when the budget fits ≤2 blocks.
+
+    Those runs are not meaningful baselines for E2: with only one or two
+    measurements the T1 fit is underdetermined/noisy, and the resulting MAPE just
+    says "TR was too long for this budget". Keep log_grid_trmatched and the CR
+    schedules, which are designed for the budget.
+    """
+    skipped = {}
+    for name, tr_s in LONG_TR_FIXED_SCHEDULES.items():
+        if name not in schedules:
+            continue
+        max_by_time = int(np.floor(float(time_budget_s) / (int(npe) * tr_s)))
+        max_possible = min(int(max_blocks), max_by_time)
+        if max_possible <= 2:
+            schedules.pop(name)
+            skipped[name] = {
+                "reason": "fixed TR fits <=2 blocks in the scan budget",
+                "TR_s": tr_s,
+                "Npe": int(npe),
+                "time_budget_s": float(time_budget_s),
+                "max_blocks_by_time": max_by_time,
+                "max_possible_blocks": max_possible,
+            }
+            print(f"[baseline_e2] Skipping '{name}': TR={tr_s:g}s with "
+                  f"Npe={int(npe)} and budget={float(time_budget_s):.1f}s "
+                  f"fits only {max_possible} block(s).")
+    return skipped
+
 
 def nominal_fleet_t1s(field: str) -> list[float]:
     """Full 14-sphere nominal T1 fleet for `field`, read from Julia's
@@ -286,18 +323,24 @@ def evaluate_cr_oracle(n_episodes: int, seed_offset: int,
     """Evaluate Formulation B: solve a CR-optimal schedule for each subset.
 
     This is an oracle lower bound for non-adaptive fixed schedules because it
-    sees the episode's sphere subset before choosing the schedule.
+    sees the episode's true sampled T1 values before choosing the schedule.
+    Under `t1_sampler=linear_uniform_range`, those values vary continuously
+    episode-to-episode, so this intentionally solves one schedule per distinct
+    truth vector rather than reusing a nominal pool schedule.
     """
     env = QalibreMDE2Env(rng_seed=seed_offset, **env_kwargs)
     cr_npe = int(env_kwargs.get("Npe", 32))
-    cache: dict[tuple[int, ...], tuple[list[float], list[float], int, float]] = {}
+    cache: dict[tuple, tuple[list[float], list[float], int, float]] = {}
 
     def _solve_for_current_subset(info):
         idxs = tuple(int(i) for i in info["sphere_indices"])
-        if idxs not in cache:
-            # Oracle sees the subset identity, not the episode's jittered T1.
-            T1s = _active_nominal_t1s(env)
-            cache[idxs] = make_cr_optimal_schedule(
+        T1s = [float(t) for t in info["T1_true"]]
+        # Key by labels and rounded truth values. Nominal/lognormal/linear
+        # samplers all flow through this path; continuous T1 tasks generally
+        # produce one unique key per episode, which is what a true oracle means.
+        key = (idxs, tuple(round(t, 9) for t in T1s))
+        if key not in cache:
+            cache[key] = make_cr_optimal_schedule(
                 T1s,
                 budget_s=cr_budget,
                 Npe=cr_npe,
@@ -305,7 +348,7 @@ def evaluate_cr_oracle(n_episodes: int, seed_offset: int,
                 n_starts=cr_starts,
                 n_refine=cr_refine,
             )
-        return cache[idxs]
+        return cache[key]
 
     mapes, per_sphere, times, ep_lens, subset_indices = [], [], [], [], []
     pool_errs = {i: [] for i in range(1, 15)}
@@ -316,8 +359,14 @@ def evaluate_cr_oracle(n_episodes: int, seed_offset: int,
         TIs, TRs, n_blocks, L = _solve_for_current_subset(reset_info)
         sched_fn = _cr_optimal_factory(TIs, TRs)
         idxs = tuple(int(i) for i in reset_info["sphere_indices"])
-        schedules[str(idxs)] = {"TIs": TIs, "TRs": TRs,
-                                "n_blocks": n_blocks, "L": L}
+        T1s_true = [float(t) for t in reset_info["T1_true"]]
+        sched_key = json.dumps({
+            "sphere_indices": list(idxs),
+            "T1_true": [round(t, 9) for t in T1s_true],
+        })
+        schedules[sched_key] = {"TIs": TIs, "TRs": TRs,
+                                "n_blocks": n_blocks, "L": L,
+                                "T1s": T1s_true}
 
         done, step, info = False, 0, {}
         while not done:
@@ -539,6 +588,12 @@ def main():
     # config so they can't disagree with what's being evaluated.
     field = env_kwargs.get("cfg_field", args.field)
     npe = int(env_kwargs.get("Npe", args.npe))
+    skipped_schedules = _skip_too_short_long_tr_schedules(
+        schedules,
+        time_budget_s=float(env_kwargs["time_budget_s"]),
+        max_blocks=int(env_kwargs["max_blocks"]),
+        npe=npe,
+    )
 
     # 14-sphere nominal fleet for the chosen field, from Julia's T1_ARRAY.
     T1s_fleet = nominal_fleet_t1s(field)
@@ -643,7 +698,7 @@ def main():
         print(f"  Success<5% = {r['success_5pct']:.1%}")
         print(f"  Mean time  = {r['mean_scan_time_s']:.1f}s "
               f"({r['mean_ep_len']:.1f} blocks)")
-        print(f"  Unique subsets solved = {r['n_unique_subsets_solved']}")
+        print(f"  Unique oracle schedules solved = {r['n_unique_subsets_solved']}")
         with (args.out / "cr_oracle_schedules.json").open("w") as f:
             json.dump(r["schedules_by_subset"], f, indent=2)
 
@@ -658,6 +713,7 @@ def main():
                        for k, v in env_kwargs.items()},
         "episodes": args.episodes,
         "seed": args.seed,
+        "skipped_schedules": skipped_schedules,
     }
     with out_path.open("w") as f:
         json.dump(results, f, indent=2)
