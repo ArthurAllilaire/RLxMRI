@@ -553,6 +553,55 @@ same phantom, making evaluation runs reproducible. Incrementing it each
 training episode draws a statistically independent phantom, preventing
 the agent from memorising a fixed configuration.
 
+\hypertarget{episode-level-random-phantoms}{%
+\subsection{Episode-level random phantoms}\label{episode-level-random-phantoms}}
+
+A fixed calibrated phantom is unsuitable for RL training because the
+agent can exploit the known sphere ordering. Instead, each episode should
+draw a new plausible phantom. Earlier RL code did this manually by editing
+sampled \texttt{SphereDescriptor}s and assembling a fresh
+\texttt{PhantomConfig}. \texttt{RandomPhantomConfig} makes this explicit:
+it is a distribution over deterministic \texttt{PhantomConfig}s. The base
+config fixes build settings such as field strength, voxel size, included
+plates and water model; the random config specifies what changes between
+episodes: active contrast spheres, sampled material values and phantom
+pose.
+
+This is distinct from \texttt{AugmentConfig}. \texttt{AugmentConfig}
+adds low-level simulation perturbations after the phantom has been
+voxelised, such as per-spin off-resonance or position noise. It is useful
+for modelling measurement imperfections, but it does not change the
+episode's true sphere-level material values. In contrast,
+\texttt{RandomPhantomConfig} samples descriptor-level properties before
+voxelisation. For example, one training episode might select five T1
+spheres, draw one T1 value for each selected sphere from a log-normal
+distribution around its nominal value, set T2 by preserving the sphere's
+nominal T2/T1 ratio, and then apply a small in-slice rotation and
+translation. \texttt{sample\_phantom\_config} returns both the sampled
+\texttt{PhantomConfig}, which is safe to pass to \texttt{build\_phantom},
+and a hidden truth record used for rewards and evaluation.
+
+The pose sampler is experiment-dependent. Thin-slice acquisitions use
+only an in-plane rotation and x/y translation, because a full 3D rotation
+would move spheres out of the acquired slab. Volumetric experiments can
+instead use \texttt{UniformSO3PoseSampler}, which draws a true uniform
+orientation on SO(3) and stores it as a \(3\times3\) rotation matrix. For
+this reason, \texttt{PhantomConfig} accepts both Euler-angle triples and
+precomputed rotation matrices.
+
+Samplers are explicit objects, using
+\texttt{Distributions.\allowbreak jl} where appropriate
+\cite{distributions_jl_2021}, so assumptions such as material jitter,
+sphere dropout and pose noise are visible rather than hidden in scattered
+\texttt{randn} calls. Material distributions can also depend on other
+sampled tissue parameters: for example, T1 can be drawn from
+\texttt{Uniform(0.3,\ 2.5)} while T2 is defined by
+\texttt{PreserveNominalRatio(:T2,\ :T1)}. These property dependencies are
+evaluated in order and checked for cycles, so invalid specifications fail
+at sampling time. The API remains generic: selectors, material samplers
+and pose samplers operate on \texttt{SphereDescriptor}s and
+\texttt{PhantomConfig}s, not on RL states, observations or reward code.
+
 \hypertarget{shipped-sequences-and-fitting-models}{%
 \section{Shipped sequences and fitting models}\label{shipped-sequences-and-fitting-models}}
 
@@ -726,14 +775,20 @@ The package ships a set of runnable, self-contained demonstration
 scripts in \texttt{examples/}. Each exercises one slice of the public
 API and writes interactive Plotly HTML into \texttt{src/assets/}.
 
+% TODO: Insert a screenshot/photo of the new Plotly HTML phantom viewer here,
+% ideally showing the vertical slice or fidelity-phantom water grid comparison.
+
 \begin{itemize}
 \tightlist
 \item
-  \texttt{plot\_phantom.jl}: renders the T1/T2/PD maps and slice cuts of
-  the built phantom.
+  \texttt{plot\_phantom.jl}: renders the T1/T2/PD maps of the full
+  phantom, per-plate axial slices, the fiducial grid, a vertical slice
+  through all three contrast plates, and an augmented rotated/translated
+  phantom. The outputs are interactive Plotly HTML files.
 \item
-  \texttt{plot\_fidelity\_phantoms.jl}: visualises the water-coarsening
-  fidelity levels.
+  \texttt{plot\_fidelity\_phantoms.jl}: visualises the phantom geometry 
+  (water-coarsening and caching) behind the multi-fidelity RL curriculum.
+  The outputs are interactive Plotly HTML files.
 \item
   \texttt{t1\_mapping.jl}: runs a full IR-SE acquisition, reconstructs
   the image, extracts per-sphere ROIs and fits T1.
