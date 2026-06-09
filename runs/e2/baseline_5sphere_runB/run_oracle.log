@@ -1,0 +1,9 @@
+
+[baseline_e2] Evaluating oracle CR-optimal on 24 sampled subsets
+  MAPE       = 12.93%
+  p90 MAPE   = 25.13%
+  Success<5% = 29.2%
+  Mean time  = 212.0s (3.8 blocks)
+  Unique oracle schedules solved = 24
+
+[baseline_e2] Summary → runs/e2/baseline_5sphere_runB/baseline_summary.json
