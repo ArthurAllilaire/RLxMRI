@@ -11,6 +11,27 @@ individual scripts.
 from __future__ import annotations
 
 import argparse
+import json
+from pathlib import Path
+
+
+def load_run_env_kwargs(run_dir) -> dict:
+    """Load the saved QalibreMDE2Env constructor kwargs from a run's
+    run_config.json. Supports both trainers: train_e2 writes them under
+    "env_kwargs", train_e2_mf under "base_env_kwargs" (the full-fidelity target
+    config, before per-stage fidelity overrides). Use this so eval/baseline runs
+    inherit the exact env config and can't drift from the training command."""
+    run_dir = Path(run_dir)
+    cfg_path = run_dir / "run_config.json"
+    if not cfg_path.exists():
+        raise FileNotFoundError(
+            f"No run_config.json in {run_dir} — cannot load env config.")
+    cfg = json.loads(cfg_path.read_text())
+    kw = cfg.get("base_env_kwargs") or cfg.get("env_kwargs")
+    if kw is None:
+        raise ValueError(
+            f"{cfg_path} has neither 'base_env_kwargs' nor 'env_kwargs'.")
+    return dict(kw)
 
 
 def add_e2_env_args(p: argparse.ArgumentParser) -> None:
@@ -70,8 +91,7 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
                    help="Log-spaced TI action mapping (constant density per "
                         "decade). See EXPERT_REPORT_TRAC §9.2.")
     p.add_argument("--simplified-action", action="store_true",
-                   help="3-dim action [TI, TE, TR]; fixes α_exc=90° and "
-                        "drops the unused slice_z dim")
+                   help="3-dim action [TI, TE, TR]; fixes α_exc=90°")
     p.add_argument("--fix-te", action="store_true",
                    help="Fix TE=20ms and expose [TI, TR] (2-dim) — the Run A0 "
                         "'without α' ablation (ALPHA_DOF.md, action-space ablation). With "

@@ -28,15 +28,14 @@ def _make_bare(*, fix_te, learn_alpha, simplified=False, log_ti=False):
     return env
 
 
-# 2-dim fix_te mode denorms to [TI, 0.020, TR, 90.0, 0.0] with TI/TR in bounds.
+# 2-dim fix_te mode denorms to [TI, 0.020, TR, 90.0] with TI/TR in bounds.
 def test_denorm_2dim_fix_te():
     env = _make_bare(fix_te=True, learn_alpha=False)
     # mid action [0,0] → u=0.5 for both TI and TR
     full = env._denorm_action(np.array([0.0, 0.0], dtype=np.float32))
-    assert full.shape == (5,)
+    assert full.shape == (4,)
     assert full[1] == pytest.approx(0.020)        # TE fixed
     assert full[3] == pytest.approx(90.0)         # α fixed at 90
-    assert full[4] == pytest.approx(0.0)          # slice_z
     # TI within bounds, TR within bounds
     assert QalibreMDE2Env._ACT_LO[0] <= full[0] <= QalibreMDE2Env._ACT_HI[0]
     assert QalibreMDE2Env._ACT_LO[2] <= full[2] <= QalibreMDE2Env._ACT_HI[2]
@@ -61,7 +60,7 @@ def test_fix_te_unchanged_existing_modes():
     # Without fix_te, the simplified mode still pins α=90 and TE-from-range.
     env = _make_bare(fix_te=False, learn_alpha=False, simplified=True)
     full = env._denorm_action(np.array([0.0, 0.0, 0.0], dtype=np.float32))
-    assert full.shape == (5,)
+    assert full.shape == (4,)
     assert full[3] == pytest.approx(90.0)
 
 

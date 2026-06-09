@@ -164,9 +164,11 @@ def load_existing(path: Path, force: bool) -> dict:
     return out
 
 
-# Physical action bounds for the [TI, TR] sub-space (mirror env_e2._ACT_LO/HI).
-TI_LO, TI_HI = 0.010, 3.000
-TR_LO, TR_HI = 0.500, 5.000
+# Physical action bounds for the [TI, TR] sub-space, derived from the single
+# source (env_e2._ACT_LO/HI, itself verified against julia/rl/e2.jl at env
+# construction). Indices: 0 = TI, 2 = TR in the [TI, TE, TR, α] vector.
+TI_LO, TI_HI = float(QalibreMDE2Env._ACT_LO[0]), float(QalibreMDE2Env._ACT_HI[0])
+TR_LO, TR_HI = float(QalibreMDE2Env._ACT_LO[2]), float(QalibreMDE2Env._ACT_HI[2])
 
 # A spread of informative inversion times covering the plate's T1·ln2 range
 # (short ~0.05 s to long ~1.4 s). Open-loop policies cycle through these.

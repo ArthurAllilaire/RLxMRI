@@ -1064,7 +1064,7 @@
         TI_req = 2.5
         TE_req = 0.02
         TR_req = 0.5    # too small to fit TI
-        _, _, _, info = e2_step!(env, [TI_req, TE_req, TR_req, 90.0, 0.0])
+        _, _, _, info = e2_step!(env, [TI_req, TE_req, TR_req, 90.0])
 
         @test isapprox(info["TI"], TI_req; atol = 1e-9)
         @test info["TR"] >= (TI_req + TE_req) / 0.90 - 1e-9
@@ -1080,7 +1080,7 @@
         done = false
         local info
         while !done
-            _, _, done, info = e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
+            _, _, done, info = e2_step!(env, [0.3, 0.02, 3.0, 90.0])
         end
 
         @test env.time_used_s <= env.time_budget_s + 1e-9
@@ -1095,7 +1095,7 @@
         # the episode WITHOUT simulating it (time stays 0, no block executed).
         env = E2Env(; Nfe = 8, Npe = 8, max_blocks = 30, time_budget_s = 26.0)
         e2_reset!(env; rng_seed = 1)
-        _, _, done, info = e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
+        _, _, done, info = e2_step!(env, [0.3, 0.02, 3.0, 90.0])
 
         @test done == true
         @test env.n_blocks == 0
@@ -1167,8 +1167,8 @@
 
         # Two informative blocks at different TI → fit should recover T1 to the
         # T1-grid floor (noiseless analytic == fitter's own forward model).
-        e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
-        _, _, _, info = e2_step!(env, [1.0, 0.02, 3.0, 90.0, 0.0])
+        e2_step!(env, [0.3, 0.02, 3.0, 90.0])
+        _, _, _, info = e2_step!(env, [1.0, 0.02, 3.0, 90.0])
         @test info["n_blocks"] == 2
         @test info["mape"] < 0.05                  # well under 5 % with no noise
     end
@@ -1198,8 +1198,8 @@
                      time_penalty_coef = 0.0, max_blocks = 5,
                      time_budget_s = 600.0)
         e2_reset!(env; rng_seed = 5)
-        e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
-        _, r, _, info = e2_step!(env, [1.0, 0.02, 3.0, 90.0, 0.0])
+        e2_step!(env, [0.3, 0.02, 3.0, 90.0])
+        _, r, _, info = e2_step!(env, [1.0, 0.02, 3.0, 90.0])
         @test isapprox(r, -clamp(info["mape"], 0.0, 1.0); atol = 1e-12)
     end
 
@@ -1214,7 +1214,7 @@
         env0 = E2Env(; kw..., time_penalty_coef = 0.0)
         envλ = E2Env(; kw..., time_penalty_coef = λ)
         e2_reset!(env0; rng_seed = 11); e2_reset!(envλ; rng_seed = 11)
-        a1 = [0.3, 0.02, 3.0, 90.0, 0.0]; a2 = [1.0, 0.02, 3.0, 90.0, 0.0]
+        a1 = [0.3, 0.02, 3.0, 90.0]; a2 = [1.0, 0.02, 3.0, 90.0]
         e2_step!(env0, a1); e2_step!(envλ, a1)
         (_, r0, _, info0) = e2_step!(env0, a2)
         (_, rλ, _, _)     = e2_step!(envλ, a2)
@@ -1231,7 +1231,7 @@
         env0 = E2Env(; kw..., time_penalty_coef = 0.0)
         envλ = E2Env(; kw..., time_penalty_coef = 0.7)
         e2_reset!(env0; rng_seed = 11); e2_reset!(envλ; rng_seed = 11)
-        a1 = [0.3, 0.02, 3.0, 90.0, 0.0]; a2 = [1.0, 0.02, 3.0, 90.0, 0.0]
+        a1 = [0.3, 0.02, 3.0, 90.0]; a2 = [1.0, 0.02, 3.0, 90.0]
         e2_step!(env0, a1); e2_step!(envλ, a1)
         (_, r0, _, _) = e2_step!(env0, a2)
         (_, rλ, _, _) = e2_step!(envλ, a2)
@@ -1245,9 +1245,9 @@
                      analytic_noise_sigma = 0.0, reward_mode = :delta_log_mape,
                      allow_stop = true, max_blocks = 15, time_budget_s = 600.0)
         e2_reset!(env; rng_seed = 7)
-        (_, _, d1, i1) = e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0], false)
+        (_, _, d1, i1) = e2_step!(env, [0.3, 0.02, 3.0, 90.0], false)
         @test d1 == false
-        (_, _, d2, i2) = e2_step!(env, [1.0, 0.02, 3.0, 90.0, 0.0], true)
+        (_, _, d2, i2) = e2_step!(env, [1.0, 0.02, 3.0, 90.0], true)
         @test d2 == true                      # stop honoured
         @test i2["stop_requested"] == true
         @test i2["n_blocks"] == 2             # the stopping block was executed
@@ -1259,8 +1259,8 @@
                      analytic_noise_sigma = 0.0, reward_mode = :delta_log_mape,
                      allow_stop = false, max_blocks = 15, time_budget_s = 600.0)
         e2_reset!(env; rng_seed = 7)
-        e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0], false)
-        (_, _, d2, i2) = e2_step!(env, [1.0, 0.02, 3.0, 90.0, 0.0], true)
+        e2_step!(env, [0.3, 0.02, 3.0, 90.0], false)
+        (_, _, d2, i2) = e2_step!(env, [1.0, 0.02, 3.0, 90.0], true)
         @test d2 == false                     # stop flag does nothing
         @test i2["stop_requested"] == false
     end
@@ -1272,7 +1272,7 @@
                      analytic_noise_sigma = 0.0, reward_mode = :terminal_only,
                      allow_stop = true, max_blocks = 15, time_budget_s = 600.0)
         e2_reset!(env; rng_seed = 4)
-        (_, r, done, info) = e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0], true)
+        (_, r, done, info) = e2_step!(env, [0.3, 0.02, 3.0, 90.0], true)
         @test done == true
         @test info["n_blocks"] == 1
         @test info["mape"] == 1.0
@@ -1286,8 +1286,8 @@
         e2_reset!(env; rng_seed = 2)
         rewards = Float64[]
         dones = Bool[]
-        for a in ([0.3, 0.02, 3.0, 90.0, 0.0], [1.0, 0.02, 3.0, 90.0, 0.0],
-                  [0.6, 0.02, 3.0, 90.0, 0.0])
+        for a in ([0.3, 0.02, 3.0, 90.0], [1.0, 0.02, 3.0, 90.0],
+                  [0.6, 0.02, 3.0, 90.0])
             _, r, done, info = e2_step!(env, a)
             push!(rewards, r); push!(dones, done)
             done && (@test isapprox(r, -clamp(info["mape"], 0.0, 1.0); atol = 1e-12))
@@ -1302,7 +1302,7 @@
     @testset "e2_image_stats errors under forward_model=:analytic" begin
         env = E2Env(; subset_size = 3, forward_model = :analytic)
         e2_reset!(env; rng_seed = 1)
-        e2_step!(env, [0.3, 0.02, 3.0, 90.0, 0.0])
+        e2_step!(env, [0.3, 0.02, 3.0, 90.0])
         @test_throws ErrorException e2_image_stats(env)
         @test_throws ErrorException e2_dual_acq_snr_report(env)
     end

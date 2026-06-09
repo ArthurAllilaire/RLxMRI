@@ -79,6 +79,8 @@ def load_baselines(path):
         raw = json.load(f)
     out = {}
     for name, v in raw.items():
+        if name.startswith("_") or not isinstance(v, dict):
+            continue  # skip "_run_meta" and any non-schedule entries
         arr = v.get("per_pool_sphere_mape_pct") or v.get("per_sphere_mape_pct")
         if arr is not None:
             out[name] = np.array(arr, dtype=float)

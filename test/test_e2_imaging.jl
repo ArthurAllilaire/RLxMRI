@@ -316,7 +316,7 @@ end
 
         TIs = [0.1, 0.3, 0.7, 1.5, 3.0]
         for ti in TIs
-            _ = e2_step!(env, Float64[ti, 0.02, 5.0, 90.0, 0.0])
+            _ = e2_step!(env, Float64[ti, 0.02, 5.0, 90.0])
         end
 
         # Allow 15 % rtol — the ROI samples the centred pixel which may
@@ -340,7 +340,7 @@ end
         env.sphere_px = [(env.Npe ÷ 2 + 1, env.Nfe ÷ 2 + 1)]
 
         for ti in (0.1, 0.3, 0.7, 1.5, 3.0)
-            _ = e2_step!(env, Float64[ti, 0.02, 5.0, 40.0, 0.0])   # α = 40°
+            _ = e2_step!(env, Float64[ti, 0.02, 5.0, 40.0])   # α = 40°
         end
         @test isapprox(env.T1_est[1], 1.0; rtol = 0.15)
     end

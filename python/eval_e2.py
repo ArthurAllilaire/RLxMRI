@@ -28,16 +28,25 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from qalibremd_gym.env_e2 import QalibreMDE2Env
 from qalibremd_gym.schedules import log_ti_grid
+from baseline_e2 import _mape_uncertainty  # episode-level bootstrap CI/SEM
 
 
 # ── Fixed-TI grid baseline ─────────────────────────────────────────────────
 
 
-def _fixed_grid_action(step: int, n_ti: int = 7) -> np.ndarray:
-    """Cycle through a fixed log-spaced TI grid, TE=20ms, TR=4s, α=90°."""
-    tis = log_ti_grid(n=n_ti)
-    ti  = float(tis[step % n_ti])
-    return np.array([ti, 0.020, 4.0, 90.0, 0.0], dtype=np.float32)
+def _fixed_grid_physical(step: int, n_ti: int = 7) -> tuple[float, float, float]:
+    """Fixed log-spaced TI grid, α=90° — the conventional multi-TI IR protocol.
+    Returns the *physical* (TI, TR, α); the env builds the correctly scaled
+    normalised action via physical_to_norm_action (honours
+    fix_te/learn_alpha/log_ti_action). Grid spans the env's TI bounds.
+
+    TR=1.7 s (not the textbook ≥5·T1): at Npe=32 / 240 s a longer TR fits only
+    ONE block, so the fitter never gets its ≥2 samples and MAPE is forced to
+    1.0 — the spurious "100% baseline" seen before. 1.7 s lets ~5 blocks fit the
+    budget the agent also faces. The authoritative comparator is baseline_e2.py
+    (CR-optimal / clinical schedules); this is a quick in-pipeline sanity grid."""
+    tis = log_ti_grid(lo=0.05, hi=3.0, n=n_ti)
+    return float(tis[step % n_ti]), 1.7, 90.0
 
 
 def evaluate_fixed_grid(env: QalibreMDE2Env, n_episodes: int,
@@ -47,9 +56,8 @@ def evaluate_fixed_grid(env: QalibreMDE2Env, n_episodes: int,
         obs, _ = env.reset(seed=seed_offset + ep)
         done, step, info = False, 0, {}
         while not done:
-            # Convert physical action → normalised action ([-1, 1])
-            phys = _fixed_grid_action(step)
-            norm = 2.0 * (phys - env._ACT_LO) / (env._ACT_HI - env._ACT_LO) - 1.0
+            ti, tr, alpha = _fixed_grid_physical(step)
+            norm = env.physical_to_norm_action(ti, tr, alpha)
             obs, _r, done, _trunc, info = env.step(norm)
             step += 1
         mapes.append(float(info.get("mape", np.nan)))
@@ -57,6 +65,7 @@ def evaluate_fixed_grid(env: QalibreMDE2Env, n_episodes: int,
     return {
         "mape_pct": float(np.nanmean(mapes)) * 100,
         "mape_p90_pct": float(np.nanpercentile(mapes, 90)) * 100,
+        **_mape_uncertainty(mapes),
         "per_sphere_mape_pct": np.nanmean(np.array(per_sphere), axis=0) * 100,
     }
 
@@ -117,6 +126,7 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
     return {
         "mape_pct":           float(np.nanmean(mapes)) * 100,
         "mape_p90_pct":       float(np.nanpercentile(mapes, 90)) * 100,
+        **_mape_uncertainty(mapes),
         "success_5pct":       float(np.mean([m < 0.05 for m in mapes])),
         "per_sphere_mape_pct": per_sphere_arr * 100,
         "per_pool_mape_pct":  per_pool,
@@ -127,7 +137,13 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--policy",   type=Path, required=True)
+    p.add_argument("--from-run", type=Path, default=None,
+                   help="Load the env config from this run dir's run_config.json "
+                        "(so eval matches training exactly — no need to repeat "
+                        "--field/--nfe/--npe/--fix-te/… by hand). Also defaults "
+                        "--policy/--vecnorm to <dir>/policy.zip,vecnorm.pkl.")
+    p.add_argument("--policy",   type=Path, default=None,
+                   help="Policy .zip. Optional if --from-run is given.")
     p.add_argument("--vecnorm",  type=Path, default=None)
     p.add_argument("--episodes", type=int,  default=50)
     p.add_argument("--seed",     type=int,  default=500_000)
@@ -185,32 +201,49 @@ def main():
     p.add_argument("--npe", type=int, default=None)
     args = p.parse_args()
 
-    env_kwargs = dict(cfg_field=args.field,
-                       max_blocks=args.max_blocks,
-                       time_budget_s=args.time_budget,
-                       subset_size=args.subset_size,
-                       phase_sensitive=args.phase_sensitive,
-                       sigma_method=args.sigma_method,
-                       simplified_action=args.simplified_action,
-                       fix_te=args.fix_te,
-                       learn_alpha=args.learn_alpha,
-                       log_ti_action=args.log_ti_action,
-                       oracle_fit=args.oracle_fit,
-                       oracle_band=args.oracle_band,
-                       fitter_n_grid=args.fitter_n_grid,
-                       include_image=args.include_image,
-                       include_sigma=args.include_sigma,
-                       water_model=args.water_model,
-                       noise_sigma_abs=args.noise_sigma_abs,
-                       reward_mode=args.reward_mode,
-                       terminal_bonus=args.terminal_bonus,
-                       mape_alpha=args.mape_alpha,
-                       allow_stop=args.allow_stop,
-                       use_gpu=args.use_gpu)
+    if args.from_run is not None:
+        # Inherit the exact env config from the run, so eval can't drift from
+        # training. Default the policy/vecnorm to the run dir too.
+        from e2_config import load_run_env_kwargs
+        env_kwargs = load_run_env_kwargs(args.from_run)
+        if args.policy is None:
+            args.policy = args.from_run / "policy.zip"
+        if args.vecnorm is None and (args.from_run / "vecnorm.pkl").exists():
+            args.vecnorm = args.from_run / "vecnorm.pkl"
+        # Diagnostic eval-only knobs aren't in the training config; overlay them.
+        env_kwargs.update(oracle_fit=args.oracle_fit, oracle_band=args.oracle_band,
+                          fitter_n_grid=args.fitter_n_grid)
+        print(f"[eval_e2] env config loaded from {args.from_run}/run_config.json")
+    else:
+        env_kwargs = dict(cfg_field=args.field,
+                           max_blocks=args.max_blocks,
+                           time_budget_s=args.time_budget,
+                           subset_size=args.subset_size,
+                           phase_sensitive=args.phase_sensitive,
+                           sigma_method=args.sigma_method,
+                           simplified_action=args.simplified_action,
+                           fix_te=args.fix_te,
+                           learn_alpha=args.learn_alpha,
+                           log_ti_action=args.log_ti_action,
+                           oracle_fit=args.oracle_fit,
+                           oracle_band=args.oracle_band,
+                           fitter_n_grid=args.fitter_n_grid,
+                           include_image=args.include_image,
+                           include_sigma=args.include_sigma,
+                           water_model=args.water_model,
+                           noise_sigma_abs=args.noise_sigma_abs,
+                           reward_mode=args.reward_mode,
+                           terminal_bonus=args.terminal_bonus,
+                           mape_alpha=args.mape_alpha,
+                           allow_stop=args.allow_stop,
+                           use_gpu=args.use_gpu)
+    # Resolution overrides apply in either mode (only if explicitly passed).
     if args.nfe is not None:
         env_kwargs["Nfe"] = args.nfe
     if args.npe is not None:
         env_kwargs["Npe"] = args.npe
+    if args.policy is None:
+        p.error("--policy is required unless --from-run is given.")
 
     print("=" * 60)
     print(f"E2 Evaluation — policy: {args.policy}")
@@ -220,7 +253,9 @@ def main():
     print(f"\nEvaluating PPO agent on {args.episodes} held-out configs …")
     res = evaluate_policy(args.policy, args.vecnorm, args.episodes,
                           args.seed, **env_kwargs)
-    print(f"  MAPE        = {res['mape_pct']:.2f}%")
+    _ci = res["mape_ci95_pct"]
+    print(f"  MAPE        = {res['mape_pct']:.2f}%  "
+          f"(95% CI {_ci[0]:.2f}–{_ci[1]:.2f}%, SEM ±{res['mape_sem_pct']:.2f}%)")
     print(f"  p90 MAPE    = {res['mape_p90_pct']:.2f}%")
     print(f"  Success<5%  = {res['success_5pct']:.1%}")
     print(f"  Mean time   = {res['mean_scan_time_s']:.1f}s")
@@ -246,15 +281,16 @@ def main():
             print(f"    [{lo:.3f}-{hi:.3f}s]: {bar}")
 
     # ── Fixed-grid baseline ───────────────────────────────────────────────
-    # Baseline always uses the full 5-dim action space: it cycles through a
-    # physical [TI, TE, TR, α, slice_z] vector by construction.
+    # Run the baseline in the SAME action mode as the policy: physical_to_norm_action
+    # decodes the fixed [TI, TE, TR, α] schedule correctly under any mode, so we no
+    # longer strip fix_te/learn_alpha/log_ti_action (doing so used to silently
+    # mis-route action channels — see the 2026-06 fix).
     print(f"\nEvaluating fixed-TI grid baseline on same configs …")
-    base_kwargs = {k: v for k, v in env_kwargs.items()
-                   if k not in ("simplified_action", "log_ti_action",
-                                "fix_te", "learn_alpha")}
-    env_base = QalibreMDE2Env(rng_seed=args.seed, **base_kwargs)
+    env_base = QalibreMDE2Env(rng_seed=args.seed, **env_kwargs)
     base = evaluate_fixed_grid(env_base, args.episodes, args.seed)
-    print(f"  MAPE        = {base['mape_pct']:.2f}%")
+    _bci = base["mape_ci95_pct"]
+    print(f"  MAPE        = {base['mape_pct']:.2f}%  "
+          f"(95% CI {_bci[0]:.2f}–{_bci[1]:.2f}%, SEM ±{base['mape_sem_pct']:.2f}%)")
     print(f"  p90 MAPE    = {base['mape_p90_pct']:.2f}%")
 
     print(f"\n  Agent  MAPE = {res['mape_pct']:.2f}%  "
@@ -283,7 +319,10 @@ def main():
         "oracle_band":   float(args.oracle_band),
         "agent_mape_pct":    res["mape_pct"],
         "agent_mape_p90_pct": res["mape_p90_pct"],
+        "agent_mape_ci95_pct": res["mape_ci95_pct"],
+        "agent_mape_sem_pct": res["mape_sem_pct"],
         "baseline_mape_pct": base["mape_pct"],
+        "baseline_mape_ci95_pct": base.get("mape_ci95_pct"),
         "per_sphere":    res["per_sphere_mape_pct"].tolist(),
         "per_pool":      {str(k): list(v)
                            for k, v in res.get("per_pool_mape_pct", {}).items()},

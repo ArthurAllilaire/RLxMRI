@@ -48,7 +48,7 @@
 #   would change the per-shot weighting in the analytic forward model.
 #
 # * One TI per block, shared across all 14 spheres. No per-sphere
-#   targeting — `slice_z` axis exists in the action but is unused.
+#   targeting (no slice-selective excitation in the forward model).
 #   Structural limitation; addressable only via slice-selective excitation
 #   or a multi-action-per-block MDP (E3+).
 #
@@ -339,9 +339,9 @@ e2_obs_dim(env::E2Env) =
     env.n_spheres +
     (env.include_sigma ? env.n_spheres : 0) + 3
 
-"Action space bounds: [TI_lo, TE_lo, TR_lo, α_deg_lo, slice_z_mm_lo], same for hi."
-e2_action_lo(::E2Env) = Float64[0.010, 0.005, 0.5,   5.0,  -60.0]
-e2_action_hi(::E2Env) = Float64[3.000, 0.080, 5.0, 180.0,   60.0]
+"Action space bounds: [TI_lo, TE_lo, TR_lo, α_deg_lo], same for hi."
+e2_action_lo(::E2Env) = Float64[0.010, 0.005, 0.5,   5.0]
+e2_action_hi(::E2Env) = Float64[3.000, 0.080, 5.0, 180.0]
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
 
@@ -739,7 +739,7 @@ end
 """
     e2_step!(env, action_vec, stop=false) → (obs, reward, done, info_dict)
 
-`action_vec` is a 5-element vector [TI_s, TE_s, TR_s, α_deg, slice_z_mm].
+`action_vec` is a 4-element vector [TI_s, TE_s, TR_s, α_deg].
 All values should lie within `e2_action_lo`/`e2_action_hi`.
 
 `stop` is the learned STOP decision (only honoured when `env.allow_stop`): the
@@ -756,7 +756,6 @@ function e2_step!(env::E2Env, action_vec, stop::Bool = false)
     TE        = Float64(action_vec[2])
     TR        = Float64(action_vec[3])
     α_exc_deg = Float64(action_vec[4])
-    # action_vec[5] = slice_z_mm — stored but not yet used in sequence
 
     # Ensure TR can accommodate the requested TI + TE with recovery headroom.
     # Lift TR up rather than capping TI down — capping TI silently removed

@@ -37,19 +37,45 @@ def _active_nominal_t1s(env: QalibreMDE2Env) -> list[float]:
     return [float(d.T1) for d in env._env.active_base_descs]
 
 
+def _mape_uncertainty(mapes: list[float], n_boot: int = 5000,
+                      seed: int = 0) -> dict:
+    """Episode-level uncertainty on the mean MAPE: standard error of the mean +
+    a bootstrap 95% CI (percentile method). Lets the reader judge whether the
+    episode count resolves a given gap between schedules. All values in %."""
+    m = np.asarray([x for x in mapes if not np.isnan(x)], dtype=np.float64)
+    n = m.size
+    if n < 2:
+        return {"mape_sem_pct": float("nan"), "mape_ci95_pct": [float("nan")] * 2,
+                "n_eff": int(n)}
+    rng = np.random.default_rng(seed)
+    boot = m[rng.integers(0, n, size=(n_boot, n))].mean(axis=1)
+    lo, hi = np.percentile(boot, [2.5, 97.5])
+    return {
+        "mape_sem_pct":  float(m.std(ddof=1) / np.sqrt(n)) * 100,
+        "mape_ci95_pct": [float(lo) * 100, float(hi) * 100],
+        "n_eff":         int(n),
+    }
+
+
 def _phys_to_norm(env: QalibreMDE2Env, phys: np.ndarray) -> np.ndarray:
-    return 2.0 * (phys - env._ACT_LO) / (env._ACT_HI - env._ACT_LO) - 1.0
+    # Delegate to the env so the schedule decodes to the requested physical
+    # sequence under ANY action mode (fix_te / learn_alpha / log_ti_action).
+    # A bare 5-dim linear inverse is only correct in the full-action default and
+    # silently mis-routes channels otherwise (see eval_e2.py fix, 2026-06).
+    return env.physical_to_norm_action(
+        ti_s=float(phys[0]), tr_s=float(phys[2]), alpha_deg=float(phys[3]),
+        te_s=float(phys[1]))
 
 
 def _log_grid(step: int) -> np.ndarray:
     tis = log_ti_grid()
-    return np.array([float(tis[step % 7]), 0.020, 4.0, 90.0, 0.0],
+    return np.array([float(tis[step % 7]), 0.020, 4.0, 90.0],
                     dtype=np.float32)
 
 
 def _clinical_irse(step: int) -> np.ndarray:
     tis = [0.05, 0.15, 0.4, 0.9, 1.6, 2.5]
-    return np.array([float(tis[step % len(tis)]), 0.020, 5.0, 90.0, 0.0],
+    return np.array([float(tis[step % len(tis)]), 0.020, 5.0, 90.0],
                     dtype=np.float32)
 
 
@@ -62,7 +88,7 @@ def _log_grid_trmatched(step: int) -> np.ndarray:
     "RL win is per-sphere TI targeting".
     """
     tis = log_ti_grid()
-    return np.array([float(tis[step % 7]), 0.020, 1.7, 90.0, 0.0],
+    return np.array([float(tis[step % 7]), 0.020, 1.7, 90.0],
                     dtype=np.float32)
 
 
@@ -116,11 +142,11 @@ def make_cr_optimal_schedule(T1s, budget_s, Npe=8,
 
 def _cr_optimal_factory(TIs, TRs):
     """Build a step → action callable that cycles through the precomputed
-    CR-optimal (TI, TR) schedule. TE = 20 ms, alpha = 90°, slice_z = 0."""
+    CR-optimal (TI, TR) schedule. TE = 20 ms, alpha = 90°."""
     n = len(TIs)
     def _sched(step: int) -> np.ndarray:
         k = step % n
-        return np.array([TIs[k], 0.020, TRs[k], 90.0, 0.0], dtype=np.float32)
+        return np.array([TIs[k], 0.020, TRs[k], 90.0], dtype=np.float32)
     return _sched
 
 
@@ -156,11 +182,11 @@ def make_cr_optimal_alpha_schedule(T1s, budget_s, Npe=8,
 
 def _cr_optimal_alpha_factory(TIs, TRs, alphas_deg):
     """Cycle through the α-aware CR-optimal (TI, TR, α) schedule.
-    TE = 20 ms, slice_z = 0; α is the optimised per-block flip angle."""
+    TE = 20 ms; α is the optimised per-block flip angle."""
     n = len(TIs)
     def _sched(step: int) -> np.ndarray:
         k = step % n
-        return np.array([TIs[k], 0.020, TRs[k], alphas_deg[k], 0.0],
+        return np.array([TIs[k], 0.020, TRs[k], alphas_deg[k]],
                         dtype=np.float32)
     return _sched
 
@@ -180,7 +206,7 @@ def _ernst_fixed_factory(TIs, TRs, T1_ref):
     n = len(TIs)
     def _sched(step: int) -> np.ndarray:
         k = step % n
-        return np.array([TIs[k], 0.020, TRs[k], alphas_deg[k], 0.0],
+        return np.array([TIs[k], 0.020, TRs[k], alphas_deg[k]],
                         dtype=np.float32)
     return _sched
 
@@ -229,6 +255,7 @@ def evaluate(name: str, sched_fn, n_episodes: int, seed_offset: int,
         "n_episodes":         n_episodes,
         "mape_pct":           float(np.nanmean(mapes)) * 100,
         "mape_p90_pct":       float(np.nanpercentile(mapes, 90)) * 100,
+        **_mape_uncertainty(mapes),
         "success_5pct":       float(np.mean([m < 0.05 for m in mapes
                                               if not np.isnan(m)])),
         "mean_scan_time_s":   float(np.mean(times)),
@@ -346,6 +373,11 @@ def main():
     p.add_argument("--episodes", type=int, default=30)
     p.add_argument("--seed",     type=int, default=500_000)
     p.add_argument("--out",      type=Path, default=Path("runs/e2/baselines"))
+    p.add_argument("--match-run", type=Path, default=None,
+                   help="Inherit the env config from this run dir's "
+                        "run_config.json so the baseline matches a policy run "
+                        "exactly (field/nfe/npe/noise/budget/water/action-mode). "
+                        "Avoids hand-repeating flags; guarantees apples-to-apples.")
     p.add_argument("--field",    type=str, default="T3", choices=["T3", "T15"])
     p.add_argument("--max-blocks", type=int, default=15)
     p.add_argument("--time-budget", type=float, default=120.0)
@@ -361,6 +393,18 @@ def main():
                    help="Phase-encode steps (image height) AND the per-block shot "
                         "count: block scan-time = Npe·TR. Threaded into the CR "
                         "solver so its budget/Fisher use the same Npe as the env.")
+    p.add_argument("--fix-te", action="store_true",
+                   help="Match the RL action mode: pin TE=20ms (TI,TR[,α] only). "
+                        "Required for an apples-to-apples comparison with a "
+                        "policy trained with --fix-te.")
+    p.add_argument("--learn-alpha", action="store_true",
+                   help="Match the RL action mode: expose α (requires --fix-te). "
+                        "Schedules still set their own α; only the action layout "
+                        "changes so it decodes correctly.")
+    p.add_argument("--log-ti-action", action="store_true",
+                   help="Match the RL action mode: log-spaced TI action axis. "
+                        "Schedules are unaffected (they pass physical TIs); the "
+                        "env just decodes them on the correct axis.")
     p.add_argument("--phase-sensitive", action="store_true")
     p.add_argument("--sigma-method", type=str, default="bootstrap",
                    choices=["asymptotic", "profile_likelihood", "bootstrap"])
@@ -414,26 +458,47 @@ def main():
     # Per-schedule step cap. One-shot CR designs run exactly their n_blocks
     # (run-once); conventional repeating protocols stay uncapped (cycle-to-fill).
     schedule_max_steps: dict[str, int] = {}
-    env_kwargs = dict(
-        cfg_field=args.field,
-        Nfe=args.nfe,
-        Npe=args.npe,
-        max_blocks=args.max_blocks,
-        time_budget_s=args.time_budget,
-        subset_size=args.subset_size,
-        noise_sigma_abs=args.noise,
-        phase_sensitive=args.phase_sensitive,
-        sigma_method=args.sigma_method,
-        oracle_fit=args.oracle_fit,
-        oracle_band=args.oracle_band,
-        fitter_n_grid=args.fitter_n_grid,
-        include_image=args.include_image,
-        include_sigma=args.include_sigma,
-    )
-    cr_budget = args.time_budget if args.cr_budget is None else args.cr_budget
+    if args.match_run is not None:
+        from e2_config import load_run_env_kwargs
+        env_kwargs = load_run_env_kwargs(args.match_run)
+        # Overlay baseline-only diagnostic knobs (not in a training config), and
+        # let an explicit --subset-size override (for oracle/subset evals).
+        env_kwargs.update(oracle_fit=args.oracle_fit, oracle_band=args.oracle_band,
+                          fitter_n_grid=args.fitter_n_grid)
+        if args.subset_size is not None:
+            env_kwargs["subset_size"] = args.subset_size
+        print(f"[baseline_e2] env config loaded from "
+              f"{args.match_run}/run_config.json")
+    else:
+        env_kwargs = dict(
+            cfg_field=args.field,
+            Nfe=args.nfe,
+            Npe=args.npe,
+            max_blocks=args.max_blocks,
+            time_budget_s=args.time_budget,
+            subset_size=args.subset_size,
+            noise_sigma_abs=args.noise,
+            phase_sensitive=args.phase_sensitive,
+            sigma_method=args.sigma_method,
+            oracle_fit=args.oracle_fit,
+            oracle_band=args.oracle_band,
+            fitter_n_grid=args.fitter_n_grid,
+            include_image=args.include_image,
+            include_sigma=args.include_sigma,
+            fix_te=args.fix_te,
+            learn_alpha=args.learn_alpha,
+            log_ti_action=args.log_ti_action,
+        )
+    # CR solver budget defaults to the env's scan-time budget (matched or args).
+    cr_budget = (env_kwargs["time_budget_s"] if args.cr_budget is None
+                 else args.cr_budget)
+    # Field/Npe for the CR fleet+solver: take from the (possibly matched) env
+    # config so they can't disagree with what's being evaluated.
+    field = env_kwargs.get("cfg_field", args.field)
+    npe = int(env_kwargs.get("Npe", args.npe))
 
     # 14-sphere nominal fleet for the chosen field, from Julia's T1_ARRAY.
-    T1s_fleet = nominal_fleet_t1s(args.field)
+    T1s_fleet = nominal_fleet_t1s(field)
     T1_median = float(np.median(T1s_fleet))
 
     if args.ernst_baseline and not args.cr_optimal:
@@ -454,7 +519,7 @@ def main():
             print(f"\n[baseline_e2] Solving CR-optimal schedule "
                   f"(expected random-subset fleet=14 spheres, budget={cr_budget}s) …")
             TIs, TRs, n_blocks, L = make_cr_optimal_schedule(
-                T1s_fleet, budget_s=cr_budget, Npe=args.npe,
+                T1s_fleet, budget_s=cr_budget, Npe=npe,
                 n_block_grid=tuple(args.cr_block_grid),
                 n_starts=args.cr_starts,
                 n_refine=args.cr_refine)
@@ -481,7 +546,7 @@ def main():
         print(f"\n[baseline_e2] Solving α-aware CR-optimal schedule "
               f"(joint TI,TR,α; budget={cr_budget}s) …")
         TIs_a, TRs_a, alphas_a, n_blocks_a, L_a = make_cr_optimal_alpha_schedule(
-            T1s_fleet, budget_s=cr_budget, Npe=args.npe,
+            T1s_fleet, budget_s=cr_budget, Npe=npe,
             n_block_grid=tuple(args.cr_block_grid),
             n_starts=args.cr_starts, n_refine=args.cr_refine)
         print(f"  best n_blocks = {n_blocks_a}, L = {L_a:.4f}")
@@ -505,7 +570,9 @@ def main():
         r = evaluate(name, fn, args.episodes, args.seed,
                      max_steps=schedule_max_steps.get(name), **env_kwargs)
         results[name] = r
-        print(f"  MAPE       = {r['mape_pct']:.2f}%")
+        ci = r["mape_ci95_pct"]
+        print(f"  MAPE       = {r['mape_pct']:.2f}%  "
+              f"(95% CI {ci[0]:.2f}–{ci[1]:.2f}%, SEM ±{r['mape_sem_pct']:.2f}%)")
         print(f"  p90 MAPE   = {r['mape_p90_pct']:.2f}%")
         print(f"  Success<5% = {r['success_5pct']:.1%}")
         print(f"  Mean time  = {r['mean_scan_time_s']:.1f}s "
@@ -538,6 +605,17 @@ def main():
             json.dump(r["schedules_by_subset"], f, indent=2)
 
     out_path = args.out / "baseline_summary.json"
+    # Record the exact env config so the run is reproducible and can be diffed
+    # against a policy's run_config.json["base_env_kwargs"] to confirm an
+    # apples-to-apples comparison (same noise, field, resolution, budget, …).
+    # Stored under "_run_meta" so per-schedule entries stay top-level (consumers
+    # iterate them); the leading "_" marks it as non-schedule metadata.
+    results["_run_meta"] = {
+        "env_config": {k: (str(v) if isinstance(v, Path) else v)
+                       for k, v in env_kwargs.items()},
+        "episodes": args.episodes,
+        "seed": args.seed,
+    }
     with out_path.open("w") as f:
         json.dump(results, f, indent=2)
     print(f"\n[baseline_e2] Summary → {out_path}")
