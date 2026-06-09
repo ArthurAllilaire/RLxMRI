@@ -1,9 +1,10 @@
+[baseline_e2] CR timing constraints from E2 env: TR_lo_floor=0.500s, TE=0.020s, TR_headroom=0.90
 
 [baseline_e2] Evaluating oracle CR-optimal on 24 sampled subsets
-  MAPE       = 12.93%
-  p90 MAPE   = 25.13%
+  MAPE       = 11.51%
+  p90 MAPE   = 19.41%
   Success<5% = 29.2%
-  Mean time  = 212.0s (3.8 blocks)
+  Mean time  = 239.2s (4.0 blocks)
   Unique oracle schedules solved = 24
 
 [baseline_e2] Summary → runs/e2/baseline_5sphere_runB/baseline_summary.json
