@@ -632,6 +632,36 @@ pulled artifacts, `cr_optimal` had 0/4 TRs exactly at 0.5 s,
 `TI + 0.05` lower bound was more active (19/96 oracle TRs), which is why the
 feasibility mismatch mainly hurt the oracle rerun.
 
+**Action repair vs rejection.** E2 currently repairs infeasible timing actions
+rather than rejecting them: if the agent asks for a TR too short to contain
+`TI + TE`, the environment executes the same TI but lifts TR to the feasible
+minimum. This was a pragmatic PPO choice. Hard rejection would be cleaner
+semantically, but early random policies would spend many episodes proposing
+invalid timing tuples, receiving terminal penalties or no-op penalties before
+learning any MRI structure. That burns rollout slots, episode seeds and training
+wallclock on action-space geometry rather than sequence design, and it tends to
+push PPO toward overly conservative high-TR choices. A cleaner future design would
+parameterise feasibility directly, e.g. choose `(TI, TE, recovery_margin)` and
+set `TR = (TI + TE)/headroom + recovery_margin`, so invalid actions cannot be
+sampled.
+
+For the current code, the important change is auditability: `e2_step!` now emits
+both requested and executed timings:
+
+```
+TI_requested, TE_requested, TR_requested
+TI_executed,  TE_executed,  TR_executed
+TR_min_required, TR_lifted, TR_lift_amount
+TE_max_allowed,  TE_clamped, TE_clamp_amount
+action_repaired
+```
+
+`eval_e2.py` and `diagnose_e2.py` summarise these as repair rates and mean/max
+TR lift. This makes action repair a measurable property of a policy rather than
+a hidden environment side effect. If a policy has near-zero repair rate, the
+repair rule is only a guardrail; if it relies on repair often, requested-action
+plots are misleading and the report should discuss executed timings instead.
+
 ---
 
 ## 7. Honest caveats
