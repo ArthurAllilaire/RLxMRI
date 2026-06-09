@@ -15,6 +15,9 @@ runs/e2e_gate
 
 # Julia
 python/julia_runtime/pyjuliapkg/
+python/julia_runtime/.CondaPkg
+python/julia_runtime_gpu/pyjuliapkg/
+python/julia_runtime_gpu/.CondaPkg/
 
 # LaTeX build artifacts
 report_latex/*.aux

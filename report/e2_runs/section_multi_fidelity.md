@@ -741,6 +741,7 @@ PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
 GPU variant to try the same run with KomaMRI GPU simulation enabled:
 
 ```bash
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
 PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
 PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
 PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
