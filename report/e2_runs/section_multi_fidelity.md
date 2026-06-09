@@ -188,8 +188,11 @@ policy collapsed to 90° despite the extra action dimension. -->
 ### 4.3 The switch rule (as implemented)
 
 At each decision point (every `mf_decision_rollouts` PPO rollouts) we probe the
-policy on the current-fidelity env and the full-Bloch env (each capped at
-`mf_probe_episodes_full = 4`). Define the full-sim score
+policy on the current-fidelity env and the full-Bloch env. In Run A this used
+`mf_probe_episodes_full = 4`: cheap enough to run during training, but too noisy
+to be a report-grade estimate. Treat these four-episode probes as **screening
+signals** for switching, not as final statistical claims. Define the full-sim
+score
 
 ```
 P_H = −log₁₀(clamp(MAPE_full, floor, 1))
@@ -216,6 +219,12 @@ warm-started policy *before* any training at the new stage, minus the previous
 stage's final full-sim MAPE — as the transfer diagnostic. Decision logic is
 isolated in `python/mf_switch.py` (pure, unit-tested); the PPO/Julia
 orchestration is in `python/train_e2_mf.py`.
+
+For future runs, global-best checkpointing is deliberately stricter than the
+switch rule: a four-episode full-Bloch probe can identify a candidate, but
+`<run>/global_best/` is only overwritten after a separate larger confirmation
+eval (`--mf-global-best-episodes`, default 12, using independent seeds). Final
+report numbers should still come from a fresh 24-episode eval with CIs.
 
 ### 4.4 V2 — the slope-per-cost lookahead
 
@@ -280,13 +289,20 @@ rollback to global best and go straight to full".
 
 ## 6. Run A — results & evaluation
 
-> **Version note.** §§6.1–6.5 report the original Run A analysis generated on
+> **Version note.** §§6.1–6.3 and the money plot report the original Run A analysis generated on
 > **2026-06-01**. After this, the sibling digital twin changed on **2026-06-08/09**
 > (`random-phantom` config sampler, SO3 pose sampler, builder/augment changes, and
 > manifest re-resolves). Re-evaluating the same saved policy on the current
-> simulator gives **11.68%** rather than **10.16%** MAPE (§6.6). The qualitative
-> findings below still hold, but do not mix the old 10.16% / 8.36% checkpoint
-> numbers with current-simulator baselines unless the checkpoints are re-run.
+> simulator gives **11.68%** rather than **10.16%** MAPE (§6.6). The checkpoint
+> comparison in §6.4 has now been re-run on the current simulator and includes CIs.
+> The qualitative findings below still hold, but old text logs from June 1 should
+> not be used as the source of truth beside the current baseline table.
+
+> **How to frame this in the report:** this is not "the same experiment sampled
+> twice"; Run A exposed weaknesses in the digital twin/sampling path, and the
+> simulator was then improved. The post-rework numbers are the fair comparison to
+> the current fixed baselines; the pre-rework numbers are historical evidence for
+> the curriculum behaviour, not directly comparable performance claims.
 
 ### 6.1 The money plot
 
@@ -382,27 +398,29 @@ but we still need to verify the full fitter/action pipeline for α≠90°. The "
 bought nothing" reading may be partly a fitter/objective/search-space confound,
 not purely a policy finding. -->
 
-### 6.4 Checkpoint comparison — what each stage discovered
+### 6.4 Checkpoint comparison — what each stage discovered (current sim)
 
 The `analytic` end-of-stage policy and the `cached-best` checkpoint (30k steps)
-were re-evaluated on the **same full-Bloch held-out set** as the final policy — a
-transfer test (trained cheap, scored on the true target):
+were re-evaluated on the **same current-simulator full-Bloch held-out set** as
+the final policy — a transfer test (trained cheap, scored on the true target):
 
-| Metric (full-Bloch held-out) | `analytic` (8k) | **`cached-best` (30k)** | `full` final (79.5k) |
+| Metric (full-Bloch held-out, 24 ep) | `analytic` (8k) | **`cached-best` (30k)** | `full` final (79.5k) |
 |---|---|---|---|
-| **MAPE** | 15.89 % | **8.36 %** | 10.16 % |
-| **p90 MAPE** | 22.93 % | **9.96 %** | 14.42 % |
+| **MAPE** | 16.03 % | **9.44 %** | 11.68 % |
+| **95% CI** | [13.97, 18.56] | **[8.18, 10.94]** | [10.42, 13.03] |
+| **p90 MAPE** | 20.87 % | **14.11 %** | 15.22 % |
 | r(TI, mean running T1_est) | +0.68 | +0.63 | +0.50 |
 | r(TI, most-uncertain sphere) | +0.33 | +0.39 | +0.64 |
 | TI intra-episode log-σ | 0.33 | **0.38** | 0.28 |
 | Max TI reached | ~0.18 s | **~0.8 s** | ~0.3–0.6 s |
 | α: mean / std / min (deg) | 89.0 / 2.4 / 79.5 | 89.8 / 1.6 / 75.1 | 90.0 / **0.00** / 90.0 |
-| Pool 2 MAPE (T1 = 1.43 s) | 60.7 % | **14.5 %** | 28.4 % |
-| Pool 3 MAPE (T1 = 1.03 s) | 61.4 % | **10.3 %** | 17.9 % |
-| Pool 1 MAPE (T1 = 1.88 s) | 43.0 % | 42.2 % | 40.8 % |
+| Pool 2 MAPE (T1 = 1.43 s) | 64.1 % | **18.7 %** | 28.2 % |
+| Pool 3 MAPE (T1 = 1.03 s) | 58.2 % | **13.8 %** | 23.8 % |
+| Pool 4 MAPE (T1 = 0.75 s) | 25.0 % | **10.7 %** | 19.0 % |
+| Pool 1 MAPE (T1 = 1.88 s) | 41.4 % | 43.5 % | 41.2 % |
 
-*(Pools 5–14, T1 ≤ 0.53 s, are 1.5–7.7% for all three — the short/mid-T1 band is
-essentially solved from the analytic stage onward.)*
+*(Pools 5–14, T1 ≤ 0.53 s, remain the easy band: roughly 1.5–9.5% across these
+checkpoints. The persistent failures are the long and mid-long T1 pools.)*
 
 **Four findings:**
 
@@ -412,16 +430,21 @@ strongly than the final policy (r = +0.68 vs +0.50), with the same probe →
 fan-out → ramp structure. The expensive stages did not *teach* adaptivity — they
 inherited it.
 
-**(b) The cached stage is where accuracy was won, and it is the run's best
-policy.** `cached-best` reaches **8.36% / p90 9.96%**, clearly better than the
-final saved policy. The gain came from **TI range**: its ramp climbs to ~0.8 s,
-long enough to characterise mid-long-T1 spheres, collapsing Pool 2/3 error from
-~61% (analytic) to 14.5% / 10.3%. The analytic policy's ramp topped out at ~0.18 s.
+**(b) The cached stage is where accuracy was won, and it remains the run's best
+checkpoint after the simulator rework.** `cached-best` reaches **9.44%**
+([8.18, 10.94], p90 14.11%), better than the final saved policy's **11.68%**
+([10.42, 13.03], p90 15.22%). The CIs slightly overlap, so phrase this as
+"best measured checkpoint" rather than a formal statistical win. The gain came
+from **TI range**: its ramp climbs to ~0.8 s, long enough to characterise
+mid-long-T1 spheres, reducing Pool 2/3/4 error from 64.1% / 58.2% / 25.0%
+(analytic) to 18.7% / 13.8% / 10.7%. The analytic policy's ramp topped out at
+~0.18 s.
 
 **(c) The expensive stages made it worse, and we can see how.** Between
 cached-best and the final policy the TI ramp *shrank* from ~0.8 s back to
 ~0.3–0.6 s and intra-episode exploration dropped (log-σ 0.38 → 0.28),
-re-inflating mid-long-T1 errors (Pool 2: 14.5% → 28.4%; Pool 3: 10.3% → 17.9%).
+re-inflating mid-long-T1 errors (Pool 2: 18.7% → 28.2%; Pool 3: 13.8% → 23.8%;
+Pool 4: 10.7% → 19.0%).
 The full3 regression is therefore not a number wobble — the policy concretely
 **lost the long-TI behaviour** the cached stage had found, most likely because
 full3's 3 mm-water optimum pulled it off the 1 mm optimum before the budget ran
@@ -432,9 +455,9 @@ out.
 ceiling rather than teaching it to exploit the Ernst angle. `learn_alpha` added an
 action dimension that bought nothing here.
 
-**Pool 1 (T1 = 1.88 s) is unsolved by every checkpoint (~42%)** — even cached-best's
-0.8 s TIs fall short of the ~1.3 s inversion null. This is an action-space
-ceiling, not a training-time problem.
+**Pool 1 (T1 = 1.88 s) is unsolved by every checkpoint (~41–44%)** — even
+cached-best's 0.8 s TIs fall short of the ~1.3 s inversion null. This is an
+action-space / learned-timing-coverage ceiling, not just a training-time problem.
 
 <!-- REVIEW NOTE (Arthur): per-checkpoint diagnostic figures live at
 runs/e2/mf_v2_runA_cpu_9h/stage0_analytic/diagnostics/ and
@@ -445,13 +468,12 @@ obvious — include one or two if the chapter has room. -->
 ### 6.5 Bottom line
 
 This run is, in effect, an unintended ablation: **the cheap stages delivered the
-result and the expensive stages eroded it.** On the 2026-06-01 simulator, the
+result and the expensive stages eroded it.** On the current simulator, the
 single highest-value change would have been to **emit and keep the global-best
-checkpoint** (`cached-best`, 8.36%) rather than the last policy (10.16%) — turning
-the run from "12%, regressed" into "8.4%, best-in-run" at *zero* extra compute.
-That exact 8.36% value is now stale after the 2026-06-08/09 simulator changes;
-rerun `stage1_cached3/best` under the current simulator before citing it against
-the new baseline table.
+checkpoint** (`cached-best`, 9.44% [8.18, 10.94]) rather than the last policy
+(11.68% [10.42, 13.03]). This does not beat the fixed schedules (§6.6), but it
+does show that the curriculum controller should select the best full-Bloch
+checkpoint globally rather than blindly returning the final stage.
 
 ---
 
@@ -468,7 +490,9 @@ runs/e2/mf_v2_runA_cpu_9h`), over 24 held-out episodes:
 | **`log_grid_trmatched`** (fixed 7-pt log-TI grid, TR=1.7 s, α=90°) | **5.80 %** | **[5.24, 6.40]** | 8.06 % | 218 s / 5 blk |
 | `cr_optimal` (CR-opt TI/TR, α fixed at 90°) | 7.64 % | [6.14, 9.25] | 12.54 % | 239 s / 4 blk |
 | `ernst_fixed` (CR-opt timing, α = Ernst angle at fleet-median T1) | 8.69 % | [7.33, 10.00] | 12.12 % | 239 s / 4 blk |
+| Run A `cached-best` checkpoint, current-sim rerun | 9.44 % | [8.18, 10.94] | 14.11 % | 231 s |
 | **Run A final policy, re-evaluated after 2026-06-08/09 sim changes** | **11.68 %** | **[10.42, 13.03]** | 15.22 % | ~232 s |
+| Run A `analytic` checkpoint, current-sim rerun | 16.03 % | [13.97, 18.56] | 20.87 % | 223 s |
 | Run A final policy, original 2026-06-01 eval | 10.16 % | *(stale; pre-rework)* | 14.42 % | 232 s |
 | Run A `cached-best` checkpoint, original 2026-06-01 eval | 8.36 % | *(stale; pre-rework)* | 9.96 % | — |
 | `log_grid` (TR=4 s) | 100.00 % | [100.00, 100.00] | 100.00 % | 128 s / 2 blk |
@@ -476,12 +500,13 @@ runs/e2/mf_v2_runA_cpu_9h`), over 24 held-out episodes:
 
 **The fixed schedules decisively beat the adaptive agent on the 14-sphere pool.**
 The clean current-simulator comparison is `cr_optimal_alpha` **4.70%**
-([4.42, 5.00]) and `log_grid_trmatched` **5.80%** ([5.24, 6.40]) versus the saved
-agent **11.68%** ([10.42, 13.03]). The confidence intervals are separated by a
-large margin, so this is not sampling noise. **Therefore "adaptive beats fixed"
-does not hold for this 14-pool setting.** The result is still valuable: it shows
-that the multi-fidelity curriculum can learn a non-collapsed adaptive policy, but
-the environment rewards robust global experimental design more than per-episode
+([4.42, 5.00]) and `log_grid_trmatched` **5.80%** ([5.24, 6.40]) versus the best
+measured RL checkpoint **9.44%** ([8.18, 10.94]) and final saved agent **11.68%**
+([10.42, 13.03]). The fixed-vs-RL confidence intervals are separated by a large
+margin, so this is not sampling noise. **Therefore "adaptive beats fixed" does
+not hold for this 14-pool setting.** The result is still valuable: it shows that
+the multi-fidelity curriculum can learn a non-collapsed adaptive policy, but the
+environment rewards robust global experimental design more than per-episode
 adaptation when every episode contains all 14 T1 spheres.
 
 The two `100%` rows are now understood and should not be used as performance
@@ -529,14 +554,15 @@ of the ladder too.
 **Artifacts:** full current-simulator baseline results are in
 `runs/e2/baseline_runA_match/baseline_summary.json`; schedules are in
 `runs/e2/baseline_runA_match/cr_optimal_schedule.json` and
-`runs/e2/baseline_runA_match/cr_optimal_alpha_schedule.json`. The stale original
-policy/checkpoint results are in `runs/e2/mf_v2_runA_cpu_9h/eval_summary.json`,
-`stage0_analytic/eval_summary.json`, and `stage1_cached3/best/eval_summary.json`.
+`runs/e2/baseline_runA_match/cr_optimal_alpha_schedule.json`. Current-simulator
+checkpoint reruns are in `runs/e2/mf_v2_runA_cpu_9h/stage0_analytic/eval_summary.json`
+and `runs/e2/mf_v2_runA_cpu_9h/stage1_cached3/best/eval_summary.json`. Note: the
+adjacent `eval_fullbloch.txt` files were old captured stdout and were not
+overwritten by the latest rerun; use the JSON summaries for current values.
 
-<!-- REVIEW NOTE (Arthur): for the final report, decide whether to keep the stale
-checkpoint comparison as a "pre-rework Run A diagnostic" or rerun the analytic
-and cached-best checkpoints under the current simulator. Do not cite 8.36% beside
-the 4.70/5.80% baselines unless it is explicitly labelled pre-2026-06-08/09. -->
+<!-- REVIEW NOTE (Arthur): checkpoint JSONs are now current-sim reruns. If you want
+matching human-readable logs, rerun eval_e2 with stdout redirected to fresh
+*_current.txt files; the old eval_fullbloch.txt files still show June 1 values. -->
 
 ---
 
@@ -554,11 +580,15 @@ the 4.70/5.80% baselines unless it is explicitly labelled pre-2026-06-08/09. -->
 2. **Simulator version drift changed the policy number.** Run A was analysed on
    2026-06-01 as 10.16% MAPE; the same saved policy re-evaluated after the
    2026-06-08/09 digital-twin changes is 11.68% [10.42, 13.03]. This is expected:
-   the random-phantom sampler, pose/augmentation code, manifest/Koma numerics, or
-   all of these changed the held-out episode distribution. Going forward, every
-   eval/baseline JSON must stamp both repo SHAs and manifest hashes.
-3. **Final ≠ best.** The globally-best policy was not saved as the final
-   `policy.zip`; the curriculum should emit a *global* best-across-stages checkpoint.
+   the random-phantom sampler, SO3 pose sampler, pose/augmentation code,
+   manifest/Koma numerics, or all of these changed the held-out episode
+   distribution. These were legitimate simulator improvements motivated by the
+   previous runs, but they make old and new metrics different experiments.
+   Going forward, every eval/baseline JSON must stamp both repo SHAs and manifest
+   hashes.
+3. **Final ≠ best.** Run A did not save the globally-best policy as the final
+   `policy.zip`; future runs now emit a confirmed *global*
+   best-across-stages checkpoint.
 4. **`full3` regression is real and informative.** The 3 mm-water optimum differs
    from the 1 mm optimum the probe scores (rank-corr ~0.6, bias ±5%). Either
    `full3` is the wrong intermediate, or the probe should match the training
@@ -566,12 +596,13 @@ the 4.70/5.80% baselines unless it is explicitly labelled pre-2026-06-08/09. -->
 5. **Budget shape.** 62% of wallclock went to the two expensive stages for no net
    gain over the cheap basin. A larger `cached3` allocation (or skipping `full3`)
    would likely have produced a better final policy at the same cost.
-6. **Single run, 24 eval episodes — but the mean MAPE is well-resolved for today's
-   simulator.** The current baseline/policy CIs are non-overlapping by a wide
-   margin, so 24 episodes is enough to separate the 4.70/5.80% fixed schedules
-   from the 11.68% agent. It does **not** protect against code/version drift; only
-   pinned SHAs and manifests do that. p90 and per-sphere numbers are noisier and
-   should be treated as diagnostic rather than exact.
+6. **CIs are useful, but their scope is narrow.** The current baseline/policy CIs
+   are non-overlapping by a wide margin, so 24 episodes is enough to separate the
+   4.70/5.80% fixed schedules from the 11.68% agent on today's simulator. They do
+   **not** protect against code/version drift; only pinned SHAs and manifests do
+   that. Four-episode online probes can have CIs too, but they are usually so wide
+   that they should drive only conservative training decisions. p90 and per-sphere
+   numbers are noisier and should be treated as diagnostic rather than exact.
 
 ---
 
@@ -590,12 +621,17 @@ the 4.70/5.80% baselines unless it is explicitly labelled pre-2026-06-08/09. -->
       RLxMRI `4a900cd` (dirty), MRISystemPhantom `ed7288c` (working tree appeared
       clean when checked), manifest hashes `1f5df9e6cec63945` and
       `613dd84df4a6ab85`.
-- [ ] **Rerun stale checkpoint evals if citing them.** The old `cached-best` 8.36%
-      and analytic 15.89% numbers predate the 2026-06-08/09 simulator rework; rerun
-      `stage0_analytic` and `stage1_cached3/best` on the current simulator before
-      using them beside §6.6.
-- [ ] **Emit a global best-checkpoint** across the whole curriculum, selected on
-      the full-Bloch probe.
+- [x] **Rerun stale checkpoint evals if citing them.** Done with 24 held-out
+      episodes on the current simulator: analytic = 16.03% [13.97, 18.56],
+      cached-best = 9.44% [8.18, 10.94]. JSON summaries are current; old
+      `eval_fullbloch.txt` logs are not.
+- [x] **Emit a global best-checkpoint** across the whole curriculum, selected on
+      the full-Bloch target. Implemented in `python/train_e2_mf.py` as
+      `GlobalBestFullSim`: future MF runs write
+      `<run>/global_best/best_policy.zip`, `best_vecnorm.pkl`, and
+      `best_meta.json`. Four-episode switch/stage probes only screen candidates;
+      an independent confirmation eval (`--mf-global-best-episodes`, default 12)
+      must beat the previous confirmed best before the checkpoint is overwritten.
 - [ ] **5-sphere adaptivity run.** Reduce 14 → 5 spheres so the task genuinely
       rewards adaptivity (the current 14-sphere policy sacrifices the long-T1
       sphere to 40% error). Keep phantom positions fixed so the water cache is
@@ -609,6 +645,119 @@ the 4.70/5.80% baselines unless it is explicitly labelled pre-2026-06-08/09. -->
 - [ ] **Re-balance budget:** more `cached3`; either drop `full3` or match its water
       fidelity to the probe's (1 mm). Test whether `cached3` + short `full` polish
       beats the 4-stage ladder.
+
+### Run B plan — water-resolution ladder with fixed geometry
+
+**Goal.** Separate "cheap stage found the right policy" from "coarse-water bias
+destroyed it" by making the fidelity ladder smoother:
+
+```
+analytic → cached3 → cached → full3 → full
+```
+
+Here `cached3` is cached-water with 3 mm water voxels, `cached` is cached-water
+with 1 mm water voxels, `full3` is full Bloch with 3 mm water, and `full` is the
+1 mm full-Bloch target. The important addition vs Run A is the `cached` stage:
+before paying for full Bloch, we ask whether the policy can transfer from cheap
+coarse cached water to cheap target-resolution cached water. If `full3` is still
+harmful, the new global-best checkpoint protects the best cached policy.
+
+**Geometry constraint.** Cached water is keyed on spin positions. For this ladder
+to mean anything, the sphere subset and pose must stay fixed across the cached
+and full stages; otherwise changes in MAPE confound water fidelity with geometry.
+Current behaviour:
+
+- `cached_perline` with T1-only observations already pins pose to `FixedPose()`
+  so a global water cache can be reused.
+- `full3`/`full` currently use the ordinary in-plane pose sampler, so they will
+  not necessarily match the cached-stage geometry.
+- Python `reset(..., forced_sphere_indices=...)` exists for eval, but training
+  does not yet expose a `--forced-sphere-indices` / `--fixed-pose` run-level flag.
+
+**Implementation gate before launch:** add an explicit fixed-geometry mode for
+training/eval, ideally:
+
+```bash
+--fixed-pose
+--forced-sphere-indices 1,2,3,4,5      # if doing the 5-sphere version
+```
+
+For the all-14 version, only `--fixed-pose` is needed because the active sphere
+set is already fixed. For the 5-sphere adaptivity version, either force a chosen
+5-sphere subset or deliberately sample subsets but rebuild the water cache per
+episode; the latter is cleaner scientifically but loses the global-cache speedup.
+
+**Budget / switch parameters.** Keep the min-step gates much smaller than Run A
+because steps are not comparable across fidelities (`analytic` ≈0.03 s/step,
+`cached3` ≈0.34 s/step, `full` ≈1.0 s/step). The switch rule already measures
+target progress per wallclock; hard min-steps should only prevent obviously noisy
+one-probe switches.
+
+Candidate 9 h command once fixed-geometry flags exist:
+
+```bash
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+  --out runs/e2/mf_runB_cached3_cached_full3_full \
+  --multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+  --reward-mode delta_log_mape --mape-alpha 1.0 \
+  --fix-te --learn-alpha --log-ti-action \
+  --n-envs 1 --field T15 --time-budget 240 --max-blocks 20 \
+  --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+  --mf-min-steps 4096,8192,8192,8192,0 \
+  --mf-max-steps 20000,160000,160000,80000,300000 \
+  --n-steps 512 --batch-size 64 \
+  --eval-interval 10000 --eval-episodes 8 \
+  --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+  --mf-global-best-episodes 12 \
+  --mf-use-lookahead --mf-lookahead-rollouts 1 \
+  --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+  --fixed-pose
+```
+
+If this is run as a 5-sphere adaptivity experiment, add the forced subset once the
+flag exists. Candidate subsets:
+
+- Long/mid coverage: pools `1,2,3,4,8` to force the policy to care about long T1.
+- Balanced log coverage: pools `1,3,5,8,12`.
+- Use 1-based pool labels in the Julia/report text; Python reset's existing
+  `forced_sphere_indices` argument is 0-based, so the CLI must be explicit about
+  indexing to avoid another off-by-one trap.
+
+**ROI=1 / clean recon branch.** I think `ROI=1` is worth testing before spending a
+full Run B budget. The current training hot path samples a single centre pixel
+from each sphere (`ROI=0`) in `_e2_sphere_signals`; SNR diagnostics already
+support `roi_radius`, and earlier clean-recon scripts use Hamming + zero-pad +
+3×3 ROI averaging. A 3×3 ROI should reduce Gibbs/partial-volume sensitivity and
+make the fitter less dependent on the exact sphere-centre pixel. This is likely
+more defensible than adding Hamming immediately because it changes only the
+measurement extraction, not the k-space point-spread function.
+
+Suggested order:
+
+1. Add an env knob `roi_radius` and use `roi_mean(image_mag, ipe, ife; r=roi_radius)`
+   instead of the centre pixel in `_e2_sphere_signals`.
+2. Run a cheap eval-only ablation on the existing final/cached-best policies with
+   `ROI=0` vs `ROI=1` if possible. If eval improves or long/mid pools stabilise,
+   train Run B with `--roi-radius 1`.
+3. Keep Hamming/zero-pad as a second ablation (`--clean-recon` or
+   `--hamming-recon`) because it changes the effective image resolution and signal
+   amplitude. If used, it should be applied consistently in training, baselines,
+   and CR/fixed-schedule evaluation.
+
+**Decision criterion for Run B.**
+
+- Primary: current-sim full-Bloch eval of `<run>/global_best/best_policy.zip`.
+  During training this checkpoint is selected by a larger confirmation eval, not
+  by the four-episode switch probe; after the run, still re-evaluate it on 24
+  held-out episodes for the report table and CI.
+- Compare against `log_grid_trmatched` 5.80% and `cr_optimal_alpha` 4.70% for the
+  14-pool run; for 5-sphere, rerun baselines with the same forced subset.
+- Inspect `fidelity_history.json`: if `cached` improves over `cached3` and
+  `full3` regresses again, report that coarse full-Bloch water is a biased rung
+  and should be skipped. If `full3` is harmless only after `cached`, report that
+  the missing target-resolution cached stage was the Run A ladder bug.
 - [ ] **`learn_alpha` decision:** confirm the fitter works for α≠90° (caching
       confound, §4.2), then either fix α = 90° or add a scan-time reward term that
       makes the Ernst-angle trade worthwhile.

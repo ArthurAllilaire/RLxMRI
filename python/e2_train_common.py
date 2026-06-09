@@ -139,6 +139,9 @@ class E2EvalCallback(BaseCallback):
                  n_eval_episodes: int, seed_offset: int,
                  log_path: Path, best_dir: Path | None = None,
                  env_kwargs: dict | None = None,
+                 global_best=None,
+                 global_best_stage: str | None = None,
+                 global_best_source: str = "eval_callback",
                  verbose: int = 1):
         super().__init__(verbose)
         self.eval_env         = eval_env
@@ -148,6 +151,9 @@ class E2EvalCallback(BaseCallback):
         self.log_path         = log_path
         self.best_dir         = best_dir
         self.env_kwargs       = env_kwargs or {}
+        self.global_best      = global_best
+        self.global_best_stage = global_best_stage
+        self.global_best_source = global_best_source
         self._last_eval       = 0
         self._t0             = time.time()
         self.history          = (json.loads(log_path.read_text())
@@ -204,6 +210,20 @@ class E2EvalCallback(BaseCallback):
             if self.verbose:
                 print(f"[E2 eval]  → new best MAPE {mape_mean:.2f}% saved to "
                       f"{self.best_dir}")
+        if self.global_best is not None:
+            self.global_best.maybe_save(
+                model=self.model,
+                vec_norm=vec_norm,
+                metrics=m,
+                stage=self.global_best_stage or "unknown",
+                source=self.global_best_source,
+                step=int(self.num_timesteps),
+                extra={
+                    "eval_log_path": str(self.log_path),
+                    "seed_offset": self.seed_offset,
+                    "n_eval_episodes": self.n_eval_episodes,
+                },
+            )
         return True
 
 

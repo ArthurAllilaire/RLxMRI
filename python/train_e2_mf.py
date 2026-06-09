@@ -45,6 +45,7 @@ Run A-equivalent CPU V2 curriculum (no GPU, 9h wall budget):
         --n-steps 512 --batch-size 64 \
         --eval-interval 10000 --eval-episodes 8 \
         --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+        --mf-global-best-episodes 12 \
         --mf-use-lookahead --mf-lookahead-rollouts 1 \
         --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
         2>&1 | tee runs/e2/mf_v2_runA_cpu_9h/run.log
@@ -127,6 +128,87 @@ class WallBudgetCallback(BaseCallback):
         return True
 
 
+class GlobalBestFullSim:
+    """Track the best policy seen on the target full-Bloch simulator.
+
+    Per-stage best checkpoints are selected on each stage's own eval env. For a
+    multi-fidelity curriculum that is not enough: a cached-stage policy can be the
+    best policy under the target full simulator even if later stages regress. This
+    tracker uses cheap full-Bloch probes only as a screen, then re-evaluates
+    candidates on a larger held-out confirmation set before overwriting the
+    run-level best checkpoint.
+    """
+
+    def __init__(self, best_dir: Path, *, target_env_kwargs: dict,
+                 target_env: QalibreMDE2Env, seed_offset: int,
+                 n_eval_episodes: int):
+        self.best_dir = best_dir
+        self.target_env_kwargs = target_env_kwargs
+        self.target_env = target_env
+        self.seed_offset = int(seed_offset)
+        self.n_eval_episodes = int(n_eval_episodes)
+        self.best_mape = float("inf")
+        self.meta_path = self.best_dir / "best_meta.json"
+        if self.meta_path.exists():
+            try:
+                self.best_mape = float(json.loads(
+                    self.meta_path.read_text()).get("mape_pct", float("inf")))
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                self.best_mape = float("inf")
+
+    def maybe_save(self, *, model, vec_norm, metrics: dict, stage: str,
+                   source: str, step: int, extra: dict | None = None) -> bool:
+        screen_mape = float(metrics["mape_pct"])
+        if not np.isfinite(screen_mape) or screen_mape >= self.best_mape:
+            return False
+
+        mapes, times = rollout_eval(
+            model, self.target_env, self.n_eval_episodes, self.seed_offset,
+            vec_norm=vec_norm)
+        confirmed = summarise_eval(mapes, times)
+        confirmed_mape = float(confirmed["mape_pct"])
+        if not np.isfinite(confirmed_mape) or confirmed_mape >= self.best_mape:
+            print(f"[MF global-best] candidate from {stage}/{source} screened "
+                  f"at {screen_mape:.2f}% but confirmed at "
+                  f"{confirmed_mape:.2f}% >= current best {self.best_mape:.2f}%")
+            return False
+
+        self.best_mape = confirmed_mape
+        self.best_dir.mkdir(parents=True, exist_ok=True)
+        model.save(str(self.best_dir / "best_policy"))
+        if vec_norm is not None:
+            vec_norm.save(str(self.best_dir / "best_vecnorm.pkl"))
+
+        meta = {
+            "stage": stage,
+            "source": source,
+            "step": int(step),
+            "wall_s": time.time(),
+            "mape_pct": confirmed_mape,
+            "p90_pct": float(confirmed.get("p90_pct", np.nan)),
+            "success_rate": float(confirmed.get("success_rate", np.nan)),
+            "mean_time_s": float(confirmed.get("mean_time_s", np.nan)),
+            "screen_mape_pct": screen_mape,
+            "screen_p90_pct": float(metrics.get("p90_pct", np.nan)),
+            "screen_success_rate": float(metrics.get("success_rate", np.nan)),
+            "screen_mean_time_s": float(metrics.get("mean_time_s", np.nan)),
+            "seed_offset": self.seed_offset,
+            "n_eval_episodes": self.n_eval_episodes,
+            "target_env_kwargs": self.target_env_kwargs,
+        }
+        if extra:
+            for key, value in extra.items():
+                if key in meta:
+                    meta[f"source_{key}"] = value
+                else:
+                    meta[key] = value
+        self.meta_path.write_text(json.dumps(meta, indent=2, default=str))
+        print(f"[MF global-best] {confirmed_mape:.2f}% confirmed full-Bloch "
+              f"MAPE saved from {stage}/{source} @ step {step} "
+              f"(screen={screen_mape:.2f}%) → {self.best_dir}")
+        return True
+
+
 class FidelitySwitchCallback(BaseCallback):
     """Decides when to promote out of the current (non-final) fidelity.
 
@@ -144,6 +226,7 @@ class FidelitySwitchCallback(BaseCallback):
                  base_env_kwargs: dict | None = None,
                  n_envs: int = 1, n_steps: int = 512, batch_size: int = 64,
                  train_seed: int = 0,
+                 global_best: GlobalBestFullSim | None = None,
                  lookahead_enabled: bool = False,
                  lookahead_rollouts: int = 1,
                  lookahead_probe_episodes: int | None = None,
@@ -169,6 +252,7 @@ class FidelitySwitchCallback(BaseCallback):
         self.n_steps = n_steps
         self.batch_size = batch_size
         self.train_seed = train_seed
+        self.global_best = global_best
         self.lookahead_enabled = lookahead_enabled
         self.lookahead_rollouts = lookahead_rollouts
         self.lookahead_probe_episodes = (
@@ -202,6 +286,16 @@ class FidelitySwitchCallback(BaseCallback):
         mh, th = rollout_eval(self.model, self.gt_env, self.probe_episodes,
                               self.probe_seed, vec_norm=vec_norm)
         sf, sh = summarise_eval(mf, tf), summarise_eval(mh, th)
+        if self.global_best is not None:
+            self.global_best.maybe_save(
+                model=self.model,
+                vec_norm=vec_norm,
+                metrics=sh,
+                stage=self.spec.name,
+                source="switch_decision_full_probe",
+                step=int(self.num_timesteps),
+                extra={"current_fidelity_mape_pct": sf["mape_pct"]},
+            )
 
         self.state.add(DecisionPoint(
             step=self.num_timesteps,
@@ -460,6 +554,14 @@ def main():
     p.add_argument("--mf-probe-episodes-full", type=int, default=4,
                    help="Episodes per probe (current AND full) at each decision. "
                         "Caps the full-sim probe cost — keep small.")
+    p.add_argument("--mf-global-best-episodes", type=int, default=12,
+                   help="Held-out full-Bloch episodes used to confirm a candidate "
+                        "before overwriting <run>/global_best. Switch probes still "
+                        "use --mf-probe-episodes-full.")
+    p.add_argument("--mf-global-best-seed", type=int, default=None,
+                   help="Seed offset for global-best confirmation evals. Defaults "
+                        "to --eval-seed + 10000 so it is independent of the switch "
+                        "probe seeds.")
     p.add_argument("--mf-min-steps", type=str, default="0",
                    help="Per-stage min env steps before a promotion is allowed "
                         "(single value broadcasts, or comma list per stage).")
@@ -552,6 +654,16 @@ def main():
     print("[MF] Building full-Bloch ground-truth probe env …")
     gt_kwargs = {**base_kwargs, **FIDELITIES["full"]}
     gt_env = QalibreMDE2Env(rng_seed=args.eval_seed + 7, **gt_kwargs)
+    global_best_seed = (args.mf_global_best_seed
+                        if args.mf_global_best_seed is not None
+                        else args.eval_seed + 10_000)
+    global_best = GlobalBestFullSim(
+        args.out / "global_best",
+        target_env_kwargs=gt_kwargs,
+        target_env=gt_env,
+        seed_offset=global_best_seed,
+        n_eval_episodes=args.mf_global_best_episodes,
+    )
 
     model = None
     prev_obs_rms = None
@@ -595,6 +707,14 @@ def main():
             mg, tg = rollout_eval(model, gt_env, args.mf_probe_episodes_full,
                                   args.eval_seed, vec_norm=vec_env)
             sg = summarise_eval(mg, tg)
+            global_best.maybe_save(
+                model=model,
+                vec_norm=vec_env,
+                metrics=sg,
+                stage=spec.name,
+                source="stage_start_full_probe",
+                step=int(model.num_timesteps),
+            )
             gap = (None if prev_final_mape is None
                    else sg["mape_pct"] - prev_final_mape)
             _append(history_path, {
@@ -614,7 +734,10 @@ def main():
             eval_env=eval_env, every_n_steps=args.eval_interval,
             n_eval_episodes=args.eval_episodes, seed_offset=args.eval_seed,
             log_path=stage_dir / "eval_history.json",
-            best_dir=stage_dir / "best", env_kwargs=env_kwargs)
+            best_dir=stage_dir / "best", env_kwargs=env_kwargs,
+            global_best=(global_best if env_kwargs == gt_kwargs else None),
+            global_best_stage=spec.name,
+            global_best_source="stage_eval_full")
         callbacks: list[BaseCallback] = [eval_cb, eta_cb,
                                          WallBudgetCallback(global_deadline)]
 
@@ -635,6 +758,7 @@ def main():
                 n_envs=args.n_envs,
                 n_steps=args.n_steps, batch_size=args.batch_size,
                 train_seed=args.train_seed,
+                global_best=global_best,
                 lookahead_enabled=args.mf_use_lookahead,
                 lookahead_rollouts=args.mf_lookahead_rollouts,
                 lookahead_probe_episodes=args.mf_lookahead_probe_episodes,
@@ -660,6 +784,14 @@ def main():
         mfin, tfin = rollout_eval(model, gt_env, args.mf_probe_episodes_full,
                                   args.eval_seed, vec_norm=vec_env)
         sfin = summarise_eval(mfin, tfin)
+        global_best.maybe_save(
+            model=model,
+            vec_norm=vec_env,
+            metrics=sfin,
+            stage=spec.name,
+            source="stage_end_full_probe",
+            step=int(model.num_timesteps),
+        )
         prev_final_mape = sfin["mape_pct"]
         _append(history_path, {
             "stage": spec.name, "kind": "stage_end",
@@ -686,6 +818,7 @@ def main():
     print(f"\n[MF] Curriculum done in {(time.time()-t_start)/3600:.2f} h. "
           f"Final full-sim MAPE={prev_final_mape:.2f}%")
     print(f"Policy → {args.out / 'policy.zip'}")
+    print(f"Global best → {args.out / 'global_best' / 'best_policy.zip'}")
 
 
 def _append(path: Path, entry: dict) -> None:
