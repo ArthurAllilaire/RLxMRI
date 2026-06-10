@@ -112,7 +112,8 @@
 └ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
 /home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/stable_baselines3/common/on_policy_algorithm.py:150: UserWarning: You are trying to run PPO on the GPU, but it is primarily intended to run on the CPU when not using a CNN policy (you are using ActorCriticPolicy which should be a MlpPolicy). See https://github.com/DLR-RM/stable-baselines3/issues/1245 for more info. You can pass `device='cpu'` or `export CUDA_VISIBLE_DEVICES=` to force using the CPU.Note: The model will train, but the GPU utilization will be poor and the training might take longer than on CPU.
   warnings.warn(
-[diagnose] SNR report unavailable (AttributeError): Julia: type ImageSNRReport has no field background_std!
+[diagnose] SNR report (NEMA MS-1 dual-acq):
+           σ = 50   snr_ksp = 4.46   snr_nema_peak_a = 33.25   snr_dual_peak = 26.77  ← report figure
 [diagnose] Episodes saved to runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/diagnostics/episodes.json
 [diagnose] Plotting …
 [diagnose] Done. Plots and summary in runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/diagnostics
