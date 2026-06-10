@@ -15,6 +15,40 @@
 
 ---
 
+## 0. NEW RESULTS (10 Jun 2026 commit `c130a5d`) — read first
+
+This commit added the **memory-mechanism ablation** (TI-coverage histogram and
+LSTM arms) and **strict held-out reruns**. Full detail in §9.5 and §8; the
+one-screen summary:
+
+**Headline new number: the TI-coverage histogram policy scores 2.93 % MAPE
+([2.58, 3.30], p90 4.19 %, 95.8 % success) on the strict 560 s five-sphere
+held-out set — the best E2 result in the project.** It beats the no-memory
+control (4.16 %), the σ-channel (5.25 %), the LSTM (7.31 %) and every fixed
+schedule (`log_grid_trmatched` 6.04 %, `cr_optimal` 7.74 %), with non-overlapping
+CIs. The LSTM arm failed (7.31 %) but is confounded by being ~5× slower/step and
+undertrained at full fidelity — honest negative, not "recurrence is worse" (§9.5.2).
+
+**Also new:** the 240 s Run B policy now has its strict seed-600000 held-out
+number — **4.62 %** vs `log_grid_trmatched` 6.86 % — closing the report's
+last open seed-overlap caveat for the 240 s headline.
+
+### Report numbers / claims to update in `report_latex/chapters/AdaptiveRLMRI.tex`
+
+| Location in .tex | Current text | Action |
+|---|---|---|
+| §`560 s and ablation status`, "Memory ablations" bullet | "planned but not yet report-grade" | **Promote to a results subsection.** Both arms are done; TI histogram is the project's best number (2.93 %) and gives a clean mechanism ranking (histogram ≫ no-mem > σ > LSTM). |
+| §`Run B`, 240 s table (`tab:run-b-240`) + surrounding text | flags "should be confirmed with a strict held-out seed before becoming the sole headline" | **Add the strict held-out row 4.62 % [4.06, 5.19]** vs `log_grid_trmatched` 6.86 %; drop/soften the seed-overlap caveat. |
+| §`Run B` 560 s text | fixed log grid quoted as **5.86 %** | Optional: that 5.86 % is the in-pipeline `eval_e2` 7-pt grid; the authoritative `baseline_e2` `log_grid_trmatched` on the same held-out seed is **6.04 %**. Either is defensible; prefer the authoritative 6.04 % and say so. |
+| §`Future work` "recurrent policy" line | "harder to debug, compare against histogram" | **Now empirically settled:** histogram won, LSTM lost under fixed budget; recommend the step-matched LSTM rerun as the open question. |
+
+Report-ready figures generated (`report/e2_runs/make_memory_ablation_figs.py`):
+`figs/mf_runB_5sphere_memory_mape.png` (four-arm held-out MAPE + CIs vs the fixed
+schedule lines) and `figs/mf_runB_5sphere_memory_per_pool.png` (per-pool, four
+arms). Copy into `report_latex/imgs/e2_rl/` for the chapter (§9.5.4).
+
+---
+
 ## 1. Motivation — the cost wall
 
 E2 trains a PPO agent with the KomaMRI Bloch solver *in the loop*: every action
@@ -827,6 +861,9 @@ so it is at best marginal and its p90 is worse.
 
 | Policy / comparator | Eval seed status | Mean MAPE | 95% CI | p90 | Success<5% | Mean time / blocks |
 |---|---|---:|---:|---:|---:|---:|
+| **RL 240 s no-σ, global best — STRICT held-out** (NEW) | seed 600000; never seen in training | **4.62 %** | **[4.06, 5.19]** | 6.24 % | 62.5 % | 227.0 s |
+| `log_grid_trmatched` at 240 s — strict held-out (NEW) | seed 600000 | 6.86 % | [5.83, 7.90] | 10.11 % | 20.8 % | 163.2 s / 4 |
+| `cr_optimal` at 240 s — strict held-out (NEW) | seed 600000 | 15.96 % | [12.26, 19.81] | 29.29 % | 0.0 % | 239.6 s / 4 |
 | **RL 240 s no-σ, global best** | seed 500000; baseline-comparable, not strict held-out | **3.61 %** | **[3.26, 3.98]** | **4.55 %** | **91.7 %** | 229.7 s / 5.92 |
 | Fixed log-grid baseline at 240 s | same eval call | 5.60 % | [5.09, 6.13] | 7.08 % | — | — |
 | RL 240 s no-σ, final policy | seed 500000 | 4.19 % | [3.82, 4.58] | 5.26 % | 83.3 % | ~230 s |
@@ -943,9 +980,15 @@ beats the fixed schedule while using only ~230 s and ~6 blocks.
 - **Do not mix eval streams.** The 560 s `eval_globalbest_24ep.log` files are
   useful but optimistic because seed 500000 was used during training evaluation.
   The fair headline is the `_heldout.log` seed-600000 rerun.
-- **The 240 s run still needs a strict seed-600000 rerun** if it becomes a thesis
-  table headline. The current 24-episode result is strong and baseline-matched,
-  but not fully independent of the training eval stream.
+- **The 240 s run strict seed-600000 rerun is now done (this commit).** It scores
+  **4.62 %** ([4.06, 5.19], p90 6.24 %) versus `log_grid_trmatched` **6.86 %**
+  ([5.83, 7.90]) and `cr_optimal` 15.96 % on the same strict held-out seed
+  (`runs/e2/mf_runB_cached3_cached_full3_full_gpu/eval_globalbest_24ep_heldout.log`,
+  `baselines_heldout/baseline_summary.json`). The ~1.7-pt RL advantage over the
+  fixed grid survives the move from the seed-500000 selection stream (3.61 % vs
+  5.60 %) to the strict held-out seed, and the gap to `cr_optimal` widens sharply
+  because CR over-commits to 4 long blocks at the 240 s budget (29 % p90). The
+  240 s adaptive result is therefore no longer caveated by train/eval seed overlap.
 - **This is a controlled subtask, not the full phantom mapping problem.** The
   active sphere identities and positions are fixed; only their T1 values vary.
   That is exactly why adaptivity can pay here, but the report should call it an
@@ -998,9 +1041,14 @@ beats the fixed schedule while using only ~230 s and ~6 blocks.
       the σ channel did not improve strict held-out performance (§8.2).
 - [ ] **ROI ablation.** During the Gibbs-ringing investigation we switched to
       ROI = 1 (vs 0); this was never ablated. Cheap candidate run.
-- [ ] **Rerun the 240 s global-best policy at strict seed 600000** before using it
-      as the main thesis table row. The current 24-episode result is
-      baseline-comparable but not fully independent of the stage eval stream.
+- [x] **Rerun the 240 s global-best policy at strict seed 600000.** Done (this
+      commit): 4.62 % [4.06, 5.19] vs `log_grid_trmatched` 6.86 % and `cr_optimal`
+      15.96 % on seed 600000. The 240 s adaptive result is now strict-held-out.
+- [x] **Memory-mechanism ablation (TI histogram vs LSTM vs σ vs no-memory).** Done
+      at 560 s (§9.5). TI-coverage histogram = **2.93 %** held-out (best E2 result
+      anywhere), beating no-memory (4.16 %), σ (5.25 %), LSTM (7.31 %) and all
+      fixed schedules. LSTM failed but was undertrained at full fidelity (5× slower
+      per step → 7× fewer full-stage steps); needs a step-matched rerun.
 - [ ] **Re-balance budget:** the five-sphere runs spend most useful improvement in
       the final full stage; test whether `analytic → cached → full` without
       `full3` gives the same global best with less controller noise.
@@ -1693,7 +1741,8 @@ histories) before plotting cumulative hours. -->
 ## 9. Memory-mechanism ablation — action history vs recurrence (560 s)
 
 *Full execution plan, risk register and schedule: `E2_HISTORY_ABLATION.md`.
-Implemented and launched 10 June 2026; results pending.*
+Implemented, launched and **completed** 10 June 2026 (commit `c130a5d`); results
+in §9.5.*
 
 ### 9.1 Motivation
 
@@ -1728,8 +1777,8 @@ for sequential experiment design, all at a fixed 560 s scan budget on the
 | Mechanism | What carries the history | Run |
 |---|---|---|
 | Estimator summary | fitter σ-channel in the obs | `mf_runB_5sphere_sigma_560s_gpu` (done: 5.25% held-out; 4.04% confirmation) |
-| Task-informed sufficient statistic | executed-TI coverage histogram in the obs | `mf_runB_5sphere_hist_560s_gpu` (R1) |
-| Learned summary | LSTM hidden state (RecurrentPPO) | `mf_runB_5sphere_lstm_560s_gpu` (R2) |
+| Task-informed sufficient statistic | executed-TI coverage histogram in the obs | `mf_runB_5sphere_hist_560s_gpu` (R1 — **done: 2.93% held-out, best E2 result**) |
+| Learned summary | LSTM hidden state (RecurrentPPO) | `mf_runB_5sphere_lstm_560s_gpu` (R2 — done: 7.31% held-out, failed; undertrained at full, §9.5.2) |
 
 The no-memory control is `mf_runB_5sphere_560s_gpu` (4.16% held-out; 3.45%
 confirmation). The comparison is informative in every outcome: if neither new
@@ -1800,16 +1849,36 @@ the training screening seed — same caveat as all 560 s runs) and **seed
 600000** (strictly held-out), plus adaptivity diagnostics. Comparison set
 (560 s, 5-sphere):
 
-| Policy | Eval stream | MAPE | p90 | success |
-|---|---|---:|---:|---:|
-| no-memory control (global best) | strict held-out seed 600000 | **4.16 %** | **6.64 %** | 66.7 % |
-| σ-channel | strict held-out seed 600000 | 5.25 % | 9.34 % | 58.3 % |
-| no-memory control (global best) | 12-ep confirmation seed 510000 | 3.45 % | 6.03 % | 75 % |
-| σ-channel | 12-ep confirmation seed 510000 | 4.04 % | 6.94 % | 75 % |
-| `log_grid_trmatched` | seed 500000 baseline table | 5.71 % | 7.49 % | 33.3 % |
-| `cr_optimal` | seed 500000 baseline table | 7.34 % | 10.17 % | 12.5 % |
-| R1: TI-coverage histogram | pending | | | |
-| R2: LSTM | pending | | | |
+| Policy | Eval stream | MAPE | 95% CI | p90 | success<5% |
+|---|---|---:|---:|---:|---:|
+| **R1: TI-coverage histogram (global best)** | strict held-out seed 600000 | **2.93 %** | **[2.58, 3.30]** | **4.19 %** | **95.8 %** |
+| no-memory control (global best) | strict held-out seed 600000 | 4.16 % | [3.41, 4.99] | 6.64 % | 66.7 % |
+| σ-channel (global best) | strict held-out seed 600000 | 5.25 % | [4.32, 6.22] | 9.34 % | 58.3 % |
+| **R2: LSTM / RecurrentPPO (global best)** | strict held-out seed 600000 | **7.31 %** | **[6.10, 8.65]** | 12.21 % | 25.0 % |
+| R1: TI-coverage histogram (final policy) | seed 500000 | 3.16 % | [2.50, 3.92] | 5.22 % | 87.5 % |
+| no-memory control (final policy) | seed 500000 | 7.12 % | [5.82, 8.54] | 10.47 % | 29.2 % |
+| σ-channel (final policy) | seed 500000 | 4.44 % | [3.63, 5.48] | 6.62 % | 83.3 % |
+| R2: LSTM (final policy) | seed 500000 | 5.01 % | [3.79, 6.66] | 7.14 % | 66.7 % |
+| no-memory control (global best) | 12-ep confirmation seed 510000 | 3.45 % | — | 6.03 % | 75 % |
+| σ-channel (global best) | 12-ep confirmation seed 510000 | 4.04 % | — | 6.94 % | 75 % |
+
+**Fixed-schedule baselines on the same strict held-out seed 600000** (NEW this
+commit, `runs/e2/baselines_heldout_560s/baseline_summary.json`; authoritative
+`baseline_e2.py` schedules, not the in-pipeline `eval_e2` grid):
+
+| Schedule | MAPE | 95% CI | p90 | success<5% | mean time / blocks |
+|---|---:|---:|---:|---:|---:|
+| `log_grid_trmatched` (TR=1.7 s, 10-pt log-TI, α=90°) | **6.04 %** | [5.36, 6.70] | 7.81 % | 25.0 % | 503.6 s / 10 |
+| `cr_optimal` (CR-opt TI/TR, α=90°) | 7.74 % | [7.08, 8.42] | 9.78 % | 8.3 % | 557.5 s / 10 |
+| `log_grid` (TR=4 s) — budget-starved | 8.28 % | [7.20, 9.51] | 11.38 % | 4.2 % | 512.0 s / 5 |
+| `clinical_irse` (TR=5 s) — budget-starved | 9.50 % | [8.24, 10.83] | 12.67 % | 12.5 % | 480.0 s / 4 |
+
+(The `eval_e2` in-pipeline log-TI grid reported inside each agent eval log is a
+7-point, TR=1.7 s, lo=0.05 s grid and scores **5.86 %** at seed 600000 / **5.71 %**
+at seed 500000. It is slightly stronger than the authoritative 10-point
+`log_grid_trmatched` because of the different point count; cite the
+`baseline_e2.py` 6.04 % as the report baseline and treat the in-log 5.86 % as a
+sanity grid.)
 
 ```bash
 # ── Run once R1/R2 finish: eval + diagnose, GPU box ──────────────────────
@@ -1855,11 +1924,173 @@ PYTHONUNBUFFERED=1 python -u python/baseline_e2.py \
   2>&1 | tee runs/e2/baselines_heldout_560s/baseline_heldout.log
 ```
 
+### 9.5 Results — the three-way memory ablation is complete (NEW, 10 Jun 2026 commit)
+
+Both arms finished and were evaluated with the §9.4 protocol (24-episode strict
+held-out seed 600000 on `global_best/best_policy.zip`, plus the seed-500000
+final-policy eval and diagnostics). **The result is clean and strong, and it is
+the best E2 outcome anywhere in the project.**
+
+**Headline.** Putting the executed-TI coverage histogram into the observation
+(R1) takes the five-sphere 560 s policy to **2.93 % MAPE** ([2.58, 3.30], p90
+**4.19 %**, **95.8 % success<5%**) on the strict held-out seed — better than the
+no-memory control (4.16 %), the σ-channel (5.25 %), the LSTM (7.31 %), and every
+fixed schedule (`log_grid_trmatched` 6.04 %, `cr_optimal` 7.74 %). The
+confidence intervals are non-overlapping against all of these. **The LSTM arm
+(R2) failed**: 7.31 % held-out, worse than both the no-memory control and the
+fixed baselines.
+
+![Memory mechanism vs held-out MAPE (four arms + fixed-schedule reference lines)](figs/mf_runB_5sphere_memory_mape.png)
+
+So the three memory mechanisms rank decisively:
+
+> **task-informed sufficient statistic (TI histogram) ≫ no memory ≈ control
+> baseline > estimator-σ summary > learned recurrence (LSTM).**
+
+This is exactly the kind of result the report wants for **C1**: the optimal next
+measurement depends on *what has already been measured*, and the *right* way to
+expose that history matters enormously. A hand-designed, order-invariant,
+estimator-matched encoding (the TI coverage histogram) wins; a generic learned
+memory (LSTM) and a noisy estimator summary (σ) both lose to simply giving the
+policy the raw coverage of the action space it has already spent.
+
+#### 9.5.1 Per-pool breakdown (strict held-out seed 600000)
+
+| Active pool (T1 band) | R1 histogram | no-mem control | σ-channel | R2 LSTM |
+|---|---:|---:|---:|---:|
+| 1 (long) | 3.00 % | — | — | 6.29 % |
+| 3 | 3.50 % | — | — | 7.53 % |
+| 6 | 3.52 % | — | — | 8.40 % |
+| 8 | 2.15 % | — | — | 7.80 % |
+| 14 (short) | 2.48 % | — | — | 6.54 % |
+
+![Per-pool MAPE by memory mechanism (four arms)](figs/mf_runB_5sphere_memory_per_pool.png)
+
+The full four-arm per-pool numbers (all from each run's held-out
+`global_best/eval_summary.json`):
+
+| Active pool (T1 band) | R1 histogram | no-mem control | σ-channel | R2 LSTM |
+|---|---:|---:|---:|---:|
+| 1 (long) | **3.00 %** | 4.75 % | 4.03 % | 6.29 % |
+| 3 | **3.50 %** | 4.21 % | 4.98 % | 7.53 % |
+| 6 | **3.52 %** | 3.88 % | 6.20 % | 8.40 % |
+| 8 | **2.15 %** | 2.90 % | 5.92 % | 7.80 % |
+| 14 (short) | **2.48 %** | 5.06 % | 5.12 % | 6.54 % |
+
+The histogram policy is **balanced across the whole T1 ladder** — every active
+pool is between 2.1 % and 3.5 %, and it is the best arm on every pool, including
+the long-T1 pool 1 that has been the project's persistent failure (40 %+ in
+Run A). This is the first E2 policy that solves the long-T1 end and the
+short-T1 end simultaneously.
+
+#### 9.5.2 Curriculum and checkpoint provenance (important honesty caveat)
+
+The two arms are **not** matched on full-fidelity training, and this confounds
+the LSTM result. From `fidelity_history.json`:
+
+| | R1 histogram | R2 LSTM |
+|---|---|---|
+| s/step (full stage) | ~0.08–0.10 s | ~0.4–0.5 s (≈5× slower) |
+| Full-stage step range | 32.8k → **307k** (~275k steps, 8.2 h) | 28.7k → **66.5k** (~38k steps, 5.2 h) |
+| Global-best selected at | `full` stage, step 242 769, confirmed 2.99 % | **`cached` stage, step 16 384, confirmed 5.68 %** |
+| Full-stage eval trajectory | 7.2 → … → **2.9 %** (28 evals, kept improving) | 7.25 → 8.71 → 8.29 → 6.46 % (only 4 evals, never beat cached) |
+
+Two things follow. First, the recurrent policy is **~5× slower per step**
+(LSTM forward pass + recurrent rollout bookkeeping on top of the same Bloch
+sim), so under the identical 9 h budget it got **~7× fewer full-fidelity steps**
+(38k vs 275k). Second, its full stage actively *regressed* — the global best is
+an early **cached-stage** checkpoint (5.68 % confirmed), and no later full-stage
+eval beat it. So the LSTM's 7.31 % is partly an *undertraining-at-full-fidelity*
+artefact, not purely a statement that recurrence is a worse mechanism. **Report
+this honestly:** the fair claim is "under a fixed wall-clock budget the LSTM was
+both slower and worse, and never reached the target fidelity productively," not
+"recurrence is intrinsically inferior to the histogram." A compute-matched
+(step-matched) LSTM rerun would be the clean follow-up.
+
+By contrast R1's global best is a genuine `full`-stage checkpoint that kept
+improving to the end (full-stage evals 3.71 → 3.08 → 3.03 → 2.91 % over the last
+several evals), so its 2.93 % is a fully target-fidelity result with no such
+caveat.
+
+#### 9.5.3 Adaptivity diagnostics — two different learned strategies
+
+From the `diagnose_globalbest.log` summaries:
+
+| Diagnostic | R1 histogram | R2 LSTM |
+|---|---:|---:|
+| ep_len_mean (blocks) | 13.58 | 11.00 |
+| TI intra-episode log-σ | 0.215 | 0.214 |
+| TI inter-episode log-σ | 0.237 | 0.263 |
+| Modal-bin share | 14.1 % | 14.8 % |
+| Action repair rate | 0.0 % | 1.1 % |
+| r(TI, T1_est_at_decision) | **−0.120** | **+0.778** |
+| r(TI, min T1_est) | +0.278 | +0.555 |
+| r(TI, most-uncertain T1_est) | −0.211 | +0.504 |
+
+The two policies learned *qualitatively different* timing rules, visible in the
+`ti_per_episode` plots:
+
+- **R1 histogram** ([fig](../../runs/e2/mf_runB_5sphere_hist_560s_gpu/global_best/diagnostics/ti_per_episode.png)):
+  a fixed two-block opening probe (TI 1.05 → 0.5 s), then a **fan-out** where
+  episodes diverge, then varied per-episode refinement clustered ~0.2–0.4 s with
+  occasional long excursions. Its TI is only *weakly* correlated with the running
+  T1 estimate (r = −0.12), i.e. it is **not** the naive "higher T1 → longer TI"
+  rule; it conditions on *coverage*, which is the channel it was given.
+  ([ti_vs_t1est](../../runs/e2/mf_runB_5sphere_hist_560s_gpu/global_best/diagnostics/ti_vs_t1est.png))
+- **R2 LSTM** ([fig](../../runs/e2/mf_runB_5sphere_lstm_560s_gpu/global_best/diagnostics/ti_per_episode.png)):
+  a low fixed probe (TI ≈ 0.12 s) then **monotonically rising ramps**, strongly
+  correlated with the running estimate (r = **+0.778**)
+  ([ti_vs_t1est](../../runs/e2/mf_runB_5sphere_lstm_560s_gpu/global_best/diagnostics/ti_vs_t1est.png)).
+  Interesting reading for the chapter: the LSTM learned the *intuitive* monotonic
+  TI∝T1est strategy and still performed worse — so the histogram's better score
+  is not because it found the "obvious" rule, but because it found a *coverage-driven*
+  rule the intuitive one misses.
+
+Other per-run diagnostic figures available for review (not yet pulled into the
+chapter): `ti_histogram.png`, `t1est_trajectory.png`, `snr_vs_block.png`
+(`snr_nema_peak ≈ 33`, dual-acq ≈ 27, consistent with the σ=50 calibration) in
+each run's `global_best/diagnostics/`. (`alpha_vs_tr_vs_t1.png` is uninformative
+here — α was fixed at 90° in both arms.)
+
+#### 9.5.4 What this changes for the report
+
+1. **Strong new positive C1 result.** The memory-mechanism ablation is no longer
+   "planned" — it is done, and it produced the project's best number (2.93 %
+   held-out) plus a clean mechanism ranking. This should be promoted from the
+   "ablation status" bullet (§9 / `AdaptiveRLMRI.tex` §`560s and ablation status`)
+   into a proper results subsection. It is the cleanest evidence that adaptivity
+   *via explicit history* beats both fixed schedules and a memoryless RL policy.
+2. **The LSTM negative needs its compute caveat.** Do not state recurrence is
+   intrinsically worse; state it was slower and undertrained at full fidelity
+   under the shared budget, and flag a step-matched rerun as future work.
+3. **Comparison figures generated.** Two report-ready figures now exist
+   (`report/e2_runs/make_memory_ablation_figs.py`, reads the held-out JSONs):
+   `figs/mf_runB_5sphere_memory_mape.png` (four-arm held-out MAPE + 95 % CIs with
+   `log_grid_trmatched` 6.04 % and CR-optimal 7.74 % reference lines) and
+   `figs/mf_runB_5sphere_memory_per_pool.png` (per-pool, four arms). Already
+   copied into the LaTeX image dir as
+   `report_latex/imgs/e2_rl/runB_memory_mape.png` and
+   `report_latex/imgs/e2_rl/runB_memory_per_pool.png`, so the chapter can
+   `\includegraphics` them directly.
+
+#### 9.5.5 Source artifacts
+
+- R1 histogram: `runs/e2/mf_runB_5sphere_hist_560s_gpu/global_best/eval_summary.json`,
+  `eval_globalbest_24ep_heldout.log`, `eval_final_24ep.log`, `diagnose_globalbest.log`,
+  `run_config.json` (`include_ti_history=true`, `ti_hist_bins=12`).
+- R2 LSTM: `runs/e2/mf_runB_5sphere_lstm_560s_gpu/…` (same filenames;
+  `run_config.json` has `recurrent=true`).
+- Held-out fixed baselines: `runs/e2/baselines_heldout_560s/baseline_summary.json`
+  + `baseline_heldout.log`.
+
+---
+
 For the report chapter: this section addresses **C1** (the optimal next
 measurement depends on what has already been measured — memory is the
-mechanism that lets a policy exploit that), with the quantified benefit (or
-honest null) read directly off the table above against both the no-memory RL
-control and the fixed-protocol baselines.
+mechanism that lets a policy exploit that), with the quantified benefit read
+directly off the §9.4 table: the TI-coverage histogram beats both the no-memory
+RL control and every fixed-protocol baseline, while the LSTM and σ-channel are
+honest negatives.
 
 ---
 

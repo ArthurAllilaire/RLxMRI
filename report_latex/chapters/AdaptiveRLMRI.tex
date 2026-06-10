@@ -35,7 +35,11 @@ The conclusion is deliberately nuanced. On the full 14-sphere $T_1$ plate, the
 agent learned a non-collapsed adaptive policy, but strong fixed schedules still
 beat it. On a smaller five-sphere continuous-$T_1$ task, where the episode
 really changes from scan to scan, the RL policy does beat the matched fixed
-log-grid comparator. This is the positive adaptive result, but it should not be
+log-grid comparator, on strict held-out episodes at two scan budgets. A final
+memory ablation strengthens this further: giving the policy an explicit
+histogram of the inversion times it has already executed produces the best
+result in the project (2.93\% mean error versus 6.04\% for the best fixed
+schedule). These are the positive adaptive results, but they should not be
 overstated as a solution to the full 14-sphere mapping problem.
 
 \section{Position relative to adaptive MRI work}
@@ -207,7 +211,7 @@ guardrail is audited rather than hidden: every step emits both requested and
 executed timings plus a repaired flag, and the evaluation scripts report
 repair rates and mean TR lift. A policy that leans on the repair is therefore
 detectable; the reported Run B 240 s policy executes zero repairs, and the
-560 s policies repair 0.3--1.8\% of blocks.
+560 s policies repair 0--1.8\% of blocks.
 
 \paragraph{Observation.} The observation is deliberately compact:
 $\log_{10}$ of the running per-sphere $T_1$ estimates (a zero sentinel before
@@ -218,8 +222,9 @@ agent never sees the reconstructed image or raw k-space: it acts only on the
 fitter's $T_1$ estimates and budget, the same interface a qMRI pipeline would
 expose. This keeps the policy on the genuine estimation objective rather than
 on simulator-specific pixel patterns that may not generalise to real hardware.
-Some ablations append an uncertainty proxy from the fitter
-(Section~\ref{sec:e2-ablations}); the main 240 s result does not. After each
+Later ablations append an uncertainty proxy from the fitter or an
+executed-TI coverage histogram (Section~\ref{sec:e2-ablations}); the main
+240 s result uses the base observation. After each
 block, the environment reconstructs the image, extracts each sphere's
 region-of-interest signal, refits $T_1$, and computes the reward. The main
 reward is the improvement in log-MAPE:
@@ -668,9 +673,9 @@ last policy.
 \includegraphics[width=\linewidth]{imgs/e2_rl/runB_per_pool.png}
 \end{minipage}
 \caption{Run B five-sphere results. Left: global-best RL policies compared with
-the matched fixed log-grid baseline. The 240 s result is baseline-comparable but
-not a strict held-out seed; the 560 s bars use strict held-out evaluation. Right:
-per-active-pool MAPE for the RL policies.}
+the matched fixed log-grid baseline (240 s bars: selection-stream seed;
+Table~\ref{tab:run-b-240} adds the strict held-out confirmation; 560 s bars:
+strict held-out evaluation). Right: per-active-pool MAPE for the RL policies.}
 \label{fig:run-b-results}
 \end{figure}
 
@@ -679,29 +684,39 @@ per-active-pool MAPE for the RL policies.}
 \small
 \setlength{\tabcolsep}{3pt}
 \renewcommand{\arraystretch}{0.92}
-\begin{tabular}{lrrrr}
+\begin{tabular}{llrrrr}
 \toprule
-Policy or schedule & Mean MAPE & 95\% CI & p90 & Success $<5\%$ \\
+Policy or schedule & Eval seed & Mean MAPE & 95\% CI & p90 & Success $<5\%$ \\
 \midrule
-Run B RL global best & \textbf{3.61\%} & [3.26, 3.98] & \textbf{4.55\%} & \textbf{91.7\%} \\
-Run B RL final policy & 4.19\% & [3.82, 4.58] & 5.26\% & 83.3\% \\
-Fixed \texttt{log\_grid\_trmatched} & 5.60\% & [5.09, 6.13] & 7.08\% & -- \\
+Run B RL global best & held-out & \textbf{4.62\%} & [4.06, 5.19] & \textbf{6.24\%} & \textbf{62.5\%} \\
+Fixed \texttt{log\_grid\_trmatched} & held-out & 6.86\% & [5.83, 7.90] & 10.11\% & 20.8\% \\
+Fixed \texttt{cr\_optimal} & held-out & 15.96\% & [12.26, 19.81] & 29.29\% & 0.0\% \\
+\midrule
+Run B RL global best & selection & \textbf{3.61\%} & [3.26, 3.98] & \textbf{4.55\%} & \textbf{91.7\%} \\
+Run B RL final policy & selection & 4.19\% & [3.82, 4.58] & 5.26\% & 83.3\% \\
+Fixed \texttt{log\_grid\_trmatched} & selection & 5.60\% & [5.09, 6.13] & 7.08\% & -- \\
 \bottomrule
 \end{tabular}
-\caption{Run B 240 s five-sphere result on 24 seed-500000 evaluation episodes.
-This seed was also used by training evaluation, so the result should be
-confirmed with a strict held-out seed before becoming the sole headline table.
-It is nevertheless the matched comparison against the available 240 s fixed
-baseline.}
+\caption{Run B 240 s five-sphere results, 24 episodes per row. The selection
+seed (500000) was also used by training evaluation, so those rows are
+baseline-comparable but potentially optimistic; the held-out seed (600000) was
+never used for training, curriculum switching, or checkpoint selection. The
+${\approx}2$-point advantage over the fixed log grid survives the strict
+held-out evaluation.}
 \label{tab:run-b-240}
 \end{table}
 
 The 240 s policy beats the matched fixed log-grid comparator by about two
-percentage points of mean MAPE. The per-pool breakdown is also balanced: Pools
+percentage points of mean MAPE on both evaluation streams: 3.61\% versus 5.60\%
+on the selection-stream seed, and 4.62\% versus 6.86\% on the strict held-out
+seed, with non-overlapping confidence intervals in both cases. The Cramer--Rao
+schedule collapses on this task at 240 s (15.96\%, p90 29.29\%): solved over
+$(\mathrm{TI},\mathrm{TR})$ for a nominal fleet, it commits its budget to four
+long blocks and under-covers the episode's realised $T_1$ values. The RL
+per-pool breakdown is also balanced: on the selection-stream evaluation, pools
 1, 3, 6, 8 and 14 scored 3.67\%, 3.38\%, 3.22\%, 2.81\% and 4.97\% MAPE
-respectively. This matters because the result is not an average dominated by one
-easy pool. The shortest-$T_1$ active pool remains the hardest, but it is still
-below 5\% MAPE.
+respectively, so the result is not an average dominated by one easy pool. The
+shortest-$T_1$ active pool remains the hardest, but it is still below 5\%.
 
 \begin{figure}[!htbp]
 \centering
@@ -731,69 +746,181 @@ the sampled range, then shorten TI after the estimate has stabilised. This is a
 real adaptive pattern, but it is not the simple monotonic rule ``higher current
 $T_1$ implies longer next TI''.
 
-The 240 s comparison shares its evaluation seed with the training stream, so
-the cleanest statistical claim comes from a longer-budget control trained with
-$\alpha$ fixed at $90^\circ$ and evaluated on a strict, never-seen
-seed-600000 held-out set. At a 560 s budget the global-best RL policy scores
-\textbf{4.16\%} MAPE ([3.41, 4.99], p90 6.64\%) against \textbf{5.86\%}
-([5.24, 6.45], p90 8.02\%) for the matched fixed log grid on the same held-out
-call --- the same ${\approx}1.7$ percentage-point advantage as at 240 s, now
-without any train/eval seed overlap. The fixed log grid is essentially flat
-from 240 to 560 s (5.60\% $\to$ 5.71\%), so the RL gain is not simply ``more
-blocks'': the 560 s policy uses its ${\approx}14$ blocks (versus the fixed
-grid's 10) in a different, closed-loop allocation, and the 240 s policy is the
-stronger efficiency story, beating the fixed schedule with only ${\approx}6$
-blocks and ${\approx}230$ s.
+The advantage holds at a 560 s budget, under a control trained with $\alpha$
+fixed at $90^\circ$ and evaluated on the same strict seed-600000 held-out set:
+the global-best RL policy scores \textbf{4.16\%} MAPE ([3.41, 4.99], p90
+6.64\%) against \textbf{6.04\%} ([5.36, 6.70], p90 7.81\%) for the fixed
+\texttt{log\_grid\_trmatched} schedule evaluated by the baseline harness on
+the same seed. (A slightly different in-pipeline seven-point sanity grid
+scores 5.86\%; the ten-point baseline-harness schedule is the authoritative
+comparator, and the conclusion is unchanged under either.) The 560 s
+comparison is not a pure scan-time ablation of the 240 s run, because the
+240 s run still learned $\alpha$. The fixed log grid is essentially flat from
+240 to 560 s (5.60\% $\to$ 5.71\% on the selection-stream sweep), so the RL
+gain is not simply ``more blocks'': the 560 s policy uses its ${\approx}14$
+blocks (versus the fixed grid's 10) in a different, closed-loop allocation,
+and the 240 s policy is the stronger efficiency story, beating the fixed
+schedule with only ${\approx}6$ blocks and ${\approx}230$ s.
 
-This is the strongest evidence for A3. The task was deliberately constructed so
+This is strong evidence for A3. The task was deliberately constructed so
 that a fixed global schedule is less naturally optimal than in the 14-sphere
 case, and the RL policy then found a compact closed-loop strategy that improved
-both mean and p90 error against the fixed comparator at two budgets. The result
-is still bounded: it rests on one training seed per arm, and the headline 240 s
-global-best policy still needs a strict seed-600000 re-evaluation to fully
-remove overlap with the training evaluation stream.
+both mean and p90 error against the fixed comparator at two budgets, in both
+cases confirmed on strict held-out seeds. The result is still bounded: it
+rests on one training seed per arm.
 
-\section{560 s and ablation status}
+\section{Memory ablation: what should the policy remember?}
 \label{sec:e2-ablations}
 
-The longer-budget and observation ablations are not yet mature enough for a
-full results section, so they are summarised here.
+The E2 environment is a partially observed MDP. The observation carries the
+\emph{running fit} but not the \emph{acquisition history}: the per-sphere
+$T_1$ estimates are a lossy summary of which (TI, TR) blocks have already
+been spent. Two different sampled-TI sets can produce similar estimate
+vectors while the information value of the next TI depends precisely on
+which TIs have already been bought, so a policy that cannot see its own
+history can only learn open-loop schedules modulated by the current
+estimate. The final experiment therefore compares three mechanisms for
+carrying that history, each added to the 560 s five-sphere no-memory control
+of the previous section with everything else held fixed: the same active
+spheres, continuous-$T_1$ sampler, fidelity ladder, 9 h wall-clock budget,
+$\alpha=90^\circ$, and global-best checkpointing.
 
-\begin{itemize}
-\setlength{\itemsep}{2pt}
-    \item \textbf{560 s no-uncertainty control.} The global-best policy scored
-    4.16\% MAPE on a strict 24-episode held-out evaluation, versus 5.86\% for
-    the fixed log-grid comparator on the same held-out call. This supports the
-    five-sphere adaptive result, but it is not a clean scan-time ablation of the
-    240 s run because the 560 s runs fixed $\alpha=90^\circ$ while the 240 s run
-    still learned $\alpha$.
+\paragraph{Estimator summary ($\sigma$-channel).} Appends
+$\log_{10}(\sigma_{T_1}/T_{1,\mathrm{est}})$ per sphere, clamped to
+$[-3,0]$, from the fitter's bootstrap uncertainty, with $0$ as the no-fit
+sentinel. This is a confidence proxy, not a calibrated posterior: the fitter
+estimates $(T_1, A)$ jointly and uses its residual-based noise estimate only
+beyond four measurements, so early in the episode --- exactly when guidance
+is most valuable --- the channel is sentinel- or noise-floor-driven.
 
-    \item \textbf{560 s uncertainty-channel treatment.} Adding
-    \(\log_{10}(\sigma_{T_1}/T_{1,\mathrm{est}})\) to the observation did not
-    improve strict held-out performance. The global-best policy scored 5.25\%
-    MAPE with p90 9.34\%, worse than the no-uncertainty control. The uncertainty
-    proxy is therefore not a positive result. It may be too noisy early in the
-    episode, when the fitter has only a few measurements.
+\paragraph{Task-informed sufficient statistic (TI-coverage histogram).}
+Appends twelve bins, uniform in the agent's own logarithmic TI action
+coordinate over $[0.01, 3.0]$ s (about 0.21 decades per bin), each holding
+the count of \emph{executed} blocks in that bin divided by the 20-block
+episode cap. Executed, post-repair TIs are recorded, so the channel stays
+truthful when the TR-lift guardrail changes what was actually played. The
+encoding is deliberately order-invariant: the $T_1$ fitter consumes the
+\emph{set} of (TI, magnitude) pairs, so a permutation-invariant coverage
+vector matches the estimator's sufficient statistic in twelve dimensions,
+where a padded action sequence would need forty. TR history is not encoded;
+the time-used fraction already carries spent scan time.
 
-    \item \textbf{Global best versus final policy.} The 560 s no-uncertainty run
-    had an earlier confirmed global best near 3.45\% on the 12-episode
-    confirmation eval, but the final policy drifted to 7.12\% on the
-    seed-500000 24-episode eval. This reinforces the Run A lesson: the last
-    policy is not automatically the best policy in a multi-fidelity curriculum.
+\paragraph{Learned summary (LSTM).} Keeps the control's observation
+unchanged and swaps PPO for RecurrentPPO (sb3-contrib
+\texttt{MlpLstmPolicy}) with the same $[256,256]$ torso, a default 256-unit
+LSTM, and identical optimiser and PPO hyperparameters. Running it without
+the histogram keeps the ablation clean: memory enters through recurrence
+\emph{instead of} state augmentation, so the difference between the two new
+arms is attributable to the mechanism, not to stacked channels.
 
-    \item \textbf{Memory ablations.} Two memory mechanisms are planned but not
-    yet report-grade: an executed-TI histogram in the observation and a recurrent
-    PPO policy with an LSTM state. These test whether the current state
-    \([T_{1,\mathrm{est}},\mathrm{budget}]\) is an adequate summary of the
-    acquisition history. The hypothesis is concrete: two different TI histories
-    can produce similar current fits, but have different information value for
-    the next block.
+All four arms were evaluated with the Run B protocol: 24 strict held-out
+episodes (seed 600000) on each run's global-best checkpoint, with the fixed
+schedules re-evaluated by the baseline harness on the same seed.
+Table~\ref{tab:run-b-memory} and Figure~\ref{fig:run-b-memory} give the
+result.
 
-    \item \textbf{ROI and reconstruction ablations.} ROI radius 1 was used for
-    Run B to reduce centre-pixel sensitivity. A paired ROI 0/1 evaluation is
-    still needed before attributing gains specifically to adaptivity rather than
-    improved measurement extraction.
-\end{itemize}
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.92}
+\begin{tabular}{lrrrrr}
+\toprule
+Policy or schedule (560 s) & Mean MAPE & 95\% CI & p90 & Succ.\ $<5\%$ & Blocks \\
+\midrule
+TI-coverage histogram & \textbf{2.93\%} & [2.58, 3.30] & \textbf{4.19\%} & \textbf{95.8\%} & 13.6 \\
+No-memory control & 4.16\% & [3.41, 4.99] & 6.64\% & 66.7\% & 14.0 \\
+$\sigma$-channel & 5.25\% & [4.32, 6.22] & 9.34\% & 58.3\% & 14.2 \\
+LSTM (RecurrentPPO) & 7.31\% & [6.10, 8.65] & 12.21\% & 25.0\% & 11.0 \\
+\midrule
+Fixed \texttt{log\_grid\_trmatched} & 6.04\% & [5.36, 6.70] & 7.81\% & 25.0\% & 10 \\
+Fixed \texttt{cr\_optimal} & 7.74\% & [7.08, 8.42] & 9.78\% & 8.3\% & 10 \\
+\bottomrule
+\end{tabular}
+\caption{Memory-mechanism ablation at 560 s on the five-sphere task:
+24-episode strict held-out evaluations (seed 600000) of each arm's
+global-best policy, with the fixed schedules on the same seed. The
+TI-coverage histogram is the best E2 result in the project; its confidence
+interval does not overlap any other row's.}
+\label{tab:run-b-memory}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\begin{minipage}[c]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runB_memory_mape.png}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runB_memory_per_pool.png}
+\end{minipage}
+\caption{Memory ablation on the strict held-out evaluation. Left: mean MAPE
+with 95\% CIs per memory mechanism; horizontal lines mark the fixed
+schedules on the same seed. Right: per-active-pool MAPE. The histogram arm
+is the best arm on every pool, including the long-$T_1$ pool that no
+14-sphere policy solved.}
+\label{fig:run-b-memory}
+\end{figure}
+
+The mechanisms rank decisively: histogram $\gg$ no memory $>$
+$\sigma$-channel $>$ LSTM, and only the first two beat the best fixed
+schedule. The histogram policy's 2.93\% mean MAPE is the best E2 result in
+the project: 1.2 percentage points better than the memoryless control and
+3.1 points better than the fixed log grid, with 95.8\% of episodes under
+5\% error. The per-pool breakdown shows the gain is not one easy sphere:
+every active pool sits between 2.15\% and 3.52\%, and the histogram arm is
+the best arm on all five, including the long-$T_1$ pool 1 (3.00\%, versus
+4.75\% for the control and ${\approx}41\%$ for every Run A checkpoint). It
+is the first E2 policy that is accurate across the full $T_1$ ladder
+simultaneously.
+
+The $\sigma$-channel is a genuine negative result. On the seed-500000
+selection stream it looked acceptable (final policy 4.44\%), but its global
+best fell to 5.25\% on the strict held-out seed --- worse than no memory,
+with the worst p90 of the observation-based arms. The plausible mechanism is
+the one flagged in its design: the uncertainty proxy is degenerate before
+two measurements and noisy just above, so it perturbs the policy precisely
+in the probe blocks. The adaptive gain in Run B therefore does not require
+handing the policy an explicit uncertainty estimate, and a noisy one
+actively hurts.
+
+The LSTM number carries an important compute caveat and should not be read
+as ``recurrence is intrinsically worse''. The recurrent rollout was about
+$5\times$ slower per environment step (0.4--0.5 s versus 0.08--0.10 s at
+the full-Bloch stage), so under the shared 9 h wall-clock budget it received
+roughly $7\times$ fewer target-fidelity training steps (38k versus 275k),
+and its full-Bloch stage never improved on an early cached-stage checkpoint
+--- which is what global-best selection returned (confirmed at 5.68\%). The
+fair claim is that under a fixed wall-clock budget the LSTM was both slower
+and worse, and never trained productively at the target fidelity; a
+step-matched rerun is required to separate mechanism from compute. The
+histogram result has no such caveat: its global best is a late full-stage
+checkpoint whose evaluations were still improving when the budget expired
+(3.71\% $\to$ 2.91\% over the final stage evaluations).
+
+The diagnostics show the two memory mechanisms learned qualitatively
+different timing rules. The LSTM learned the intuitive monotonic rule: a
+short fixed probe (TI ${\approx}0.12$ s) followed by rising TI ramps,
+strongly correlated with the running estimate ($r=+0.78$). The histogram
+policy's TI is nearly uncorrelated with the running estimate ($r=-0.12$):
+it opens with a fixed two-block probe (TI $1.05 \to 0.5$ s), fans out per
+episode, and conditions instead on which log-TI bins remain unsampled ---
+the channel it was given. The intuitive estimate-tracking rule, learned
+cleanly by the LSTM, performs worse than coverage-driven sampling. This is
+direct behavioural support for the section's hypothesis: the value of the
+next measurement depends on which measurements have already been bought,
+not only on the current estimate, and an explicit coverage statistic is
+currently the best way to expose that dependence.
+
+The ablation also reconfirms the global-best mechanism. The no-memory
+control's final policy drifted to 7.12\% on the selection stream despite an
+earlier confirmed global best near 3.45\%, and the LSTM's best policy
+predates its final stage entirely; only the histogram arm's final policy
+stayed close to its best (3.16\% on the selection stream). In a
+multi-fidelity curriculum the last policy is routinely not the best policy;
+checkpoint selection on the target fidelity is part of the method, not an
+optional extra.
 
 \section{Limitations}
 \label{sec:e2-limitations}
@@ -814,10 +941,16 @@ estimation errors. Run A shows this distinction clearly. It learned a
 state-dependent policy, but robust fixed coverage remained stronger.
 
 The third limitation is statistical breadth. The final tables use 24-episode
-evaluations and one training seed. This is adequate for the current conclusion:
-Run A is a strict held-out negative result, and Run B is a promising controlled
-positive result. It is not enough to claim that the method is insensitive to PPO
-initialisation, curriculum timing, or stochastic simulator noise.
+evaluations and one training seed per arm. This is adequate for the current
+conclusion: Run A is a strict held-out negative result, and Run B and the
+memory ablation are controlled positive results with non-overlapping
+confidence intervals. It is not enough to claim that the method is
+insensitive to PPO initialisation, curriculum timing, or stochastic simulator
+noise. A related gap is that the ROI-averaging radius introduced for Run B
+was never ablated in isolation; the RL-versus-fixed comparisons are
+unaffected because every policy and baseline uses the same measurement
+extraction, but absolute MAPE levels should not be compared across runs with
+different ROI settings.
 
 The fourth limitation is algorithmic breadth. PPO was a pragmatic baseline, not
 a claim that on-policy learning is the best optimiser for this problem. Because
@@ -874,13 +1007,15 @@ are used together with bias correction or control variates. This direction is
 directly connected to multi-fidelity control-variate and Gaussian-process RL
 methods~\cite{khairy_control_variates_2024,suryan_multifidelity_gp_2020}.
 
-The next state-representation step is to make acquisition history explicit. The
-uncertainty-channel ablation suggests that the fitter's own $\sigma$ estimate is
-not a reliable enough summary. A better engineered state is the executed-TI
-coverage histogram: it tells the policy which timing regions have already been
-sampled, while remaining compact and order-invariant. A recurrent policy is the
-learned alternative, but it is harder to debug and should be compared against
-the histogram baseline rather than used alone.
+The state-representation question is now partly settled empirically: the
+executed-TI coverage histogram is the best observed memory mechanism, and the
+fitter's own $\sigma$ estimate is not a reliable summary. The open question is
+the recurrent alternative. The LSTM arm lost under a fixed wall-clock budget,
+but it was ${\approx}5\times$ slower per step and consequently undertrained at
+the target fidelity, so a step-matched RecurrentPPO rerun is needed before
+concluding that recurrence is intrinsically worse. Extending the coverage idea
+to richer action spaces --- joint TI--TR coverage, or coverage per
+estimated-$T_1$ band --- is the natural next encoding.
 
 The most important scientific extension is to widen the action space and repeat
 the experiment beyond the T1 plate. First, the same adaptive framework should be
@@ -907,13 +1042,18 @@ baselines can be compared across the same accuracy--time frontier.
 \section{Summary}
 \label{sec:e2-summary}
 
-This chapter produced two conclusions. First, multi-fidelity training is a
+This chapter produced three conclusions. First, multi-fidelity training is a
 necessary engineering mechanism for simulation-in-the-loop RL with KomaMRI. It
 made the experiments feasible and exposed where simulator bias affects policy
 selection. Second, adaptivity only showed a clear quantitative advantage on the
 task designed to require it. The full 14-sphere agent learned a state-dependent
-policy but lost to fixed schedules. The five-sphere continuous-$T_1$ agent beat
-the fixed log-grid comparator at 240 s, using a compact probe-then-refine
-strategy. That is the central positive result, and the limitations above define
-the work needed to turn it from a controlled demonstration into a robust qMRI
-sequence-design method.
+policy but lost to fixed schedules; the five-sphere continuous-$T_1$ agent beat
+the fixed log-grid comparator at 240 s and 560 s on strict held-out episodes,
+using a compact probe-then-refine strategy. Third, what the policy remembers
+matters as much as whether it adapts: an order-invariant histogram of executed
+inversion times produced the chapter's best result (2.93\% versus 6.04\% for
+the best fixed schedule), while a fitter-uncertainty channel and a recurrent
+policy both underperformed the memoryless control --- the latter confounded by
+its ${\approx}5\times$ per-step cost under a shared wall-clock budget. The
+limitations above define the work needed to turn these controlled
+demonstrations into a robust qMRI sequence-design method.
