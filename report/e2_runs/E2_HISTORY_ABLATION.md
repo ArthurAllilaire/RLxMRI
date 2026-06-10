@@ -5,7 +5,9 @@ Status: planned 10 June 2026. Goal: the lowest-error 560 s result before the
 report (Ch4/A2, addresses C1).
 
 Companion to `section_multi_fidelity.md` (§"560 s GPU runs — eval & diagnose"
-has the eval protocol and the controls these runs compare against).
+has the eval protocol and the controls these runs compare against; the
+report-ready write-up of this ablation is `section_multi_fidelity.md` §9,
+including the post-run eval/diagnose commands).
 
 ---
 

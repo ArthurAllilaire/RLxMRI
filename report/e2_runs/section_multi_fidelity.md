@@ -1512,7 +1512,175 @@ histories) before plotting cumulative hours. -->
 
 ---
 
-## 9. Future work (broader changes)
+## 9. Memory-mechanism ablation — action history vs recurrence (560 s)
+
+*Full execution plan, risk register and schedule: `E2_HISTORY_ABLATION.md`.
+Implemented and launched 10 June 2026; results pending.*
+
+### 9.1 Motivation
+
+The E2 environment is a POMDP. The observation the agent acts on,
+
+```
+[ log10(T1_est) per sphere ; (optional σ-channel) ; t_frac, n_frac, 1 ]
+```
+
+contains the *running fit* but not the *acquisition history*: the per-sphere
+T1 estimates are a lossy summary of which (TI, TR) blocks have been spent.
+Two very different sampled-TI sets can produce similar T1_est vectors, while
+the information value of the next TI depends precisely on which TIs the
+agent has already bought. A policy that cannot see its own history can only
+learn open-loop schedules modulated by the current estimate.
+
+The 560 s confidence-channel experiment was the first attempt to close this
+gap, exposing the fitter's own uncertainty (`log10(σ_T1/T1_est)` per sphere)
+as a learned-estimator *summary* of history. It did not help: the σ-run's
+global best scored **4.04%** MAPE against the no-σ control's **3.45%**
+(12-episode confirmation evals, seed 510000). A plausible mechanism is that
+the Levenberg–Marquardt σ is degenerate early in the episode — undefined
+below two measurements, noisy just above — so the channel injects noise
+exactly when the agent most needs guidance.
+
+This section therefore completes a three-way ablation of *memory mechanisms*
+for sequential experiment design, all at a fixed 560 s scan budget on the
+5-sphere task:
+
+| Mechanism | What carries the history | Run |
+|---|---|---|
+| Estimator summary | fitter σ-channel in the obs | `mf_runB_5sphere_sigma_560s_gpu` (done: 4.04%) |
+| Task-informed sufficient statistic | executed-TI coverage histogram in the obs | `mf_runB_5sphere_hist_560s_gpu` (R1) |
+| Learned summary | LSTM hidden state (RecurrentPPO) | `mf_runB_5sphere_lstm_560s_gpu` (R2) |
+
+The no-memory control is `mf_runB_5sphere_560s_gpu` (3.45%). The comparison
+is informative in every outcome: if neither new arm beats the control, the
+honest conclusion is that `[T1_est; budget]` is already a sufficient
+statistic at this task scale.
+
+### 9.2 Arm 1 (R1) — executed-TI coverage histogram, plain PPO
+
+State augmentation: make the POMDP (approximately) Markov by putting the raw
+history into the observation, keeping the PPO architecture identical to the
+control. The encoding exploits a structural fact: the T1 fitter consumes the
+*set* of (TI, magnitude) pairs per sphere — order-invariant — so a
+permutation-invariant encoding matches the estimator's true sufficient
+statistic and is far more compact than a padded action sequence (12 dims vs
+20×2).
+
+Design (`julia/rl/e2.jl::_e2_ti_histogram`, flag `--include-ti-history`):
+
+- **Bins:** 12, uniform in the agent's own log-TI action coordinate
+  `u = log(TI/lo)/log(hi/lo)` over the live action bounds TI ∈ [0.010, 3.0] s
+  (≈ 0.21 decades/bin over the 2.48-decade range).
+- **Value:** count of *executed* blocks per bin, divided by `max_blocks`
+  (20), so each bin lies in [0, 1]. Executed (post-repair) TIs are taken
+  from the env's recorded history, so the channel stays truthful when the
+  TR-lift/TE-clamp repair changes what was actually played.
+- TR history is deliberately not encoded: `t_frac` already carries spent
+  scan time, and TI coverage dominates the fit information.
+
+The channel also sharpens the adaptivity diagnostic: with coverage in the
+obs, "does the policy avoid re-sampling already-covered bins?" becomes a
+directly plottable question (TI choice vs current bin occupancy), giving
+behavioural evidence of history-conditioning that MAPE alone cannot.
+
+### 9.3 Arm 2 (R2) — RecurrentPPO (LSTM), base observation
+
+Recurrence: keep the control's observation (no σ, no histogram) and let an
+LSTM hidden state learn its own history summary. `--recurrent` swaps
+`PPO("MlpPolicy")` for sb3-contrib's `RecurrentPPO("MlpLstmPolicy")` with
+otherwise identical hyperparameters (same `[256, 256]` torso, default
+256-unit LSTM, same lr/γ/λ/entropy settings). Running R2 *without* the
+histogram keeps the ablation clean — memory via recurrence *instead of*
+state augmentation, so any difference between R1 and R2 is attributable to
+the mechanism, not to stacked channels.
+
+The policy network trains on the CPU in both arms (`device="cpu"`), as in
+all E2 runs: the network is tiny relative to transfer overhead, the gradient
+update is a rounding error next to the per-step Bloch simulation, and the
+GPU is owned by KomaMRI/CUDA.jl inside the same process — co-locating torch
+on it would invite memory contention for a <1% throughput gain.
+
+Implementation notes (for reproducibility): `build_model(recurrent=)`,
+class-aware `load_policy()`, and an LSTM-state-threading `rollout_eval` live
+in `e2_train_common.py`; plain PPO accepts and ignores the `state` /
+`episode_start` kwargs, so a single predict loop serves both classes across
+every trainer eval site (screening, global-best confirmation, stage
+probes, lookahead clones). `run_config.json` records `"recurrent": true`,
+so `eval_e2.py`/`diagnose_e2.py --from-run` load the correct class with no
+extra flags. Validated by unit test (build → learn → weights-only stage
+clone incl. LSTM tensors → save/load → stateful rollout) and by a small
+end-to-end trainer smoke that crossed a real analytic→cached3 fidelity
+switch.
+
+### 9.4 Evaluation protocol and comparison set
+
+Identical to the §8 560 s block: 24 episodes, `--roi-radius 1`, on the
+global-best checkpoint, at **seed 500000** (baseline-comparable; overlaps
+the training screening seed — same caveat as all 560 s runs) and **seed
+600000** (strictly held-out), plus adaptivity diagnostics. Comparison set
+(560 s, 5-sphere):
+
+| Policy | MAPE | p90 | success |
+|---|---|---|---|
+| no-memory control (global best) | 3.45 % | 6.03 % | 75 % |
+| σ-channel | 4.04 % | 6.94 % | 75 % |
+| `log_grid_trmatched` | 5.71 % | — | 33.3 % |
+| `cr_optimal` | 7.34 % | — | 12.5 % |
+| R1: TI-coverage histogram | *pending* | | |
+| R2: LSTM | *pending* | | |
+
+```bash
+# ── Run once R1/R2 finish: eval + diagnose, GPU box ──────────────────────
+# (same protocol as the 240 s / 560 s blocks in §8; --from-run inherits the
+#  env config AND the recurrent flag, so the commands are identical for both)
+source .venv/bin/activate
+export PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu"
+export PYTHON_JULIAPKG_OFFLINE=yes
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+export PYTHON_JULIACALL_THREADS=3
+export JULIA_NUM_THREADS=3
+
+for R in runs/e2/mf_runB_5sphere_hist_560s_gpu \
+         runs/e2/mf_runB_5sphere_lstm_560s_gpu; do
+  # Global-best checkpoint — baseline-comparable seed (= 560 s baseline tables)
+  PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+    --policy "$R/global_best/best_policy.zip" \
+    --vecnorm "$R/global_best/best_vecnorm.pkl" \
+    --episodes 24 --seed 500000 --roi-radius 1 \
+    2>&1 | tee "$R/eval_globalbest_24ep.log"
+
+  # Global-best checkpoint — strictly held-out seed (never seen in training)
+  PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+    --policy "$R/global_best/best_policy.zip" \
+    --vecnorm "$R/global_best/best_vecnorm.pkl" \
+    --episodes 24 --seed 600000 --roi-radius 1 \
+    2>&1 | tee "$R/eval_globalbest_24ep_heldout.log"
+
+  # Final-stage policy (the "final ≠ best" comparison) — defaults to $R/policy.zip
+  PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+    --episodes 24 --seed 500000 --roi-radius 1 \
+    2>&1 | tee "$R/eval_final_24ep.log"
+
+  # Adaptivity diagnostics on the global-best checkpoint (for the hist run,
+  # check: does the policy avoid re-sampling already-covered TI bins?)
+  PYTHONUNBUFFERED=1 python -u python/diagnose_e2.py --from-run "$R" \
+    --policy "$R/global_best/best_policy.zip" \
+    --vecnorm "$R/global_best/best_vecnorm.pkl" \
+    --episodes 24 --seed 500000 \
+    --out "$R/global_best/diagnostics" \
+    2>&1 | tee "$R/diagnose_globalbest.log"
+done
+```
+
+For the report chapter: this section addresses **C1** (the optimal next
+measurement depends on what has already been measured — memory is the
+mechanism that lets a policy exploit that), with the quantified benefit (or
+honest null) read directly off the table above against both the no-memory RL
+control and the fixed-protocol baselines.
+
+---
+
+## 10. Future work (broader changes)
 
 - **Pareto curve (accuracy vs scan-time).** Add a scan-time weight to the reward
   and sweep it to trace the accuracy/time frontier; compare against the E0
@@ -1559,7 +1727,7 @@ histories) before plotting cumulative hours. -->
 
 ---
 
-## 10. Reproduce
+## 11. Reproduce
 
 ```bash
 source .venv/bin/activate
