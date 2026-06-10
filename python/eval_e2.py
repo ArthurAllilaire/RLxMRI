@@ -22,6 +22,13 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# Import juliacall before torch (pulled in by stable_baselines3). On macOS, Julia
+# and torch both install mach exception-port handlers at init; whichever loads
+# first wins, and torch-first makes Julia's init crash with EXC_GUARD. Harmless
+# on Linux/WSL (no mach ports) but required here. See juliacall warning + the
+# import order in train_e2_mf.py / baseline_e2.py.
+import juliacall  # noqa: F401  (must precede stable_baselines3/torch)
+
 import numpy as np
 from e2_train_common import load_policy
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize

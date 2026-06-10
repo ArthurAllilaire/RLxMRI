@@ -1422,8 +1422,16 @@ commands (global-best eval, final-policy eval for the "final ≠ best" compariso
 and global-best diagnostics) are identical between the two variants; only the
 runtime project and thread counts differ.
 
-**CPU variant** (e.g. local Apple Silicon; 5 threads, plain runtime, `use_gpu`
-falls back):
+> **Run these on Linux/WSL or the GPU VM, not on a local macOS box.** Two
+> macOS-specific blockers (seen 2026-06-10 on macOS 26 / Apple M-series):
+> (1) `PYTHON_JULIACALL_HANDLE_SIGNALS=yes` makes Julia 1.11 attach a mach
+> exception port at init, which macOS 26 kills with `EXC_GUARD`
+> (`thread_set_exception_ports`); set `PYTHON_JULIACALL_HANDLE_SIGNALS=no` on
+> macOS to avoid it. (2) PythonCall.jl requires Python ≥ 3.10, but the macOS
+> system Python is 3.9. The repo's working env is Linux/WSL, so the commands
+> below keep `HANDLE_SIGNALS=yes`.
+
+**Linux/WSL CPU variant** (5 threads, plain runtime, `use_gpu` falls back):
 
 ```bash
 source .venv/bin/activate
