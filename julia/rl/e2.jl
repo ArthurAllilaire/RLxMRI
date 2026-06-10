@@ -816,12 +816,22 @@ function e2_step!(env::E2Env, action_vec, stop::Bool = false)
     TE        = Float64(action_vec[2])
     TR        = Float64(action_vec[3])
     α_exc_deg = Float64(action_vec[4])
+    TI_requested = TI
+    TE_requested = TE
+    TR_requested = TR
 
     # Ensure TR can accommodate the requested TI + TE with recovery headroom.
     # Lift TR up rather than capping TI down — capping TI silently removed
     # the long-T1 regime when the agent chose a small TR (E1-style failure).
-    TR = max(TR, (TI + TE) / e2_tr_headroom(env))
+    TR_min_required = (TI + TE) / e2_tr_headroom(env)
+    TR = max(TR, TR_min_required)
+    TR_lift_amount = TR - TR_requested
+    TR_lifted = TR_lift_amount > 1e-12
+    TE_max_allowed = TR * 0.30
     TE = min(TE, TR * 0.30)
+    TE_clamped = TE < TE_requested - 1e-12
+    TE_clamp_amount = TE_requested - TE
+    action_repaired = TR_lifted || TE_clamped
 
     # Scan time for this block (Npe shots × TR per shot).
     block_time = env.Npe * TR
@@ -854,6 +864,19 @@ function e2_step!(env::E2Env, action_vec, stop::Bool = false)
             "TI"              => TI,
             "TE"              => TE,
             "TR"              => TR,
+            "TI_requested"    => TI_requested,
+            "TE_requested"    => TE_requested,
+            "TR_requested"    => TR_requested,
+            "TI_executed"     => TI,
+            "TE_executed"     => TE,
+            "TR_executed"     => TR,
+            "TR_min_required" => TR_min_required,
+            "TR_lifted"       => TR_lifted,
+            "TR_lift_amount"  => TR_lift_amount,
+            "TE_max_allowed"  => TE_max_allowed,
+            "TE_clamped"      => TE_clamped,
+            "TE_clamp_amount" => TE_clamp_amount,
+            "action_repaired" => action_repaired,
             "alpha_deg"       => α_exc_deg,
             "budget_exceeded" => true,
             "stop_requested"  => stop_now,
@@ -896,6 +919,19 @@ function e2_step!(env::E2Env, action_vec, stop::Bool = false)
         "TI"          => TI,
         "TE"          => TE,
         "TR"          => TR,
+        "TI_requested" => TI_requested,
+        "TE_requested" => TE_requested,
+        "TR_requested" => TR_requested,
+        "TI_executed" => TI,
+        "TE_executed" => TE,
+        "TR_executed" => TR,
+        "TR_min_required" => TR_min_required,
+        "TR_lifted" => TR_lifted,
+        "TR_lift_amount" => TR_lift_amount,
+        "TE_max_allowed" => TE_max_allowed,
+        "TE_clamped" => TE_clamped,
+        "TE_clamp_amount" => TE_clamp_amount,
+        "action_repaired" => action_repaired,
         "alpha_deg"   => α_exc_deg,
         "stop_requested" => stop_now,
     )

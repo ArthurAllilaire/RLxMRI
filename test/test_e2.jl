@@ -1078,6 +1078,16 @@
 
         @test isapprox(info["TI"], TI_req; atol = 1e-9)
         @test info["TR"] >= (TI_req + TE_req) / 0.90 - 1e-9
+        @test isapprox(info["TI_requested"], TI_req; atol = 1e-9)
+        @test isapprox(info["TE_requested"], TE_req; atol = 1e-9)
+        @test isapprox(info["TR_requested"], TR_req; atol = 1e-9)
+        @test isapprox(info["TI_executed"], info["TI"]; atol = 1e-9)
+        @test isapprox(info["TE_executed"], info["TE"]; atol = 1e-9)
+        @test isapprox(info["TR_executed"], info["TR"]; atol = 1e-9)
+        @test isapprox(info["TR_min_required"], (TI_req + TE_req) / 0.90; atol = 1e-9)
+        @test info["TR_lifted"] == true
+        @test info["TR_lift_amount"] > 0
+        @test info["action_repaired"] == true
     end
 
     @testset "e2_step!: budget guard never overruns the scan-time budget" begin

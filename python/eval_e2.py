@@ -94,6 +94,8 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
         return vec_norm.normalize_obs(np.expand_dims(o, 0))[0]
 
     mapes, per_sphere, ti_choices, times = [], [], [], []
+    repair_flags, tr_lift_flags, te_clamp_flags = [], [], []
+    tr_lift_amounts, te_clamp_amounts = [], []
     # D2 readout: per-pool-index MAPE so we can see which T1 values fail.
     pool_apes: dict[int, list[float]] = {}
 
@@ -106,6 +108,11 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
             action, _ = model.predict(_norm(obs), deterministic=True)
             obs, _r, done, _trunc, info = raw_env.step(action)
             ep_tis.append(float(info.get("TI", np.nan)))
+            repair_flags.append(bool(info.get("action_repaired", False)))
+            tr_lift_flags.append(bool(info.get("TR_lifted", False)))
+            te_clamp_flags.append(bool(info.get("TE_clamped", False)))
+            tr_lift_amounts.append(float(info.get("TR_lift_amount", 0.0)))
+            te_clamp_amounts.append(float(info.get("TE_clamp_amount", 0.0)))
 
         mapes.append(float(info.get("mape", np.nan)))
         t1_est  = np.asarray(info.get("T1_est",  raw_env.T1_est),  dtype=np.float64)
@@ -133,6 +140,13 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
         "per_pool_mape_pct":  per_pool,
         "mean_scan_time_s":   float(np.mean(times)),
         "ti_choices_s":       ti_choices,
+        "action_repair_rate": float(np.mean(repair_flags)) if repair_flags else 0.0,
+        "tr_lift_rate":       float(np.mean(tr_lift_flags)) if tr_lift_flags else 0.0,
+        "te_clamp_rate":      float(np.mean(te_clamp_flags)) if te_clamp_flags else 0.0,
+        "mean_tr_lift_s":     float(np.mean(tr_lift_amounts)) if tr_lift_amounts else 0.0,
+        "max_tr_lift_s":      float(np.max(tr_lift_amounts)) if tr_lift_amounts else 0.0,
+        "mean_te_clamp_s":    float(np.mean(te_clamp_amounts)) if te_clamp_amounts else 0.0,
+        "max_te_clamp_s":     float(np.max(te_clamp_amounts)) if te_clamp_amounts else 0.0,
     }
 
 
@@ -305,6 +319,11 @@ def main():
     print(f"  p90 MAPE    = {res['mape_p90_pct']:.2f}%")
     print(f"  Success<5%  = {res['success_5pct']:.1%}")
     print(f"  Mean time   = {res['mean_scan_time_s']:.1f}s")
+    print(f"  Action repair = {res['action_repair_rate']:.1%} "
+          f"(TR lift {res['tr_lift_rate']:.1%}, "
+          f"mean ΔTR {res['mean_tr_lift_s']:.3f}s, "
+          f"max ΔTR {res['max_tr_lift_s']:.3f}s; "
+          f"TE clamp {res['te_clamp_rate']:.1%})")
 
     ps = res["per_sphere_mape_pct"]
     print(f"\n  Per-active-slot MAPE [%]:")

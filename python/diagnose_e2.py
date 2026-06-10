@@ -100,6 +100,14 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
             "TI":            [],
             "TE":            [],
             "TR":            [],
+            "TI_requested":  [],
+            "TE_requested":  [],
+            "TR_requested":  [],
+            "TR_lifted":     [],
+            "TR_lift_amount": [],
+            "TE_clamped":    [],
+            "TE_clamp_amount": [],
+            "action_repaired": [],
             "alpha_deg":     [],
             "mape":          [],
             "T1_est_mean":   [],
@@ -145,6 +153,14 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
             ep_record["TI"].append(float(info.get("TI", np.nan)))
             ep_record["TE"].append(float(info.get("TE", np.nan)))
             ep_record["TR"].append(float(info.get("TR", np.nan)))
+            ep_record["TI_requested"].append(float(info.get("TI_requested", np.nan)))
+            ep_record["TE_requested"].append(float(info.get("TE_requested", np.nan)))
+            ep_record["TR_requested"].append(float(info.get("TR_requested", np.nan)))
+            ep_record["TR_lifted"].append(bool(info.get("TR_lifted", False)))
+            ep_record["TR_lift_amount"].append(float(info.get("TR_lift_amount", 0.0)))
+            ep_record["TE_clamped"].append(bool(info.get("TE_clamped", False)))
+            ep_record["TE_clamp_amount"].append(float(info.get("TE_clamp_amount", 0.0)))
+            ep_record["action_repaired"].append(bool(info.get("action_repaired", False)))
             ep_record["alpha_deg"].append(float(info.get("alpha_deg", np.nan)))
             ep_record["mape"].append(float(info.get("mape", np.nan)))
             t1_est_post = np.asarray(info.get("T1_est",
@@ -333,6 +349,18 @@ def write_summary(episodes, out_path):
     final_mapes = np.asarray([ep["mape"][-1] if ep["mape"] else np.nan
                                for ep in episodes])
     ep_lens = np.asarray([len(ep["TI"]) for ep in episodes])
+    repairs = np.asarray([v for ep in episodes for v in ep.get("action_repaired", [])],
+                         dtype=bool)
+    tr_lifts = np.asarray([v for ep in episodes for v in ep.get("TR_lifted", [])],
+                          dtype=bool)
+    te_clamps = np.asarray([v for ep in episodes for v in ep.get("TE_clamped", [])],
+                           dtype=bool)
+    tr_lift_amounts = np.asarray(
+        [v for ep in episodes for v in ep.get("TR_lift_amount", [])],
+        dtype=np.float64)
+    te_clamp_amounts = np.asarray(
+        [v for ep in episodes for v in ep.get("TE_clamp_amount", [])],
+        dtype=np.float64)
 
     # Within-episode TI std vs across-episode TI std — adaptivity proxy
     intra_std = float(np.nanmean([np.nanstd(np.log(ep["TI"]))
@@ -356,6 +384,13 @@ def write_summary(episodes, out_path):
         "ti_log10_inter_episode_std": inter_std / np.log(10),
         "ti_modal_bin_share":      float(in_mode),
         "ti_modal_bin_range_s":    [float(10**mode_lo), float(10**mode_hi)],
+        "action_repair_rate":      float(np.mean(repairs)) if repairs.size else 0.0,
+        "tr_lift_rate":            float(np.mean(tr_lifts)) if tr_lifts.size else 0.0,
+        "te_clamp_rate":           float(np.mean(te_clamps)) if te_clamps.size else 0.0,
+        "mean_tr_lift_s":          float(np.mean(tr_lift_amounts)) if tr_lift_amounts.size else 0.0,
+        "max_tr_lift_s":           float(np.max(tr_lift_amounts)) if tr_lift_amounts.size else 0.0,
+        "mean_te_clamp_s":         float(np.mean(te_clamp_amounts)) if te_clamp_amounts.size else 0.0,
+        "max_te_clamp_s":          float(np.max(te_clamp_amounts)) if te_clamp_amounts.size else 0.0,
         # Raw TI lists (per episode) so plots_for_report.py can use them
         "all_ti_s":                all_ti.tolist(),
         "ep_tis":                  [ep["TI"] for ep in episodes],
@@ -733,6 +768,11 @@ def main():
     print(f"  Modal-bin share         = {summary['ti_modal_bin_share']:.1%}  "
           f"(range {summary['ti_modal_bin_range_s'][0]:.3f}-"
           f"{summary['ti_modal_bin_range_s'][1]:.3f}s)")
+    print(f"  Action repair rate      = {summary['action_repair_rate']:.1%} "
+          f"(TR lift {summary['tr_lift_rate']:.1%}, "
+          f"mean ΔTR {summary['mean_tr_lift_s']:.3f}s, "
+          f"max ΔTR {summary['max_tr_lift_s']:.3f}s; "
+          f"TE clamp {summary['te_clamp_rate']:.1%})")
     for key, info in ti_vs_t1est_summary.items():
         r = info["pearson_log_r"]
         rstr = f"{r:+.3f}" if r is not None else "n/a"

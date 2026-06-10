@@ -128,6 +128,86 @@ class WallBudgetCallback(BaseCallback):
         return True
 
 
+class FullStageEarlyStopCallback(BaseCallback):
+    """Stop final full-Bloch training after repeated eval non-improvement.
+
+    The curriculum already promotes out of cheap fidelities when full-sim progress
+    plateaus. Once the stage *is* the target full simulator, there is nowhere to
+    promote, so this callback uses the existing full-stage eval history to avoid
+    spending the remaining wallclock on circular PPO updates.
+    """
+
+    def __init__(self, *, eval_cb: E2EvalCallback, stage: str,
+                 history_path: Path, patience: int, min_evals: int,
+                 min_steps: int, delta_pct: float, verbose: int = 1):
+        super().__init__(verbose)
+        self.eval_cb = eval_cb
+        self.stage = stage
+        self.history_path = history_path
+        self.patience = int(patience)
+        self.min_evals = int(min_evals)
+        self.min_steps = int(min_steps)
+        self.delta_pct = float(delta_pct)
+        self._stage_start = 0
+        self._seen_evals = 0
+        self._best_mape = float("inf")
+        self._best_eval_idx = -1
+
+    def _on_training_start(self) -> None:
+        self._stage_start = self.num_timesteps
+        hist = self.eval_cb.history
+        self._seen_evals = len(hist)
+        for idx, row in enumerate(hist):
+            mape = float(row.get("mape_pct", float("inf")))
+            if np.isfinite(mape) and mape < self._best_mape - self.delta_pct:
+                self._best_mape = mape
+                self._best_eval_idx = idx
+
+    def _on_step(self) -> bool:
+        if self.patience <= 0:
+            return True
+
+        hist = self.eval_cb.history
+        if len(hist) <= self._seen_evals:
+            return True
+        self._seen_evals = len(hist)
+
+        latest = hist[-1]
+        mape = float(latest.get("mape_pct", float("inf")))
+        eval_idx = self._seen_evals - 1
+        if np.isfinite(mape) and mape < self._best_mape - self.delta_pct:
+            self._best_mape = mape
+            self._best_eval_idx = eval_idx
+            return True
+
+        stage_steps = self.num_timesteps - self._stage_start
+        evals_since_best = eval_idx - self._best_eval_idx
+        if (self._seen_evals >= self.min_evals and
+                stage_steps >= self.min_steps and
+                evals_since_best >= self.patience):
+            entry = {
+                "stage": self.stage,
+                "kind": "full_early_stop",
+                "step": int(self.num_timesteps),
+                "wall_s": time.time(),
+                "current_mape_pct": mape,
+                "best_mape_pct": self._best_mape,
+                "evals_seen": int(self._seen_evals),
+                "evals_since_best": int(evals_since_best),
+                "patience": int(self.patience),
+                "min_evals": int(self.min_evals),
+                "min_steps": int(self.min_steps),
+                "delta_pct": float(self.delta_pct),
+            }
+            _append(self.history_path, entry)
+            if self.verbose:
+                print(f"[MF full early-stop] no MAPE improvement > "
+                      f"{self.delta_pct:.3g} pp for {evals_since_best} evals "
+                      f"(best={self._best_mape:.2f}%, current={mape:.2f}%)")
+            return False
+        return True
+
+
 class GlobalBestFullSim:
     """Track the best policy seen on the target full-Bloch simulator.
 
@@ -611,6 +691,19 @@ def main():
                    help="Reset VecNormalize reward stats at each switch (default on; "
                         "reward distribution shifts between fidelities). Disable with "
                         "--no-mf-reset-reward-norm.")
+    p.add_argument("--mf-full-early-stop-patience", type=int, default=0,
+                   help="Final full-stage early stopping patience in eval points. "
+                        "0 disables. Only applies once the current fidelity is "
+                        "'full'.")
+    p.add_argument("--mf-full-early-stop-min-evals", type=int, default=5,
+                   help="Minimum number of full-stage evals before final-stage "
+                        "early stopping can fire.")
+    p.add_argument("--mf-full-early-stop-min-steps", type=int, default=0,
+                   help="Minimum full-stage training steps before final-stage "
+                        "early stopping can fire.")
+    p.add_argument("--mf-full-early-stop-delta", type=float, default=0.10,
+                   help="Required absolute MAPE improvement, in percentage "
+                        "points, to reset final-stage early-stop patience.")
     p.add_argument("--schedule", choices=["criterion", "fixed"], default="criterion",
                    help="criterion = literature switch rule; fixed = equal wallclock "
                         "thirds (ablation baseline).")
@@ -740,6 +833,15 @@ def main():
             global_best_source="stage_eval_full")
         callbacks: list[BaseCallback] = [eval_cb, eta_cb,
                                          WallBudgetCallback(global_deadline)]
+        if spec.name == "full" and args.mf_full_early_stop_patience > 0:
+            callbacks.append(FullStageEarlyStopCallback(
+                eval_cb=eval_cb,
+                stage=spec.name,
+                history_path=history_path,
+                patience=args.mf_full_early_stop_patience,
+                min_evals=args.mf_full_early_stop_min_evals,
+                min_steps=args.mf_full_early_stop_min_steps,
+                delta_pct=args.mf_full_early_stop_delta))
 
         # Per-stage wall deadline: criterion uses the global one (switch rule
         # ends cheap stages early); fixed splits Γ into equal slices.
