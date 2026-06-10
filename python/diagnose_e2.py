@@ -31,8 +31,9 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+
+from e2_train_common import load_policy
 
 from qalibremd_gym.env_e2 import QalibreMDE2Env
 from qalibremd_gym import env as _env_mod
@@ -41,7 +42,8 @@ from qalibremd_gym import env as _env_mod
 def collect(policy_path: Path, vecnorm_path: Path | None,
             n_episodes: int, seed_offset: int,
             forced_indices_list=None,
-            snr_holder: dict | None = None, **env_kwargs):
+            snr_holder: dict | None = None,
+            recurrent: bool = False, **env_kwargs):
     raw_env = QalibreMDE2Env(rng_seed=seed_offset, **env_kwargs)
     vec_norm = None
     if vecnorm_path is not None and vecnorm_path.exists():
@@ -50,7 +52,7 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
         vec_norm.training = False
         vec_norm.norm_reward = False
 
-    model = PPO.load(str(policy_path))
+    model = load_policy(policy_path, recurrent=recurrent)
 
     def _norm(o):
         if vec_norm is None:
@@ -128,6 +130,9 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
             "snr_nema_peak":  [],   # per-block single-image NEMA SNR
         }
         done = False
+        # LSTM state threading; plain PPO accepts and ignores both kwargs.
+        state = None
+        episode_start = np.ones((1,), dtype=bool)
         while not done:
             # Per-sphere running T1_est the policy *sees* at decision time
             t1_est_now = np.asarray(raw_env.T1_est, dtype=np.float64)
@@ -154,7 +159,10 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
                 ep_record["T1_est_unc_at_decision"].append(np.nan)
             ep_record["T1_est_per_sphere_at_decision"].append(t1_est_now.copy())
             ep_record["T1_sigma_at_decision"].append(t1_sig_now.copy())
-            action, _ = model.predict(_norm(obs), deterministic=True)
+            action, state = model.predict(_norm(obs), state=state,
+                                          episode_start=episode_start,
+                                          deterministic=True)
+            episode_start[0] = False
             obs, _r, done, _trunc, info = raw_env.step(action)
             ep_record["TI"].append(float(info.get("TI", np.nan)))
             ep_record["TE"].append(float(info.get("TE", np.nan)))
@@ -502,7 +510,8 @@ def _all_subsets_by_bucket():
 
 
 def collect_stratified(policy_path, vecnorm_path, seed_offset,
-                       target_per_bucket=30, mixed_target=100, **env_kwargs):
+                       target_per_bucket=30, mixed_target=100,
+                       recurrent=False, **env_kwargs):
     """Collect episodes with forced sphere subsets to get balanced bucket counts.
 
     Precomputes all 2002 valid 5-of-14 subsets in Python, classifies them by
@@ -533,7 +542,8 @@ def collect_stratified(policy_path, vecnorm_path, seed_offset,
           f"({target_per_bucket}/{target_per_bucket}/{mixed_target} "
           f"all_long/all_short/mixed) …")
     eps = collect(policy_path, vecnorm_path, len(selected), seed_offset,
-                  forced_indices_list=forced_list, **env_kwargs)
+                  forced_indices_list=forced_list, recurrent=recurrent,
+                  **env_kwargs)
     for ep, label in zip(eps, bucket_labels):
         ep["bucket"] = label
     return eps
@@ -650,6 +660,10 @@ def main():
     p.add_argument("--policy",   type=Path, default=None,
                    help="Policy .zip. Optional if --from-run is given.")
     p.add_argument("--vecnorm",  type=Path, default=None)
+    p.add_argument("--recurrent", action="store_true",
+                   help="Load the policy as sb3-contrib RecurrentPPO. "
+                        "Inferred automatically from run_config.json when "
+                        "--from-run is given.")
     p.add_argument("--episodes", type=int,  default=30)
     p.add_argument("--seed",     type=int,  default=500_000)
     p.add_argument("--field",    type=str,  default="T3",
@@ -703,8 +717,9 @@ def main():
     if args.from_run is not None:
         # Inherit the exact env config from the run, so diagnostics can't drift
         # from training. Default the policy/vecnorm to the run dir too.
-        from e2_config import load_run_env_kwargs
+        from e2_config import load_run_env_kwargs, load_run_recurrent
         env_kwargs = load_run_env_kwargs(args.from_run)
+        args.recurrent = args.recurrent or load_run_recurrent(args.from_run)
         if args.policy is None:
             args.policy = args.from_run / "policy.zip"
         if args.vecnorm is None and (args.from_run / "vecnorm.pkl").exists():
@@ -763,13 +778,15 @@ def main():
             target_per_bucket=args.target_per_bucket,
             mixed_target=args.mixed_target,
             snr_holder=snr_measurement,
+            recurrent=args.recurrent,
             **env_kwargs,
         )
         save_episodes(eps, out_dir / "episodes.json")
     else:
         print(f"[diagnose] Collecting {args.episodes} rollouts from {args.policy} …")
         eps = collect(args.policy, args.vecnorm, args.episodes, args.seed,
-                      snr_holder=snr_measurement, **env_kwargs)
+                      snr_holder=snr_measurement, recurrent=args.recurrent,
+                      **env_kwargs)
         save_episodes(eps, out_dir / "episodes.json")
 
     print("[diagnose] Plotting …")

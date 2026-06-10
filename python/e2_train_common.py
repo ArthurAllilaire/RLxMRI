@@ -51,15 +51,18 @@ def build_vec_env(env_kwargs: dict, *, n_envs: int, train_seed: int) -> VecNorma
 
 
 def build_model(vec_env: VecNormalize, *, n_steps: int, batch_size: int,
-                tensorboard_log: str | None = None) -> PPO:
+                tensorboard_log: str | None = None, recurrent: bool = False):
     """Construct a fresh PPO with the canonical E2 hyperparameters.
 
     Used both for cold starts and for the optimizer-reset-on-switch path in the
     multi-fidelity orchestrator (build fresh → copy policy weights), so the
     Adam state and LR schedule are always recreated from the same settings.
+
+    `recurrent=True` swaps in sb3-contrib's RecurrentPPO with an LSTM policy
+    (E2_HISTORY_ABLATION.md §3) — same shared hyperparameters, default LSTM
+    size. sb3_contrib is imported lazily so non-recurrent runs don't need it.
     """
-    return PPO(
-        "MlpPolicy", vec_env,
+    shared = dict(
         n_steps       = n_steps,    # longer rollouts → better advantage estimates
         batch_size    = batch_size,
         learning_rate = 1e-4,       # smaller steps → tame clip_fraction (was 0.5 at 3e-4)
@@ -68,10 +71,26 @@ def build_model(vec_env: VecNormalize, *, n_steps: int, batch_size: int,
         ent_coef      = 0.005,      # let policy concentrate sooner
         max_grad_norm = 0.5,
         policy_kwargs = dict(net_arch=[256, 256]),
-        device        = "cpu",      # MLP policy is faster on CPU; GPU is for KomaMRI sim
+        device        = "cpu",      # MLP/LSTM policy is faster on CPU; GPU is for KomaMRI sim
         verbose       = 1,
         tensorboard_log = tensorboard_log,
     )
+    if recurrent:
+        from sb3_contrib import RecurrentPPO
+        return RecurrentPPO("MlpLstmPolicy", vec_env, **shared)
+    return PPO("MlpPolicy", vec_env, **shared)
+
+
+def load_policy(policy_path, *, recurrent: bool = False):
+    """Load a saved policy with the class it was trained as (PPO vs
+    RecurrentPPO). The zip stores the policy class, so a cross-class load
+    does not error outright — but algorithm-level attributes then mismatch,
+    so eval/diagnose route through the run's `recurrent` flag (recorded in
+    run_config.json) rather than relying on that accident."""
+    if recurrent:
+        from sb3_contrib import RecurrentPPO
+        return RecurrentPPO.load(str(policy_path))
+    return PPO.load(str(policy_path))
 
 
 # ── evaluation ──────────────────────────────────────────────────────────────
@@ -83,15 +102,24 @@ def rollout_eval(model, eval_env: QalibreMDE2Env, n_episodes: int,
     Returns (mapes, times) as float arrays. `vec_norm` (if given) supplies the
     obs-normalisation stats the policy was trained under — pass the training
     VecNormalize so eval matches training-time observation scaling.
+
+    The predict loop threads LSTM state + episode_start so RecurrentPPO
+    policies evaluate correctly; plain PPO accepts and ignores both, so one
+    loop serves both classes.
     """
     mapes, times = [], []
     for ep in range(n_episodes):
         obs, _ = eval_env.reset(seed=seed_offset + ep)
         done = False
         info: dict = {}
+        state = None
+        episode_start = np.ones((1,), dtype=bool)
         while not done:
             obs_in = vec_norm.normalize_obs(obs) if vec_norm is not None else obs
-            action, _ = model.predict(obs_in, deterministic=True)
+            action, state = model.predict(obs_in, state=state,
+                                          episode_start=episode_start,
+                                          deterministic=True)
+            episode_start[0] = False
             obs, _r, done, _trunc, info = eval_env.step(action)
         mapes.append(float(info.get("mape", np.nan)))
         times.append(float(eval_env.time_used_s))

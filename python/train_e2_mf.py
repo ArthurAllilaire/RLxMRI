@@ -305,7 +305,7 @@ class FidelitySwitchCallback(BaseCallback):
                  next_spec: FidelitySpec | None = None,
                  base_env_kwargs: dict | None = None,
                  n_envs: int = 1, n_steps: int = 512, batch_size: int = 64,
-                 train_seed: int = 0,
+                 train_seed: int = 0, recurrent: bool = False,
                  global_best: GlobalBestFullSim | None = None,
                  lookahead_enabled: bool = False,
                  lookahead_rollouts: int = 1,
@@ -332,6 +332,7 @@ class FidelitySwitchCallback(BaseCallback):
         self.n_steps = n_steps
         self.batch_size = batch_size
         self.train_seed = train_seed
+        self.recurrent = recurrent
         self.global_best = global_best
         self.lookahead_enabled = lookahead_enabled
         self.lookahead_rollouts = lookahead_rollouts
@@ -494,7 +495,8 @@ class FidelitySwitchCallback(BaseCallback):
         t0 = time.time()
         try:
             clone = build_model(
-                next_vec_env, n_steps=self.n_steps, batch_size=self.batch_size)
+                next_vec_env, n_steps=self.n_steps, batch_size=self.batch_size,
+                recurrent=self.recurrent)
             clone.policy.load_state_dict(
                 copy.deepcopy(self.model.policy.state_dict()))
 
@@ -710,6 +712,12 @@ def main():
     p.add_argument("--mf-linear-ti-action", action="store_true",
                    help="Opt out of the MF default log-spaced continuous TI "
                         "mapping and use the base linear TI action mapping.")
+    p.add_argument("--recurrent", action="store_true",
+                   help="Use sb3-contrib RecurrentPPO (MlpLstmPolicy) instead "
+                        "of PPO, so the policy carries hidden state across "
+                        "blocks (E2_HISTORY_ABLATION.md §3). Recorded in "
+                        "run_config.json so eval_e2/diagnose_e2 --from-run "
+                        "load the right class.")
 
     add_e2_env_args(p)
     args = p.parse_args()
@@ -738,6 +746,7 @@ def main():
 
     (args.out / "run_config.json").write_text(json.dumps({
         "base_env_kwargs": base_kwargs,
+        "recurrent": args.recurrent,
         "plan": [s.name for s in specs],
         "mf": {k: v for k, v in vars(args).items()
                if k.startswith("mf_") or k in ("schedule", "n_envs", "n_steps", "batch_size")},
@@ -777,7 +786,8 @@ def main():
         if model is None:
             model = build_model(vec_env, n_steps=args.n_steps,
                                 batch_size=args.batch_size,
-                                tensorboard_log=str(args.out / "tb" / spec.name))
+                                tensorboard_log=str(args.out / "tb" / spec.name),
+                                recurrent=args.recurrent)
         else:
             # Warm-start: carry obs stats (per-sphere T1 in seconds — physically
             # comparable across fidelities). Reward stats / optimizer are reset by
@@ -788,9 +798,10 @@ def main():
             if args.mf_reset_optimizer_on_switch:
                 fresh = build_model(vec_env, n_steps=args.n_steps,
                                     batch_size=args.batch_size,
-                                    tensorboard_log=str(args.out / "tb" / spec.name))
+                                    tensorboard_log=str(args.out / "tb" / spec.name),
+                                    recurrent=args.recurrent)
                 fresh.policy.load_state_dict(
-                    model.policy.state_dict())  # weights only
+                    model.policy.state_dict())  # weights only (incl. LSTM)
                 model = fresh
             else:
                 model.set_env(vec_env)
@@ -859,7 +870,7 @@ def main():
                 next_spec=next_spec, base_env_kwargs=base_kwargs,
                 n_envs=args.n_envs,
                 n_steps=args.n_steps, batch_size=args.batch_size,
-                train_seed=args.train_seed,
+                train_seed=args.train_seed, recurrent=args.recurrent,
                 global_best=global_best,
                 lookahead_enabled=args.mf_use_lookahead,
                 lookahead_rollouts=args.mf_lookahead_rollouts,

@@ -107,7 +107,23 @@ re-sampling already-covered bins?* Plot TI choice vs current bin occupancy.
   (`n_steps 512, batch 64`); leave LSTM size at the sb3-contrib default
   (256) for v1.
 
-### Code changes (the churn is here — budget half a day)
+### Code changes (IMPLEMENTED 10 Jun)
+
+As built: `sb3-contrib 2.8.0` installed and pinned in
+`python/requirements.txt`. `build_model(..., recurrent=)` and a class-aware
+`load_policy()` live in `e2_train_common.py`; `rollout_eval` threads LSTM
+`state`/`episode_start` through `model.predict` (plain PPO accepts and
+ignores both, so one loop serves both classes — this covers every trainer
+eval site: screening, global-best confirmation, stage probes, lookahead).
+`train_e2_mf.py --recurrent` switches all three `build_model` sites (cold
+start, optimizer-reset stage switch, lookahead clone) and records
+`"recurrent": true` in `run_config.json`; `eval_e2.py`/`diagnose_e2.py`
+infer it via `--from-run` (or take an explicit `--recurrent`) and run the
+same stateful predict loop. Verified by unit test (build → learn →
+weights-only clone incl. 8 LSTM tensors → save/load → stateful rollout for
+both classes) plus the S2 trainer smoke below.
+
+### Original change list (for reference — budget half a day)
 
 1. `python/train_e2_mf.py` — `--recurrent` flag → model class switch; **two
    known risk spots**:
@@ -142,7 +158,7 @@ eval-seed 500000.
 | Slot | When (10–11 Jun) | Run | Out dir |
 |---|---|---|---|
 | S1 | ~~skipped~~ — option A verified by direct env smoke (obs dim, bin placement, reset clearing, back-compat); R1 launched directly and monitored live | — | — |
-| S2 | today, short (~1.5 h budget) | B smoke: `--recurrent` | `runs/e2/mf_runB_5sphere_lstm_560s_smoke` |
+| S2 | ~~done 10 Jun~~ — tiny `--recurrent` MF run (analytic→cached3, 16×8 grid) crossed a real fidelity switch with global-best saves and exit 0; `eval_e2 --from-run` then loaded and rolled the recurrent policy with no flags needed | — | — |
 | R1 | tonight, 9 h | **A full**: histogram | `runs/e2/mf_runB_5sphere_hist_560s_gpu` |
 | R2 | tonight, 9 h | **B full**: LSTM (or fallback: A with `--ti-hist-bins 8` + `--include-sigma` combo) | `runs/e2/mf_runB_5sphere_lstm_560s_gpu` |
 | C1/C2 | tomorrow day (optional) | second seed of the winner, or eval-only | — |

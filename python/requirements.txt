@@ -1,4 +1,5 @@
 juliacall
 gymnasium
 stable-baselines3[extra]
+sb3-contrib  # RecurrentPPO for --recurrent runs (E2_HISTORY_ABLATION.md §3)
 pytest

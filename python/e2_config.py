@@ -44,6 +44,16 @@ def load_run_env_kwargs(run_dir) -> dict:
     return dict(kw)
 
 
+def load_run_recurrent(run_dir) -> bool:
+    """Read the trainer's `recurrent` flag from a run's run_config.json, so
+    eval/diagnose load the policy with the class it was trained as (PPO vs
+    RecurrentPPO). False for runs predating the flag."""
+    cfg_path = Path(run_dir) / "run_config.json"
+    if not cfg_path.exists():
+        return False
+    return bool(json.loads(cfg_path.read_text()).get("recurrent", False))
+
+
 def add_e2_env_args(p: argparse.ArgumentParser) -> None:
     """Register every flag that maps onto a QalibreMDE2Env constructor kwarg."""
     p.add_argument("--field", type=str, default="T3", choices=["T3", "T15"])

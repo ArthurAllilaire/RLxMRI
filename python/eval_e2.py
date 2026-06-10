@@ -23,7 +23,7 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import numpy as np
-from stable_baselines3 import PPO
+from e2_train_common import load_policy
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from qalibremd_gym.env_e2 import QalibreMDE2Env
@@ -73,6 +73,7 @@ def evaluate_fixed_grid(env: QalibreMDE2Env, n_episodes: int,
 
 def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
                     n_episodes: int, seed_offset: int,
+                    recurrent: bool = False,
                     **env_kwargs) -> dict:
     # Always step the raw env directly (per-episode reseed). If a VecNormalize
     # checkpoint is provided, use it only to normalize observations before
@@ -86,7 +87,7 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
         vec_norm.training = False
         vec_norm.norm_reward = False
 
-    model = PPO.load(str(policy_path))
+    model = load_policy(policy_path, recurrent=recurrent)
 
     def _norm(o):
         if vec_norm is None:
@@ -103,9 +104,15 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
         obs, _ = raw_env.reset(seed=seed_offset + ep)
         done, info = False, {}
         ep_tis = []
+        # LSTM state threading; plain PPO accepts and ignores both kwargs.
+        state = None
+        episode_start = np.ones((1,), dtype=bool)
 
         while not done:
-            action, _ = model.predict(_norm(obs), deterministic=True)
+            action, state = model.predict(_norm(obs), state=state,
+                                          episode_start=episode_start,
+                                          deterministic=True)
+            episode_start[0] = False
             obs, _r, done, _trunc, info = raw_env.step(action)
             ep_tis.append(float(info.get("TI", np.nan)))
             repair_flags.append(bool(info.get("action_repaired", False)))
@@ -160,6 +167,10 @@ def main():
     p.add_argument("--policy",   type=Path, default=None,
                    help="Policy .zip. Optional if --from-run is given.")
     p.add_argument("--vecnorm",  type=Path, default=None)
+    p.add_argument("--recurrent", action="store_true",
+                   help="Load the policy as sb3-contrib RecurrentPPO. "
+                        "Inferred automatically from run_config.json when "
+                        "--from-run is given.")
     p.add_argument("--episodes", type=int,  default=50)
     p.add_argument("--seed",     type=int,  default=500_000)
     p.add_argument("--field",    type=str,  default="T3",
@@ -241,8 +252,9 @@ def main():
     if args.from_run is not None:
         # Inherit the exact env config from the run, so eval can't drift from
         # training. Default the policy/vecnorm to the run dir too.
-        from e2_config import load_run_env_kwargs
+        from e2_config import load_run_env_kwargs, load_run_recurrent
         env_kwargs = load_run_env_kwargs(args.from_run)
+        args.recurrent = args.recurrent or load_run_recurrent(args.from_run)
         if args.policy is None:
             args.policy = args.from_run / "policy.zip"
         if args.vecnorm is None and (args.from_run / "vecnorm.pkl").exists():
@@ -312,7 +324,7 @@ def main():
     # ── PPO agent results ────────────────────────────────────────────────
     print(f"\nEvaluating PPO agent on {args.episodes} held-out configs …")
     res = evaluate_policy(args.policy, args.vecnorm, args.episodes,
-                          args.seed, **env_kwargs)
+                          args.seed, recurrent=args.recurrent, **env_kwargs)
     _ci = res["mape_ci95_pct"]
     print(f"  MAPE        = {res['mape_pct']:.2f}%  "
           f"(95% CI {_ci[0]:.2f}–{_ci[1]:.2f}%, SEM ±{res['mape_sem_pct']:.2f}%)")
@@ -371,7 +383,8 @@ def main():
         for sigma in [0.0, 0.002, 0.005, 0.01, 0.02]:
             kw = dict(cfg_field=args.field, noise_sigma_abs=sigma)
             r_s = evaluate_policy(args.policy, args.vecnorm,
-                                  args.episodes // 2, args.seed, **kw)
+                                  args.episodes // 2, args.seed,
+                                  recurrent=args.recurrent, **kw)
             env_b = QalibreMDE2Env(rng_seed=args.seed, **kw)
             b_s = evaluate_fixed_grid(env_b, args.episodes // 2, args.seed)
             print(f"  {sigma:>6.2f}  {r_s['mape_pct']:>12.2f}%  "

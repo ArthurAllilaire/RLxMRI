@@ -62,3 +62,60 @@ for i in range(8):
 PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
 PYTHON_JULIAPKG_OFFLINE=yes \
 python -c 'from juliacall import Main as jl; jl.seval("using CUDA"); print(jl.seval("CUDA.functional()")); print(jl.seval("CUDA.device()"))'
+
+
+# R1 — TI-coverage-histogram run (E2_HISTORY_ABLATION.md §4)
+mkdir -p runs/e2/mf_runB_5sphere_hist_560s_gpu
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+--out runs/e2/mf_runB_5sphere_hist_560s_gpu \
+--multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+--reward-mode delta_log_mape --mape-alpha 1.0 \
+--fix-te --log-ti-action --include-ti-history \
+--n-envs 1 --field T15 --time-budget 560 --max-blocks 20 \
+--subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+--t1-sampler linear_uniform_range \
+--pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+--rotation-sigma-rad 0.05 --roi-radius 1 \
+--use-gpu \
+--train-seed 0 --eval-seed 500000 \
+--mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+--mf-min-steps 4096,8192,8192,8192,0 \
+--mf-max-steps 20000,160000,160000,80000,300000 \
+--n-steps 512 --batch-size 64 \
+--eval-interval 10000 --eval-episodes 20 \
+--mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+--mf-global-best-episodes 12 \
+--mf-use-lookahead --mf-lookahead-rollouts 1 \
+--mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+2>&1 | tee runs/e2/mf_runB_5sphere_hist_560s_gpu/run.log
+
+# R2 — RecurrentPPO (LSTM, base obs) run (E2_HISTORY_ABLATION.md §4)
+mkdir -p runs/e2/mf_runB_5sphere_lstm_560s_gpu
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+--out runs/e2/mf_runB_5sphere_lstm_560s_gpu \
+--multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+--reward-mode delta_log_mape --mape-alpha 1.0 \
+--fix-te --log-ti-action --recurrent \
+--n-envs 1 --field T15 --time-budget 560 --max-blocks 20 \
+--subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+--t1-sampler linear_uniform_range \
+--pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+--rotation-sigma-rad 0.05 --roi-radius 1 \
+--use-gpu \
+--train-seed 0 --eval-seed 500000 \
+--mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+--mf-min-steps 4096,8192,8192,8192,0 \
+--mf-max-steps 20000,160000,160000,80000,300000 \
+--n-steps 512 --batch-size 64 \
+--eval-interval 10000 --eval-episodes 20 \
+--mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+--mf-global-best-episodes 12 \
+--mf-use-lookahead --mf-lookahead-rollouts 1 \
+--mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+2>&1 | tee runs/e2/mf_runB_5sphere_lstm_560s_gpu/run.log

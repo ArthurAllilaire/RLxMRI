@@ -1317,10 +1317,85 @@ PYTHONUNBUFFERED=1 python -u python/diagnose_e2.py --from-run "$R" \
   --out "$R/global_best/diagnostics" \
   2>&1 | tee "$R/diagnose_globalbest.log"
 ```
+result output:
+```
+[diagnose] SNR report (NEMA MS-1 dual-acq):
+           σ = 50   snr_ksp = 4.46   snr_nema_peak_a = 33.25   snr_dual_peak = 26.77  ← report figure
+[diagnose] Episodes saved to runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/diagnostics/episodes.json
+[diagnose] Plotting …
+[diagnose] Done. Plots and summary in runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/diagnostics
+  ep_len_mean             = 5.92
+  final MAPE              = 3.61%
+  TI intra-episode log-σ  = 0.323
+  TI inter-episode log-σ  = 0.361
+  Modal-bin share         = 33.8%  (range 0.766-0.829s)
+  Action repair rate      = 0.0% (TR lift 0.0%, mean ΔTR 0.000s, max ΔTR 0.000s; TE clamp 0.0%)
+  log–log Pearson r (T1_est_at_decision) = -0.720  (N=118)
+  log–log Pearson r (T1_est_min_at_decision) = +0.219  (N=118)
+  log–log Pearson r (T1_est_unc_at_decision) = +0.024  (N=94)
 
+  → Spread across TI bins; could be genuinely adaptive — check ti_vs_t1est.png correlation
+```
 Seed `500000` matches the held-out eval seed of the §6.6 baseline tables, so the
 result is directly comparable to `cr_optimal_alpha` 4.70% and
 `log_grid_trmatched` 5.80% on the five-sphere task.
+
+**560 s GPU runs — eval & diagnose after the runs finished.** Both 560 s runs are
+complete: the no-confidence control `runs/e2/mf_runB_5sphere_560s_gpu`
+(global best at step 188673: **3.45% MAPE / p90 6.03% / 75% success**, mean scan
+539 s) and the confidence treatment `runs/e2/mf_runB_5sphere_sigma_560s_gpu`
+(global best at step 198673: **4.04% / p90 6.94% / 75%**, mean scan 547 s). Those
+numbers are the 12-episode confirmation evals at seed 510000; re-confirm on 24
+episodes below. Same `--from-run` mechanics as the 240 s block above (re-pass
+`--roi-radius 1` to `eval_e2`). One honesty caveat: these runs trained with
+`--eval-seed 500000`, so seed-500000 episodes were the *screening* set used to
+select the global-best checkpoint — eval at 500000 is the baseline-comparable
+number, not a strictly held-out one. (The same applies to the 240 s run above,
+which used the default `--eval-seed` 500000; its "held-out" wording overstates
+it.) The `seed 600000` variants below are the unbiased held-out check; report
+both if they disagree.
+
+```bash
+source .venv/bin/activate
+export PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu"
+export PYTHON_JULIAPKG_OFFLINE=yes
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+export PYTHON_JULIACALL_THREADS=3
+export JULIA_NUM_THREADS=3
+
+for R in runs/e2/mf_runB_5sphere_560s_gpu \
+         runs/e2/mf_runB_5sphere_sigma_560s_gpu; do
+  # Global-best checkpoint — baseline-comparable seed (= 560 s baseline tables)
+  PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+    --policy "$R/global_best/best_policy.zip" \
+    --vecnorm "$R/global_best/best_vecnorm.pkl" \
+    --episodes 24 --seed 500000 --roi-radius 1 \
+    2>&1 | tee "$R/eval_globalbest_24ep.log"
+
+  # Global-best checkpoint — strictly held-out seed (never seen in training)
+  PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+    --policy "$R/global_best/best_policy.zip" \
+    --vecnorm "$R/global_best/best_vecnorm.pkl" \
+    --episodes 24 --seed 600000 --roi-radius 1 \
+    2>&1 | tee "$R/eval_globalbest_24ep_heldout.log"
+
+  # Final-stage policy (the "final ≠ best" comparison) — defaults to $R/policy.zip
+  PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+    --episodes 24 --seed 500000 --roi-radius 1 \
+    2>&1 | tee "$R/eval_final_24ep.log"
+
+  # Adaptivity diagnostics on the global-best checkpoint
+  PYTHONUNBUFFERED=1 python -u python/diagnose_e2.py --from-run "$R" \
+    --policy "$R/global_best/best_policy.zip" \
+    --vecnorm "$R/global_best/best_vecnorm.pkl" \
+    --episodes 24 --seed 500000 \
+    --out "$R/global_best/diagnostics" \
+    2>&1 | tee "$R/diagnose_globalbest.log"
+done
+```
+
+Seed-500000 results compare against the 560 s fixed baselines (§6.6):
+`log_grid_trmatched` 5.71%, `cr_optimal` 7.34%, `cr_oracle` 7.05%.
 
 **ROI=1 / clean recon branch.** I think `ROI=1` is worth testing before spending a
 full Run B budget. The current training hot path samples a single centre pixel
