@@ -1,16 +1,16 @@
 {
-  "stage": "cached",
-  "source": "switch_decision_full_probe",
-  "step": 20480,
-  "wall_s": 1781037825.0100503,
-  "mape_pct": 6.780865986138688,
-  "p90_pct": 12.418030389099124,
-  "success_rate": 0.25,
-  "mean_time_s": 207.99581368764242,
-  "screen_mape_pct": 6.111586167271084,
-  "screen_p90_pct": 7.175750930927527,
-  "screen_success_rate": 0.25,
-  "screen_mean_time_s": 216.7715606689453,
+  "stage": "full",
+  "source": "stage_eval_full",
+  "step": 218673,
+  "wall_s": 1781053042.7963018,
+  "mape_pct": 5.125084189017024,
+  "p90_pct": 4.966761199006703,
+  "success_rate": 0.8333333333333334,
+  "mean_time_s": 225.95428276062012,
+  "screen_mape_pct": 2.6090118490719427,
+  "screen_p90_pct": 4.186958649158774,
+  "screen_success_rate": 1.0,
+  "screen_mean_time_s": 225.3968186378479,
   "seed_offset": 510000,
   "n_eval_episodes": 12,
   "target_env_kwargs": {
@@ -54,5 +54,7 @@
     "include_water": true,
     "water_model": "bloch"
   },
-  "current_fidelity_mape_pct": 4.147354025080331
+  "eval_log_path": "runs/e2/mf_runB_cached3_cached_full3_full_gpu/stage4_full/eval_history.json",
+  "source_seed_offset": 500000,
+  "source_n_eval_episodes": 8
 }
