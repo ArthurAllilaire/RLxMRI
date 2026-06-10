@@ -1,0 +1,165 @@
+[juliapkg] Found dependencies: /home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/juliapkg/juliapkg.json
+[juliapkg] Found dependencies: /home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/juliacall/juliapkg.json
+[juliapkg] Found dependencies: /home/azureuser/RLxMRI/python/qalibremd_gym/juliapkg.json
+[juliapkg] Locating Julia 1.10.3 - 1.11, ~1.11
+[juliapkg] Using Julia 1.11.9 at /home/azureuser/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia
+[juliapkg] Using shared Julia project at /home/azureuser/RLxMRI/python/julia_runtime_gpu
+[juliapkg] Found dependencies: /home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/juliapkg/juliapkg.json
+[juliapkg] Found dependencies: /home/azureuser/RLxMRI/python/qalibremd_gym/juliapkg.json
+[juliapkg] Found dependencies: /home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/juliacall/juliapkg.json
+[juliapkg] Locating Julia ^1.10.3, ^1.11, ^1.12
+[juliapkg] Using Julia 1.11.9 at /home/azureuser/.julia/juliaup/julia-1.11.9+0.x64.linux.gnu/bin/julia
+[juliapkg] Using shared Julia project at /home/azureuser/RLxMRI/python/julia_runtime_gpu
+[eval_e2] env config loaded from runs/e2/mf_runB_cached3_cached_full3_full_gpu/run_config.json
+============================================================
+E2 Evaluation — policy: runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/best_policy.zip
+============================================================
+
+Evaluating PPO agent on 24 held-out configs …
+┌ Warning: CUDA runtime library `libcudart.so.13` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/torch/lib/../../nvidia/cu13/lib/libcudart.so.13`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libcublasLt.so.13` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libcublasLt.so.13`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libcublas.so.13` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libcublas.so.13`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libnvrtc.so.13` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libnvrtc.so.13`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libnvrtc-builtins.so.13.0` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libnvrtc-builtins.so.13.0`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libcupti.so.13` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libcupti.so.13`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libcufft.so.12` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libcufft.so.12`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libcurand.so.10` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libcurand.so.10`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libnvJitLink.so.13` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libnvJitLink.so.13`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libcusparse.so.12` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libcusparse.so.12`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libcusparseLt.so.0` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cusparselt/lib/libcusparseLt.so.0`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+┌ Warning: CUDA runtime library `libcusolver.so.12` was loaded from a system path, `/home/azureuser/RLxMRI/.venv/lib/python3.12/site-packages/nvidia/cu13/lib/libcusolver.so.12`.
+│ This may cause errors.
+│ 
+│ If you're running under a profiler, this situation is expected. Otherwise,
+│ ensure that your library path environment variable (e.g., `PATH` on Windows
+│ or `LD_LIBRARY_PATH` on Linux) does not include CUDA library paths.
+│ 
+│ In any other case, please file an issue.
+└ @ CUDA ~/.julia/packages/CUDA/FQwqy/src/initialization.jl:198
+  MAPE        = 4.62%  (95% CI 4.06–5.19%, SEM ±0.30%)
+  p90 MAPE    = 6.24%
+  Success<5%  = 62.5%
+  Mean time   = 227.0s
+  Action repair = 0.0% (TR lift 0.0%, mean ΔTR 0.000s, max ΔTR 0.000s; TE clamp 0.0%)
+
+  Per-active-slot MAPE [%]:
+    Slot  1: 5.27%
+    Slot  2: 4.58%
+    Slot  3: 4.36%
+    Slot  4: 4.01%
+    Slot  5: 4.91%
+
+  Per-pool-index MAPE [%] (T1_ARRAY index 1..14):
+    Pool  1:    5.27%   (n_eps = 24)
+    Pool  3:    4.58%   (n_eps = 24)
+    Pool  6:    4.36%   (n_eps = 24)
+    Pool  8:    4.01%   (n_eps = 24)
+    Pool 14:    4.91%   (n_eps = 24)
+
+  TI histogram (log10 s): mean=0.407  std=0.306
+    [0.319-0.355s]: ████
+    [0.355-0.394s]: ████████████
+    [0.394-0.439s]: █████████
+    [0.439-0.488s]: ████████████
+    [0.488-0.542s]: ████████
+    [0.542-0.603s]: ███████
+    [0.603-0.671s]: ████
+    [0.671-0.746s]: █
+    [0.746-0.829s]: █
+    [0.829-0.922s]: ██████████████████████████████
+
+Evaluating fixed-TI grid baseline on same configs …
+  MAPE        = 6.23%  (95% CI 5.41–7.09%, SEM ±0.44%)
+  p90 MAPE    = 9.93%
+
+  Agent  MAPE = 4.62%  (baseline = 6.23%, speedup factor = 1.3×)
+
+Summary saved to runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/eval_summary.json

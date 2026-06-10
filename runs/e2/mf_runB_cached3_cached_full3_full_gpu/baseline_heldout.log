@@ -1,0 +1,36 @@
+[baseline_e2] env config loaded from runs/e2/mf_runB_cached3_cached_full3_full_gpu/run_config.json
+[baseline_e2] log_grid_trmatched: 4 TI points for budget=240s, Npe=32, TR=1.7s
+[baseline_e2] CR timing constraints from E2 env: TR_lo_floor=0.500s, TE=0.020s, TR_headroom=0.90
+[baseline_e2] Skipping 'log_grid': TR=4s with Npe=32 and budget=240.0s fits only 1 block(s).
+[baseline_e2] Skipping 'clinical_irse': TR=5s with Npe=32 and budget=240.0s fits only 1 block(s).
+
+[baseline_e2] Solving CR-optimal schedule (expected random-subset fleet=14 spheres, budget=240.0s) …
+  best n_blocks = 4, L = 27.0730
+  TIs (sorted)  = [0.031, 0.0358, 0.148, 0.5866]
+  TRs (sorted)  = [0.6331, 0.8162, 1.2586, 4.7809]
+
+[baseline_e2] Evaluating 'log_grid_trmatched' on 24 eps (seeds 600000…600023)
+  MAPE       = 6.86%  (95% CI 5.83–7.90%, SEM ±0.54%)
+  p90 MAPE   = 10.11%
+  Success<5% = 20.8%
+  Mean time  = 163.2s (4.0 blocks)
+  Per-sphere MAPE [%] (long-T1 → short-T1 within active episode):
+    sphere  0:     8.5%
+    sphere  1:     6.9%
+    sphere  2:     6.5%
+    sphere  3:     6.7%
+    sphere  4:     5.7%
+
+[baseline_e2] Evaluating 'cr_optimal' on 24 eps (seeds 600000…600023)
+  MAPE       = 15.96%  (95% CI 12.26–19.81%, SEM ±2.01%)
+  p90 MAPE   = 29.29%
+  Success<5% = 0.0%
+  Mean time  = 239.6s (4.0 blocks)
+  Per-sphere MAPE [%] (long-T1 → short-T1 within active episode):
+    sphere  0:    12.1%
+    sphere  1:    13.7%
+    sphere  2:    31.0%
+    sphere  3:    11.9%
+    sphere  4:    11.0%
+
+[baseline_e2] Summary → runs/e2/mf_runB_cached3_cached_full3_full_gpu/baselines_heldout/baseline_summary.json

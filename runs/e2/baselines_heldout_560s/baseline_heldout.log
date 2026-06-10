@@ -1,0 +1,58 @@
+[baseline_e2] env config loaded from runs/e2/mf_runB_5sphere_hist_560s_gpu/run_config.json
+[baseline_e2] log_grid_trmatched: 10 TI points for budget=560s, Npe=32, TR=1.7s
+[baseline_e2] CR timing constraints from E2 env: TR_lo_floor=0.500s, TE=0.020s, TR_headroom=0.90
+
+[baseline_e2] Solving CR-optimal schedule (expected random-subset fleet=14 spheres, budget=560.0s) …
+  best n_blocks = 10, L = 11.4581
+  TIs (sorted)  = [0.0317, 0.0332, 0.0351, 0.0367, 0.0384, 0.1569, 0.2039, 0.2163, 0.6394, 0.6771]
+  TRs (sorted)  = [0.6411, 0.6668, 0.8536, 0.8544, 0.8951, 1.1642, 1.455, 1.6117, 4.2802, 5.0]
+
+[baseline_e2] Evaluating 'log_grid' on 24 eps (seeds 600000…600023)
+  MAPE       = 8.28%  (95% CI 7.20–9.51%, SEM ±0.61%)
+  p90 MAPE   = 11.38%
+  Success<5% = 4.2%
+  Mean time  = 512.0s (5.0 blocks)
+  Per-sphere MAPE [%] (long-T1 → short-T1 within active episode):
+    sphere  0:     8.8%
+    sphere  1:     6.4%
+    sphere  2:     9.2%
+    sphere  3:     8.4%
+    sphere  4:     8.7%
+
+[baseline_e2] Evaluating 'clinical_irse' on 24 eps (seeds 600000…600023)
+  MAPE       = 9.50%  (95% CI 8.24–10.83%, SEM ±0.68%)
+  p90 MAPE   = 12.67%
+  Success<5% = 12.5%
+  Mean time  = 480.0s (4.0 blocks)
+  Per-sphere MAPE [%] (long-T1 → short-T1 within active episode):
+    sphere  0:    12.8%
+    sphere  1:     7.0%
+    sphere  2:     8.8%
+    sphere  3:     8.8%
+    sphere  4:    10.1%
+
+[baseline_e2] Evaluating 'log_grid_trmatched' on 24 eps (seeds 600000…600023)
+  MAPE       = 6.04%  (95% CI 5.36–6.70%, SEM ±0.36%)
+  p90 MAPE   = 7.81%
+  Success<5% = 25.0%
+  Mean time  = 503.6s (10.0 blocks)
+  Per-sphere MAPE [%] (long-T1 → short-T1 within active episode):
+    sphere  0:     6.1%
+    sphere  1:     5.4%
+    sphere  2:     7.0%
+    sphere  3:     5.6%
+    sphere  4:     6.2%
+
+[baseline_e2] Evaluating 'cr_optimal' on 24 eps (seeds 600000…600023)
+  MAPE       = 7.74%  (95% CI 7.08–8.42%, SEM ±0.36%)
+  p90 MAPE   = 9.78%
+  Success<5% = 8.3%
+  Mean time  = 557.5s (10.0 blocks)
+  Per-sphere MAPE [%] (long-T1 → short-T1 within active episode):
+    sphere  0:     7.3%
+    sphere  1:    11.3%
+    sphere  2:     5.4%
+    sphere  3:     9.3%
+    sphere  4:     5.4%
+
+[baseline_e2] Summary → runs/e2/baselines_heldout_560s/baseline_summary.json

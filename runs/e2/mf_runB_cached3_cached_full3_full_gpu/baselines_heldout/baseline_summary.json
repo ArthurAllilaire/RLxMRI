@@ -1,0 +1,562 @@
+{
+  "log_grid_trmatched": {
+    "schedule": "log_grid_trmatched",
+    "n_episodes": 24,
+    "mape_pct": 6.856383201265574,
+    "mape_p90_pct": 10.112568671060039,
+    "mape_sem_pct": 0.5446344287662318,
+    "mape_ci95_pct": [
+      5.825921974183959,
+      7.898961958930971
+    ],
+    "n_eff": 24,
+    "success_5pct": 0.20833333333333334,
+    "mean_scan_time_s": 163.20000457763672,
+    "mean_ep_len": 4.0,
+    "per_sphere_mape_pct": [
+      8.513593487853772,
+      6.9151249851860666,
+      6.470647953911953,
+      6.6501366364969,
+      5.732412942879176
+    ],
+    "per_sphere_p90_pct": [
+      14.438460133789166,
+      12.33685559789101,
+      11.418763920490095,
+      10.909799514274484,
+      11.064341779135454
+    ],
+    "subset_indices": [
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ]
+    ],
+    "per_pool_sphere_mape_pct": [
+      8.51359348785377,
+      null,
+      6.9151249851860666,
+      null,
+      null,
+      6.470647953911953,
+      null,
+      6.6501366364968995,
+      null,
+      null,
+      null,
+      null,
+      null,
+      5.732412942879178
+    ],
+    "per_pool_sphere_p90_pct": [
+      14.438460133789166,
+      null,
+      12.33685559789101,
+      null,
+      null,
+      11.418763920490095,
+      null,
+      10.909799514274484,
+      null,
+      null,
+      null,
+      null,
+      null,
+      11.064341779135454
+    ],
+    "per_pool_sphere_n": [
+      24,
+      0,
+      24,
+      0,
+      0,
+      24,
+      0,
+      24,
+      0,
+      0,
+      0,
+      0,
+      0,
+      24
+    ]
+  },
+  "cr_optimal": {
+    "schedule": "cr_optimal",
+    "n_episodes": 24,
+    "mape_pct": 15.961355565281677,
+    "mape_p90_pct": 29.29443019275773,
+    "mape_sem_pct": 2.006570873421041,
+    "mape_ci95_pct": [
+      12.26110481446429,
+      19.806186746543847
+    ],
+    "n_eff": 24,
+    "success_5pct": 0.0,
+    "mean_scan_time_s": 239.64061737060547,
+    "mean_ep_len": 4.0,
+    "per_sphere_mape_pct": [
+      12.117893716843785,
+      13.683027574612808,
+      31.024538215104798,
+      11.944876730089241,
+      11.03644158975776
+    ],
+    "per_sphere_p90_pct": [
+      15.277068714720512,
+      22.217317181994346,
+      99.42367305024653,
+      20.390704023811914,
+      13.220563489742046
+    ],
+    "subset_indices": [
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      [
+        1,
+        3,
+        6,
+        8,
+        14
+      ]
+    ],
+    "per_pool_sphere_mape_pct": [
+      12.117893716843781,
+      null,
+      13.683027574612803,
+      null,
+      null,
+      31.02453821510479,
+      null,
+      11.94487673008924,
+      null,
+      null,
+      null,
+      null,
+      null,
+      11.036441589757768
+    ],
+    "per_pool_sphere_p90_pct": [
+      15.277068714720512,
+      null,
+      22.217317181994346,
+      null,
+      null,
+      99.42367305024653,
+      null,
+      20.390704023811914,
+      null,
+      null,
+      null,
+      null,
+      null,
+      13.220563489742046
+    ],
+    "per_pool_sphere_n": [
+      24,
+      0,
+      24,
+      0,
+      0,
+      24,
+      0,
+      24,
+      0,
+      0,
+      0,
+      0,
+      0,
+      24
+    ]
+  },
+  "_run_meta": {
+    "env_config": {
+      "cfg_field": "T15",
+      "Nfe": 64,
+      "Npe": 32,
+      "voxel_size_mm": 1.0,
+      "water_voxel_size_mm": null,
+      "use_gpu": true,
+      "max_blocks": 20,
+      "time_budget_s": 240.0,
+      "subset_size": 5,
+      "forced_sphere_indices": [
+        1,
+        3,
+        6,
+        8,
+        14
+      ],
+      "noise_sigma_abs": 50.0,
+      "t1_sampler": "linear_uniform_range",
+      "translation_sigma_mm": 2.0,
+      "rotation_sigma_rad": 0.05,
+      "pose_mode": "inplane_jitter",
+      "reward_mode": "delta_log_mape",
+      "time_penalty_coef": 0.0,
+      "allow_stop": false,
+      "forward_model": "bloch",
+      "analytic_noise_sigma": 0.04,
+      "simplified_action": false,
+      "fix_te": true,
+      "learn_alpha": true,
+      "log_ti_action": true,
+      "terminal_bonus": 0.0,
+      "mape_alpha": 1.0,
+      "phase_sensitive": false,
+      "sigma_method": "bootstrap",
+      "include_image": false,
+      "include_sigma": false,
+      "roi_radius": 1,
+      "include_water": true,
+      "water_model": "bloch",
+      "oracle_fit": false,
+      "oracle_band": 2.0,
+      "fitter_n_grid": 200
+    },
+    "episodes": 24,
+    "seed": 600000,
+    "skipped_schedules": {
+      "log_grid": {
+        "reason": "fixed TR fits <=2 blocks in the scan budget",
+        "TR_s": 4.0,
+        "Npe": 32,
+        "time_budget_s": 240.0,
+        "max_blocks_by_time": 1,
+        "max_possible_blocks": 1
+      },
+      "clinical_irse": {
+        "reason": "fixed TR fits <=2 blocks in the scan budget",
+        "TR_s": 5.0,
+        "Npe": 32,
+        "time_budget_s": 240.0,
+        "max_blocks_by_time": 1,
+        "max_possible_blocks": 1
+      }
+    }
+  }
+}
