@@ -59,6 +59,12 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
 
     episodes = []  # list of dicts per episode
     qmd = _env_mod._JL_QMD
+
+    def _jl_field(obj, name):
+        # juliacall rewrites a trailing `_b` in attribute names to `!`
+        # (background_std_b → background_std!), so *_b struct fields must
+        # be fetched by Symbol instead of plain attribute access.
+        return qmd.getfield(obj, qmd.Symbol(name))
     for ep in range(n_episodes):
         forced = forced_indices_list[ep] if forced_indices_list is not None else None
         obs, _ = raw_env.reset(seed=seed_offset + ep, forced_sphere_indices=forced)
@@ -75,16 +81,16 @@ def collect(policy_path: Path, vecnorm_path: Path | None,
                 "sigma_used":            float(rep.sigma_used),
                 "snr_ksp":               float(rep.snr_ksp),
                 "background_std_a":      float(rep.image.background_std_a),
-                "background_std_b":      float(rep.image.background_std_b),
+                "background_std_b":      float(_jl_field(rep.image, "background_std_b")),
                 "diff_roi_std":          float(rep.image.diff_roi_std),
                 "sphere_mean_a":         [float(v) for v in rep.image.sphere_mean_a],
-                "sphere_mean_b":         [float(v) for v in rep.image.sphere_mean_b],
+                "sphere_mean_b":         [float(v) for v in _jl_field(rep.image, "sphere_mean_b")],
                 "sphere_means":          [float(v) for v in rep.image.sphere_means],
                 "temporal_instability":  [float(v) for v in rep.image.temporal_instability],
                 "snr_nema_per_sphere_a": [float(v) for v in rep.image.snr_nema_per_sphere_a],
-                "snr_nema_per_sphere_b": [float(v) for v in rep.image.snr_nema_per_sphere_b],
+                "snr_nema_per_sphere_b": [float(v) for v in _jl_field(rep.image, "snr_nema_per_sphere_b")],
                 "snr_nema_peak_a":       float(rep.image.snr_nema_peak_a),
-                "snr_nema_peak_b":       float(rep.image.snr_nema_peak_b),
+                "snr_nema_peak_b":       float(_jl_field(rep.image, "snr_nema_peak_b")),
                 "snr_dual_per_sphere":   [float(v) for v in rep.image.snr_dual_per_sphere],
                 "snr_dual_peak":         float(rep.image.snr_dual_peak),
                 })

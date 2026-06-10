@@ -1,0 +1,77 @@
+/home/arthur/y3/icr/.venv/lib/python3.10/site-packages/juliacall/__init__.py:61: UserWarning: torch was imported before juliacall. This may cause a segfault. To avoid this, import juliacall before importing torch. For updates, see https://github.com/pytorch/pytorch/issues/78829.
+  warnings.warn(
+[eval_e2] env config loaded from runs/e2/mf_runB_cached3_cached_full3_full_gpu/run_config.json
+============================================================
+E2 Evaluation — policy: runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/best_policy.zip
+============================================================
+
+Evaluating PPO agent on 24 held-out configs …
+Precompiling MRISystemPhantom...
+   8580.2 ms  ✓ MRISystemPhantom
+   5288.5 ms  ✓ MRISystemPhantom → MRISystemPhantomPlotlyJSExt
+  2 dependencies successfully precompiled in 15 seconds. 314 already precompiled.
+/home/arthur/y3/icr/python/qalibremd_gym/env.py:128: RuntimeWarning: use_gpu=True but `using CUDA` failed (ArgumentError: Package CUDA not found in current path.
+- Run `import Pkg; Pkg.add("CUDA")` to install the CUDA package.
+Stacktrace:
+  [1] macro expansion
+    @ ./loading.jl:2296 [inlined]
+  [2] macro expansion
+    @ ./lock.jl:273 [inlined]
+  [3] __require(into::Module, mod::Symbol)
+    @ Base ./loading.jl:2271
+  [4] #invoke_in_world#3
+    @ ./essentials.jl:1089 [inlined]
+  [5] invoke_in_world
+    @ ./essentials.jl:1086 [inlined]
+  [6] require(into::Module, mod::Symbol)
+    @ Base ./loading.jl:2260
+  [7] eval
+    @ ./boot.jl:430 [inlined]
+  [8] eval
+    @ ./Base.jl:130 [inlined]
+  [9] pyjlmodule_seval(self::Module, expr::Py)
+    @ PythonCall.JlWrap ~/.julia/packages/PythonCall/83z4q/src/JlWrap/module.jl:13
+ [10] _pyjl_callmethod(f::Any, self_::Ptr{PythonCall.C.PyObject}, args_::Ptr{PythonCall.C.PyObject}, nargs::Int64)
+    @ PythonCall.JlWrap ~/.julia/packages/PythonCall/83z4q/src/JlWrap/base.jl:65
+ [11] _pyjl_callmethod(o::Ptr{PythonCall.C.PyObject}, args::Ptr{PythonCall.C.PyObject})
+    @ PythonCall.JlWrap.Cjl ~/.julia/packages/PythonCall/83z4q/src/JlWrap/C.jl:63); KomaMRI will fall back to the CPU. Add CUDA to python/julia_runtime.
+  warnings.warn(
+  MAPE        = 3.61%  (95% CI 3.26–3.98%, SEM ±0.19%)
+  p90 MAPE    = 4.55%
+  Success<5%  = 91.7%
+  Mean time   = 229.7s
+  Action repair = 0.0% (TR lift 0.0%, mean ΔTR 0.000s, max ΔTR 0.000s; TE clamp 0.0%)
+
+  Per-active-slot MAPE [%]:
+    Slot  1: 3.67%
+    Slot  2: 3.38%
+    Slot  3: 3.22%
+    Slot  4: 2.81%
+    Slot  5: 4.97%
+
+  Per-pool-index MAPE [%] (T1_ARRAY index 1..14):
+    Pool  1:    3.67%   (n_eps = 24)
+    Pool  3:    3.38%   (n_eps = 24)
+    Pool  6:    3.22%   (n_eps = 24)
+    Pool  8:    2.81%   (n_eps = 24)
+    Pool 14:    4.97%   (n_eps = 24)
+
+  TI histogram (log10 s): mean=0.388  std=0.305
+    [0.329-0.364s]: ██
+    [0.364-0.404s]: ██████████████████
+    [0.404-0.448s]: ████████████
+    [0.448-0.496s]: ██████████
+    [0.496-0.550s]: █████████
+    [0.550-0.610s]: █████
+    [0.610-0.676s]: ███
+    [0.676-0.750s]: ██
+    [0.750-0.832s]: █
+    [0.832-0.922s]: ██████████████████████████████
+
+Evaluating fixed-TI grid baseline on same configs …
+  MAPE        = 5.60%  (95% CI 5.09–6.13%, SEM ±0.27%)
+  p90 MAPE    = 7.08%
+
+  Agent  MAPE = 3.61%  (baseline = 5.60%, speedup factor = 1.6×)
+
+Summary saved to runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/eval_summary.json
