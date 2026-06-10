@@ -4,6 +4,15 @@ Todo:
 1. How often do we check the MAPE on full Bloch? Could we probe the layer below
    full instead of full itself to cut probe cost?
 
+Current result note (2026-06-10): the report-ready analysis now lives in
+`section_multi_fidelity.md`. The full 14-sphere Run A policy remains beaten by
+strong fixed schedules, but the controlled five-sphere continuous-T1 Run B gives
+the positive C2 result: global-best multi-fidelity RL beats the fixed log-grid
+comparator at 240 s (3.61% vs 5.60% MAPE on the available baseline-matched eval)
+and at 560 s without the σ channel (4.16% vs 5.86% MAPE on a strict held-out
+eval). The σ-channel ablation is negative/inconclusive on strict held-out eval
+(5.25% vs 5.86%, p90 worse than the fixed schedule).
+
 Note: `fidelity_history.json["wall_s"]` is an absolute Unix epoch timestamp,
 not a relative duration. `python/plot_mf_curriculum.py` subtracts the first
 recorded event timestamp, i.e. the stage-0 wallclock origin, before plotting.

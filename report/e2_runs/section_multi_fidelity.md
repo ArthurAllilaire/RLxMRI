@@ -7,10 +7,11 @@
 > switch simulator fidelity during on-policy RL, specialised to adaptive qMRI
 > sequence design.
 > **Quantified result:** the multi-fidelity ladder made training feasible and
-> produced an adaptive, non-collapsed policy, but the current 14-sphere policy is
-> beaten by strong fixed schedules (§6.6). The useful learning happened at cheap
-> fidelities; the expensive stages mainly revealed where the curriculum/controller
-> needs improvement.
+> produced adaptive, non-collapsed policies. On the full 14-sphere task the best
+> fixed schedules still win (§6.6), but on the controlled five-sphere continuous
+> T1 probe the global-best RL policies beat the fixed log-grid comparator at
+> both 240 s and 560 s (§8). The useful learning often happened at cheap or
+> early full-Bloch fidelities; global-best checkpointing is therefore essential.
 
 ---
 
@@ -791,7 +792,172 @@ plots are misleading and the report should discuss executed timings instead.
 
 ---
 
-## 8. TODO — next runs (launch first; they cost more than writing)
+## 8. Run B — five-sphere continuous-T1 results
+
+Run B is the controlled adaptivity probe that the 14-sphere task could not be.
+The active physical labels are fixed (`1,3,6,8,14`) so the ROI geometry is
+stable, but each active sphere samples T1 continuously across the T15 phantom
+range every episode. This removes the "serve all 14 pools every time" advantage
+of a global fixed schedule and gives the policy a reason to use the first blocks
+as probes before allocating later blocks to the realised episode.
+
+Three completed multi-fidelity runs are relevant:
+
+| Run folder | Budget | Observation | α | Reporting checkpoint |
+|---|---:|---|---|---|
+| `runs/e2/mf_runB_cached3_cached_full3_full_gpu` | 240 s | T1 estimates only | learned | `global_best/best_policy.zip` |
+| `runs/e2/mf_runB_5sphere_560s_gpu` | 560 s | T1 estimates only | fixed 90° | `global_best/best_policy.zip` |
+| `runs/e2/mf_runB_5sphere_sigma_560s_gpu` | 560 s | T1 estimates + fitter σ proxy | fixed 90° | `global_best/best_policy.zip` |
+
+<!-- REVIEW NOTE (Arthur): the 240 s run is not a pure scan-time ablation against
+the 560 s runs because it still had `learn_alpha=true`; the 560 s pair fixed
+alpha at 90 deg to isolate the confidence-channel question. The CR baselines and
+the learned 14-pool policy both preferred the 90 deg bound, so this is defensible,
+but do not claim "only the time budget changed" between 240 and 560. -->
+
+![Run B five-sphere MAPE comparison](figs/mf_runB_5sphere_mape_comparison.png)
+
+The headline result is that **multi-fidelity RL now beats the robust fixed
+log-grid comparator on the controlled five-sphere task**, whereas it did not on
+the full 14-sphere task. The cleanest held-out result is the 560 s no-confidence
+control: **4.16% MAPE** ([3.41, 4.99]) versus the same-eval fixed log grid at
+**5.86%** ([5.24, 6.45]). The confidence-channel treatment is weaker on the
+strict held-out seed: **5.25%** ([4.32, 6.22]) versus **5.86%** ([5.24, 6.45]),
+so it is at best marginal and its p90 is worse.
+
+| Policy / comparator | Eval seed status | Mean MAPE | 95% CI | p90 | Success<5% | Mean time / blocks |
+|---|---|---:|---:|---:|---:|---:|
+| **RL 240 s no-σ, global best** | seed 500000; baseline-comparable, not strict held-out | **3.61 %** | **[3.26, 3.98]** | **4.55 %** | **91.7 %** | 229.7 s / 5.92 |
+| Fixed log-grid baseline at 240 s | same eval call | 5.60 % | [5.09, 6.13] | 7.08 % | — | — |
+| RL 240 s no-σ, final policy | seed 500000 | 4.19 % | [3.82, 4.58] | 5.26 % | 83.3 % | ~230 s |
+| **RL 560 s no-σ, global best** | strict held-out seed 600000 | **4.16 %** | **[3.41, 4.99]** | **6.64 %** | **66.7 %** | ~540 s / 13.96 |
+| Fixed log-grid baseline at 560 s | same held-out eval call | 5.86 % | [5.24, 6.45] | 8.02 % | — | — |
+| RL 560 s no-σ, final policy | seed 500000 selection stream | 7.12 % | [5.82, 8.54] | 10.47 % | 29.2 % | ~545 s |
+| RL 560 s +σ, global best | strict held-out seed 600000 | 5.25 % | [4.32, 6.22] | 9.34 % | 58.3 % | ~547 s / 14.17 |
+| Fixed log-grid baseline at 560 s | same held-out eval call | 5.86 % | [5.24, 6.45] | 8.02 % | — | — |
+| RL 560 s +σ, final policy | seed 500000 selection stream | 4.44 % | [3.63, 5.48] | 6.62 % | 83.3 % | ~545 s |
+
+<!-- Source notes:
+- 240 s global-best eval: `runs/e2/mf_runB_cached3_cached_full3_full_gpu/eval_globalbest_24ep.log`
+  and `global_best/eval_summary.json`.
+- 240 s final eval: `runs/e2/mf_runB_cached3_cached_full3_full_gpu/eval_final_24ep.log`.
+- 560 s no-sigma strict held-out eval: `runs/e2/mf_runB_5sphere_560s_gpu/eval_globalbest_24ep_heldout.log`;
+  this overwrote `global_best/eval_summary.json`.
+- 560 s sigma strict held-out eval: `runs/e2/mf_runB_5sphere_sigma_560s_gpu/eval_globalbest_24ep_heldout.log`;
+  this overwrote `global_best/eval_summary.json`.
+- The plain `eval_globalbest_24ep.log` files for the 560 s runs use seed 500000,
+  which was also the training screening/eval stream. They are useful diagnostics
+  (no-sigma 3.81%, sigma 3.88%) but should not be the headline claim.
+-->
+
+Two conclusions follow. First, the "adaptive beats fixed" claim should be made
+only for this controlled five-sphere task, not for the 14-sphere mapping task.
+Second, the global-best checkpoint is the correct reporting object. In both the
+240 s and 560 s no-confidence runs the final policy is worse than the global
+best; blindly returning the last policy would have hidden the positive result.
+
+![Run B per-active-pool MAPE](figs/mf_runB_5sphere_per_pool.png)
+
+The per-pool breakdown shows that the RL improvement is not just a single easy
+sphere. At 240 s the global-best policy is below 5% MAPE on every active pool
+except the shortest-T1 label 14, which is still only 4.97%. At 560 s, the
+no-confidence policy remains balanced (2.90--5.06% across the five labels on the
+strict held-out eval). The σ-channel policy shifts the error pattern: it improves
+Pool 1 relative to the no-confidence arm but worsens Pools 6 and 8, which is why
+the mean and p90 do not support a strong confidence-channel claim.
+
+![Run B online curriculum probes](figs/mf_runB_5sphere_curriculum_probes.png)
+
+The online full-Bloch probes explain why global-best selection matters. All three
+runs improve during the final full stage, but the probe curves are noisy and the
+last policy is not always the best policy. The 240 s run ends with a full-stage
+probe around **4.00%** after ~316k total steps, while the 24-episode global-best
+re-evaluation gives **3.61%**. The 560 s no-confidence run's final stage later
+drifts to a **7.21%** stage-end probe, despite an earlier confirmed global best
+near **3.45%** on the 12-episode confirmation eval. This is exactly the failure
+mode Run A exposed, now fixed by emitting `<run>/global_best/`.
+
+### 8.1 Adaptivity diagnostics
+
+The 240 s global-best policy is compact and decisive: it uses **5.92 blocks** on
+average, no timing repairs, and a high-TI two-block opening probe around
+0.78--0.83 s followed by shorter adaptive refinements. Its diagnostics report
+TI intra-episode log-σ **0.323**, inter-episode log-σ **0.361**, and modal-bin
+share **33.8%**. The log-log correlation with T1 estimate is **negative**
+(`r = -0.720` for `T1_est_at_decision`), so unlike Run A it is not simply
+"larger estimated T1 → longer TI"; it appears to open with a long inversion
+probe, then shorten TI once the estimate has stabilised.
+
+![Run B 240 s TI schedule](../../runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/diagnostics/ti_per_episode.png)
+![Run B 240 s TI vs T1 estimate](../../runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/diagnostics/ti_vs_t1est.png)
+
+The 560 s policies use the longer budget very differently: both execute about
+14 blocks on average. The no-confidence arm has lower TI spread (intra log-σ
+**0.209**, inter log-σ **0.260**) and a low repair rate (**0.3%**). The σ-channel
+arm has more TI spread (intra log-σ **0.272**, inter log-σ **0.301**) and a
+higher but still small repair rate (**1.8%**, max TR lift 0.268 s on the
+diagnostic seed). More spread did not translate into better held-out accuracy.
+
+![Run B 560 s no-σ TI schedule](../../runs/e2/mf_runB_5sphere_560s_gpu/global_best/diagnostics/ti_per_episode.png)
+![Run B 560 s +σ TI schedule](../../runs/e2/mf_runB_5sphere_sigma_560s_gpu/global_best/diagnostics/ti_per_episode.png)
+
+<!-- REVIEW NOTE (Arthur): diagnose summaries do not currently save the Pearson
+correlations into `diagnose_summary.json`; they are in the logs. For the 240 s
+run the relevant log values are r(T1_est_at_decision) = -0.720,
+r(T1_est_min_at_decision) = +0.219, and r(T1_est_unc_at_decision) = +0.024. If
+you want these in tables later, patch `diagnose_e2.py` to write them to JSON. -->
+
+### 8.2 Confidence-channel verdict
+
+The σ channel should **not** be presented as a positive result. On the seed-500000
+screening/eval stream it looked good (global-best **3.88%**, final **4.44%**),
+but on the strict seed-600000 held-out eval the same global-best checkpoint fell
+to **5.25%**, with p90 **9.34%**. The no-confidence control generalised better
+at **4.16%**, p90 **6.64%**. The likely explanation is that the bootstrap/profile
+σ proxy is useful but noisy in these short episodes: it changes the learned
+timing distribution, yet it is not a calibrated posterior and can overfit the
+global-best selection stream.
+
+This is still a useful negative ablation. It says the adaptive gain in Run B
+does not require handing the policy an explicit uncertainty channel; the running
+T1 estimates and scan-budget state are enough for the current five-sphere task.
+
+### 8.3 Baseline and scan-time interpretation
+
+The fixed baseline sweep remains important context:
+
+| Budget | Best fixed schedule | MAPE | 95% CI | p90 | Mean time / blocks |
+|---:|---|---:|---:|---:|---:|
+| 240 s | `log_grid_trmatched` | 5.60 % | [5.09, 6.13] | 7.08 % | ~230 s |
+| 420 s | `log_grid_trmatched` | 5.63 % | [4.98, 6.32] | 7.88 % | 326.6 s / 7 |
+| 560 s | `log_grid_trmatched` | 5.71 % | [5.04, 6.41] | 7.49 % | 542.8 s / 10 |
+
+The fixed schedule is essentially flat from 240--560 s. Extra scan time alone
+does not reduce its error, so the 560 s RL improvement is not just "more blocks
+than the baseline had"; it comes from a different closed-loop allocation of the
+blocks. Conversely, the 240 s RL result is the stronger efficiency story: it
+beats the fixed schedule while using only ~230 s and ~6 blocks.
+
+### 8.4 Updated caveats
+
+- **Do not mix eval streams.** The 560 s `eval_globalbest_24ep.log` files are
+  useful but optimistic because seed 500000 was used during training evaluation.
+  The fair headline is the `_heldout.log` seed-600000 rerun.
+- **The 240 s run still needs a strict seed-600000 rerun** if it becomes a thesis
+  table headline. The current 24-episode result is strong and baseline-matched,
+  but not fully independent of the training eval stream.
+- **This is a controlled subtask, not the full phantom mapping problem.** The
+  active sphere identities and positions are fixed; only their T1 values vary.
+  That is exactly why adaptivity can pay here, but the report should call it an
+  adaptivity probe rather than claim full 14-pool superiority.
+- **The confidence channel is negative or inconclusive.** It should be discussed
+  as a failed ablation that exposed overfitting/noisy-uncertainty issues, not as
+  an improvement.
+- **Global-best checkpointing is part of the method.** Without it, both Run A and
+  Run B can return a worse final policy than the best target-fidelity checkpoint
+  found during training.
+
+### 8.5 Source checklist and follow-ups
 
 - [x] **Fix the fixed-grid baseline** — done (TR/budget + action-conversion bugs;
       now `log_grid_trmatched` = 5.80% [5.24–6.40], `cr_optimal_alpha` = 4.70%
@@ -800,9 +966,10 @@ plots are misleading and the report should discuss executed timings instead.
       `n_unique=24`, all schedules execute 4 blocks, zero schedules overrun after
       E2 timing adjustment. Result is 11.51% MAPE / 19.41% p90, which is a valid
       diagnostic of the current CR surrogate but not a strong fixed baseline.
-- [ ] **Re-evaluate the C2 claim on a task where adaptivity pays.** Fixed beats the
+- [x] **Re-evaluate the C2 claim on a task where adaptivity pays.** Fixed beats the
       agent on the 14-sphere pool (§6.6); the quantified-benefit must come from the
-      5-sphere task below (one shared TI per block can't exploit a 14-sphere fleet).
+      five-sphere task above (one shared TI per block can't exploit a 14-sphere
+      fleet). Done: no-σ RL beats fixed log-grid at 240 s and 560 s (§8).
 - [ ] **Version-stamp all future eval artifacts.** Add RLxMRI git SHA, dirty flag,
       MRISystemPhantom git SHA, dirty flag, `Manifest.toml` hash, and
       `python/julia_runtime/Manifest.toml` hash to `eval_summary.json` and
@@ -821,20 +988,22 @@ plots are misleading and the report should discuss executed timings instead.
       `best_meta.json`. Four-episode switch/stage probes only screen candidates;
       an independent confirmation eval (`--mf-global-best-episodes`, default 12)
       must beat the previous confirmed best before the checkpoint is overwritten.
-- [ ] **5-sphere adaptivity run.** Reduce 14 → 5 active spheres so the task
+- [x] **5-sphere adaptivity run.** Reduce 14 → 5 active spheres so the task
       genuinely rewards adaptivity (the current 14-sphere policy sacrifices the
       long-T1 sphere to 40% error). Keep the active sphere labels/positions fixed,
       but sample their T1 values continuously across the phantom T1 range each
-      episode. This makes the task easier than arbitrary 14-pool mapping but
-      harder to memorise than a fixed five-value phantom.
-- [ ] **Confidence vs no-confidence ablation** on the 5 spheres — planned below.
-      This is an RL-only observation ablation: fixed baselines ignore observations
-      and should stay unchanged.
+      episode. Done for 240 s no-σ and 560 s no-σ/+σ; the no-σ policies beat the
+      matched fixed log-grid comparator.
+- [x] **Confidence vs no-confidence ablation** on the 5 spheres. Done at 560 s:
+      the σ channel did not improve strict held-out performance (§8.2).
 - [ ] **ROI ablation.** During the Gibbs-ringing investigation we switched to
       ROI = 1 (vs 0); this was never ablated. Cheap candidate run.
-- [ ] **Re-balance budget:** more `cached3`; either drop `full3` or match its water
-      fidelity to the probe's (1 mm). Test whether `cached3` + short `full` polish
-      beats the 4-stage ladder.
+- [ ] **Rerun the 240 s global-best policy at strict seed 600000** before using it
+      as the main thesis table row. The current 24-episode result is
+      baseline-comparable but not fully independent of the stage eval stream.
+- [ ] **Re-balance budget:** the five-sphere runs spend most useful improvement in
+      the final full stage; test whether `analytic → cached → full` without
+      `full3` gives the same global best with less controller noise.
 
 ### Run B plan — water-resolution ladder with fixed five-sphere identities
 
@@ -1317,28 +1486,11 @@ PYTHONUNBUFFERED=1 python -u python/diagnose_e2.py --from-run "$R" \
   --out "$R/global_best/diagnostics" \
   2>&1 | tee "$R/diagnose_globalbest.log"
 ```
-result output:
-```
-[diagnose] SNR report (NEMA MS-1 dual-acq):
-           σ = 50   snr_ksp = 4.46   snr_nema_peak_a = 33.25   snr_dual_peak = 26.77  ← report figure
-[diagnose] Episodes saved to runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/diagnostics/episodes.json
-[diagnose] Plotting …
-[diagnose] Done. Plots and summary in runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/diagnostics
-  ep_len_mean             = 5.92
-  final MAPE              = 3.61%
-  TI intra-episode log-σ  = 0.323
-  TI inter-episode log-σ  = 0.361
-  Modal-bin share         = 33.8%  (range 0.766-0.829s)
-  Action repair rate      = 0.0% (TR lift 0.0%, mean ΔTR 0.000s, max ΔTR 0.000s; TE clamp 0.0%)
-  log–log Pearson r (T1_est_at_decision) = -0.720  (N=118)
-  log–log Pearson r (T1_est_min_at_decision) = +0.219  (N=118)
-  log–log Pearson r (T1_est_unc_at_decision) = +0.024  (N=94)
-
-  → Spread across TI bins; could be genuinely adaptive — check ti_vs_t1est.png correlation
-```
-Seed `500000` matches the held-out eval seed of the §6.6 baseline tables, so the
-result is directly comparable to `cr_optimal_alpha` 4.70% and
-`log_grid_trmatched` 5.80% on the five-sphere task.
+The completed 240 s eval/diagnose results are summarised in §8 and the source
+logs remain in `runs/e2/mf_runB_cached3_cached_full3_full_gpu/`. The key
+diagnostic values from this command block are: 3.61% MAPE, 5.92 blocks, no action
+repairs, TI intra/inter log-σ 0.323/0.361, and the negative
+`r(T1_est_at_decision) = -0.720` timing correlation discussed in §8.1.
 
 **560 s GPU runs — eval & diagnose after the runs finished.** Both 560 s runs are
 complete: the no-confidence control `runs/e2/mf_runB_5sphere_560s_gpu`
@@ -1396,6 +1548,10 @@ done
 
 Seed-500000 results compare against the 560 s fixed baselines (§6.6):
 `log_grid_trmatched` 5.71%, `cr_optimal` 7.34%, `cr_oracle` 7.05%.
+
+The completed 560 s eval/diagnose results are summarised in §8. The important
+distinction is that the seed-500000 evals are selection-stream diagnostics,
+whereas the `_heldout.log` seed-600000 evals are the report-grade comparison.
 
 **ROI=1 / clean recon branch.** I think `ROI=1` is worth testing before spending a
 full Run B budget. The current training hot path samples a single centre pixel
@@ -1534,10 +1690,12 @@ learn open-loop schedules modulated by the current estimate.
 
 The 560 s confidence-channel experiment was the first attempt to close this
 gap, exposing the fitter's own uncertainty (`log10(σ_T1/T1_est)` per sphere)
-as a learned-estimator *summary* of history. It did not help: the σ-run's
-global best scored **4.04%** MAPE against the no-σ control's **3.45%**
-(12-episode confirmation evals, seed 510000). A plausible mechanism is that
-the Levenberg–Marquardt σ is degenerate early in the episode — undefined
+as a learned-estimator *summary* of history. It did not help. On the strict
+24-episode held-out eval, the σ-run's global best scored **5.25%** MAPE
+against the no-σ control's **4.16%**. The earlier 12-episode confirmation
+evals were also not favourable to σ (4.04% vs 3.45%, seed 510000), but the
+held-out numbers are the report-grade comparison. A plausible mechanism is
+that the Levenberg-Marquardt σ is degenerate early in the episode — undefined
 below two measurements, noisy just above — so the channel injects noise
 exactly when the agent most needs guidance.
 
@@ -1547,14 +1705,14 @@ for sequential experiment design, all at a fixed 560 s scan budget on the
 
 | Mechanism | What carries the history | Run |
 |---|---|---|
-| Estimator summary | fitter σ-channel in the obs | `mf_runB_5sphere_sigma_560s_gpu` (done: 4.04%) |
+| Estimator summary | fitter σ-channel in the obs | `mf_runB_5sphere_sigma_560s_gpu` (done: 5.25% held-out; 4.04% confirmation) |
 | Task-informed sufficient statistic | executed-TI coverage histogram in the obs | `mf_runB_5sphere_hist_560s_gpu` (R1) |
 | Learned summary | LSTM hidden state (RecurrentPPO) | `mf_runB_5sphere_lstm_560s_gpu` (R2) |
 
-The no-memory control is `mf_runB_5sphere_560s_gpu` (3.45%). The comparison
-is informative in every outcome: if neither new arm beats the control, the
-honest conclusion is that `[T1_est; budget]` is already a sufficient
-statistic at this task scale.
+The no-memory control is `mf_runB_5sphere_560s_gpu` (4.16% held-out; 3.45%
+confirmation). The comparison is informative in every outcome: if neither new
+arm beats the control, the honest conclusion is that `[T1_est; budget]` is
+already a sufficient statistic at this task scale.
 
 ### 9.2 Arm 1 (R1) — executed-TI coverage histogram, plain PPO
 
@@ -1620,14 +1778,16 @@ the training screening seed — same caveat as all 560 s runs) and **seed
 600000** (strictly held-out), plus adaptivity diagnostics. Comparison set
 (560 s, 5-sphere):
 
-| Policy | MAPE | p90 | success |
-|---|---|---|---|
-| no-memory control (global best) | 3.45 % | 6.03 % | 75 % |
-| σ-channel | 4.04 % | 6.94 % | 75 % |
-| `log_grid_trmatched` | 5.71 % | — | 33.3 % |
-| `cr_optimal` | 7.34 % | — | 12.5 % |
-| R1: TI-coverage histogram | *pending* | | |
-| R2: LSTM | *pending* | | |
+| Policy | Eval stream | MAPE | p90 | success |
+|---|---|---:|---:|---:|
+| no-memory control (global best) | strict held-out seed 600000 | **4.16 %** | **6.64 %** | 66.7 % |
+| σ-channel | strict held-out seed 600000 | 5.25 % | 9.34 % | 58.3 % |
+| no-memory control (global best) | 12-ep confirmation seed 510000 | 3.45 % | 6.03 % | 75 % |
+| σ-channel | 12-ep confirmation seed 510000 | 4.04 % | 6.94 % | 75 % |
+| `log_grid_trmatched` | seed 500000 baseline table | 5.71 % | 7.49 % | 33.3 % |
+| `cr_optimal` | seed 500000 baseline table | 7.34 % | 10.17 % | 12.5 % |
+| R1: TI-coverage histogram | pending | | | |
+| R2: LSTM | pending | | | |
 
 ```bash
 # ── Run once R1/R2 finish: eval + diagnose, GPU box ──────────────────────
