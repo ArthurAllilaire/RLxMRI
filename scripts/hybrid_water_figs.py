@@ -27,10 +27,21 @@ ROOT = os.path.join(HERE, "runs", "hybrid_water")
 TITLES = {"koma_full": "Koma full (truth)", "hybrid_cached": "Koma sph + cached (scalar)",
           "hybrid_cached_perline": "Koma sph + cached (per-line)",
           "hybrid_analytic": "Koma sph + analytic water", "theory_full": "Theory full"}
+VARIANT_COLORS = {
+    "koma_full": "#4c78a8",
+    "hybrid_cached": "#f58518",
+    "hybrid_cached_perline": "#54a24b",
+    "hybrid_analytic": "#e45756",
+    "theory_full": "#b279a2",
+}
 
 
 def title(v):
     return TITLES.get(v, v)
+
+
+def variant_color(v, i=0):
+    return VARIANT_COLORS.get(v, f"C{i}")
 
 
 def load(label):
@@ -123,10 +134,10 @@ def t1_fig(rd, t1, variants):
     for r in t1:
         by.setdefault(r["variant"], []).append(r)
     fig, ax = plt.subplots(1, 2, figsize=(15, 6))
-    for v in variants:
+    for i, v in enumerate(variants):
         rows = by[v]
         tt = [float(r["T1_true_s"]) for r in rows]; tf = [float(r["T1_fit_s"]) for r in rows]
-        ax[0].scatter(tt, tf, label=title(v), s=30, alpha=0.8)
+        ax[0].scatter(tt, tf, label=title(v), s=30, alpha=0.8, color=variant_color(v, i))
     lim = [min(float(r["T1_true_s"]) for r in t1) * 0.8, max(float(r["T1_true_s"]) for r in t1) * 1.2]
     ax[0].plot(lim, lim, "k--", lw=1); ax[0].set_xscale("log"); ax[0].set_yscale("log")
     ax[0].set_xlabel("T1 true [s]"); ax[0].set_ylabel("T1 fit [s]"); ax[0].legend(fontsize=8)
@@ -136,7 +147,13 @@ def t1_fig(rd, t1, variants):
     x = np.arange(len(labels)); w = 0.8 / max(len(others), 1)
     for k, v in enumerate(others):
         rel = [float(r["rel_vs_koma_pct"]) for r in by[v]]
-        ax[1].bar(x + (k - (len(others) - 1) / 2) * w, rel, w, label=v)
+        ax[1].bar(
+            x + (k - (len(others) - 1) / 2) * w,
+            rel,
+            w,
+            label=title(v),
+            color=variant_color(v, variants.index(v)),
+        )
     ax[1].axhline(1.0, color="g", ls=":", label="1% target")
     ax[1].set_xticks(x); ax[1].set_xticklabels(labels, rotation=90, fontsize=7)
     ax[1].set_ylabel("|ΔT1| / T1_koma [%]"); ax[1].set_yscale("log"); ax[1].legend(fontsize=8)

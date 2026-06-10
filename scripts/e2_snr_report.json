@@ -1,0 +1,9 @@
+{
+  "sigma": 50.0,
+  "n_sphere_samples": 112,
+  "n_seeds": 8,
+  "snr_dual_median_over_spheres": 16.72857554116871,
+  "snr_dual_peak_mean": 27.66804277884984,
+  "snr_dual_mean_over_spheres": 17.040302545525876,
+  "roi_radius": 1
+}

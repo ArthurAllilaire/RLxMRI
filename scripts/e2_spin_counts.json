@@ -1,0 +1,11 @@
+{
+  "water_1mm": 18919,
+  "sphere_voxel_mm": 1.0,
+  "spheres_only": 4816,
+  "full_1mm": 23735,
+  "slice_mm": 1.0,
+  "water_frac_pct": 79.70929007794396,
+  "field": "T15",
+  "full_2mm": 9565,
+  "full_3mm": 6919
+}

@@ -444,26 +444,17 @@ In practice this expectation is approximated using sampled rollouts:
 \hat{A}_{i,t}.
 \end{equation}
 
-This equation is the central sample-based approximation used by policy-gradient
-RL. Instead of knowing the true expectation over all possible trajectories, we
-estimate it from a finite batch of trajectories collected from the simulator.
-Actions that led to better-than-expected outcomes are made more likely; actions
-that led to worse-than-expected outcomes are made less likely.
-
-Crucially, this does not require differentiating the simulator. The simulator is
-used only to sample transitions and rewards. The gradient is taken through the
-policy's log-probability of the sampled action,
-$\log \pi_\theta(a_t \mid s_t)$, which is differentiable because the policy is a
-neural network. In this project, KomaMRI can therefore remain a black-box
-physics simulator: PPO samples sequence actions from the current policy,
-evaluates them with the simulator, and then increases the probability of actions
-with positive advantage while decreasing the probability of actions with
-negative advantage.
-
-The weighting term above is written as an advantage estimate $\hat{A}_{t}$
-rather than the raw return $G_t$. This reduces variance and makes the update
-depend on whether an action was good relative to what the policy already
-expected in that state.
+This is the central sample-based approximation of policy-gradient RL: the
+expectation over all trajectories is estimated from a finite batch collected
+from the simulator, making actions with better-than-expected outcomes more
+likely and worse-than-expected actions less likely. Crucially, it does not
+require differentiating the simulator. The gradient flows only through the
+policy's log-probability $\log \pi_\theta(a_t \mid s_t)$, which is
+differentiable because the policy is a neural network, so KomaMRI can stay a
+black-box physics simulator used only to sample transitions and rewards. The
+weighting term is written as an advantage estimate $\hat{A}_t$ rather than the
+raw return $G_t$, which lowers variance by measuring whether an action beat
+what the policy already expected in that state.
 
 \subsubsection{Value and advantage functions}
 The value function of a policy is the expected future return from a state:
@@ -542,16 +533,12 @@ project, that means the critic learns to predict future improvement in the
 quantitative MRI objective, while the actor learns which sequence parameters
 tend to produce those improvements.
 
-This is still estimating the same conceptual quantity
-$A^\pi(s_t,a_t)=Q^\pi(s_t,a_t)-V^\pi(s_t)$. PPO first collects a batch of
-complete episodes or fixed-length rollout fragments, so the rewards along the
-sampled trajectory are already known when $\hat{A}_t$ is computed. Using the
-full observed return would give a Monte Carlo estimate of $Q^\pi$, but it can
-have high variance because it depends heavily on one particular noisy
-trajectory. Using only the one-step residual relies more on the learned critic,
-which reduces variance but introduces bias if the critic is inaccurate. GAE
-interpolates between these two estimates: smaller $\lambda$ trusts the critic
-more, while larger $\lambda$ uses more of the sampled future rewards.
+GAE thus interpolates between two estimates of the same advantage
+$A^\pi(s_t,a_t)$, computed from rollouts whose rewards are already known: the
+full Monte Carlo return ($\lambda\to1$) is unbiased but high-variance because
+it leans on one noisy trajectory, while the one-step residual ($\lambda\to0$)
+leans on the learned critic, cutting variance at the cost of bias when the
+critic is inaccurate.
 
 \subsubsection{Proximal policy optimisation}
 Vanilla policy-gradient updates can be unstable because a single gradient step
@@ -624,25 +611,53 @@ L(\theta,\phi)
   \right].
 \end{equation}
 
-Here $c_v$ and $c_H$ weight the critic loss and entropy bonus. This is the form
-used by most practical PPO implementations: collect rollouts using the current
-policy, estimate returns and advantages, update the actor and critic for a few
-epochs using minibatches, then discard the old rollout data and collect new
-on-policy data.
+Here $c_v$ and $c_H$ weight the critic loss and entropy bonus. The practical
+loop is to collect rollouts with the current policy, estimate returns and
+advantages, update the actor and critic for a few minibatch epochs, then
+discard the rollouts and collect fresh ones. This makes PPO \emph{on-policy}:
+unlike off-policy methods such as DQN or SAC, which keep a \emph{replay buffer}
+of past transitions and reuse them many times, PPO trains only on data from the
+current policy and throws it away after each update. That costs sample
+efficiency but avoids the instability of learning from a stale action
+distribution, and it removes the replay buffer's memory overhead.
 
-Adaptive qMRI sequence design is naturally sequential. The usefulness of a new
-measurement depends on what has already been acquired and on the current
-uncertainty in the tissue-parameter estimate. PPO is a practical choice because
-it supports continuous action spaces, stochastic exploration, and stable
-on-policy learning. The policy can explore different acquisition timings and
-flip angles while the clipped objective limits sudden policy collapse.
+PPO suits adaptive qMRI for three reasons: it handles continuous action spaces
+(the sequence timings), it explores stochastically while the clipped objective
+prevents sudden policy collapse, and its on-policy simplicity makes the
+physics-and-reward path easier to debug than an off-policy learner. The cost is
+sample efficiency: every update needs fresh rollouts, and one rollout step here
+is not a cheap game transition but a full MR sequence build, KomaMRI Bloch
+simulation, image reconstruction, ROI extraction, $T_1$ fit, and reward
+evaluation. The number of simulator calls is therefore the dominant training
+bottleneck, which is what motivates the multi-fidelity training loop of
+Chapter~\ref{ch:adaptive-rl}.
 
-The main cost is sample acquisition. Each PPO update requires fresh rollouts
-from the current policy. In this project, one rollout step is not a cheap game
-transition: it may require constructing an MR sequence, running a Bloch
-simulation in KomaMRI, reconstructing the image, extracting phantom regions of
-interest, fitting $T_1$, and computing the error-based reward. This makes the
-number of simulator calls the main training bottleneck.
+\subsubsection{Recurrent policies for partial observability}
+The PPO actor and critic above are feed-forward networks that map the current
+observation $s_t$ to an action distribution and a value. This implicitly
+assumes $s_t$ is a sufficient statistic of the history, i.e.\ the Markov
+property holds. When the observation does not capture everything relevant about
+the past, the problem is a partially observed MDP (POMDP) and a memoryless
+policy can be suboptimal. Adaptive qMRI is partially observed in exactly this
+way: a compact observation of the current fitted estimates and remaining budget
+does not record which acquisition timings have already been played, yet two
+histories with the same current fit can carry different information for the next
+block.
+
+A recurrent policy adds an internal memory. The feed-forward trunk is preceded
+by a recurrent network, here a Long Short-Term Memory (LSTM)
+cell~\cite{hochreiter_lstm_1997}, that maintains a hidden state $h_t$ updated
+each step from the previous state and the current observation,
+$h_t = \mathrm{LSTM}(h_{t-1}, s_t)$. The action and value are conditioned on
+$h_t$ rather than $s_t$ alone, so the policy can summarise the acquisition
+history into $h_t$ and condition the next timing on it; the LSTM's gating lets
+it retain information over many steps without the vanishing gradients of a
+plain recurrent network. Training uses the recurrent variant of PPO, identical
+to the above except that rollouts store hidden states and gradients are
+propagated back through each rollout's recurrent steps (truncated
+backpropagation through time). Chapter~\ref{ch:adaptive-rl} evaluates such a
+policy as an ablation against the compact feed-forward observation, testing
+whether explicit memory of the acquisition history improves adaptive timing.
 
 \subsection{Clinical Implications}
 

@@ -1442,12 +1442,19 @@ export PYTHON_JULIACALL_THREADS=5
 export JULIA_NUM_THREADS=5
 R=runs/e2/mf_runB_cached3_cached_full3_full_gpu
 
-# Global-best checkpoint — the reporting policy, 24 held-out episodes
+# Global-best checkpoint — strictly held-out seed (never seen in training)
 PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
   --policy "$R/global_best/best_policy.zip" \
   --vecnorm "$R/global_best/best_vecnorm.pkl" \
-  --episodes 24 --seed 500000 --roi-radius 1 \
-  2>&1 | tee "$R/eval_globalbest_24ep.log"
+  --episodes 24 --seed 600000 --roi-radius 1 \
+  2>&1 | tee "$R/eval_globalbest_24ep_heldout.log"
+
+# Fixed-schedule baselines on the same held-out seed
+PYTHONUNBUFFERED=1 python -u python/baseline_e2.py --match-run "$R" \
+  --episodes 24 --seed 600000 --roi-radius 1 \
+  --cr-optimal \
+  --out "$R/baselines_heldout" \
+  2>&1 | tee "$R/baseline_heldout.log"
 
 # Final-stage policy (the "final ≠ best" comparison) — defaults to $R/policy.zip
 PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
@@ -1474,12 +1481,19 @@ export PYTHON_JULIACALL_THREADS=3
 export JULIA_NUM_THREADS=3
 R=runs/e2/mf_runB_cached3_cached_full3_full_gpu
 
-# Global-best checkpoint — the reporting policy, 24 held-out episodes
+# Global-best checkpoint — strictly held-out seed (never seen in training)
 PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
   --policy "$R/global_best/best_policy.zip" \
   --vecnorm "$R/global_best/best_vecnorm.pkl" \
-  --episodes 24 --seed 500000 --roi-radius 1 \
-  2>&1 | tee "$R/eval_globalbest_24ep.log"
+  --episodes 24 --seed 600000 --roi-radius 1 \
+  2>&1 | tee "$R/eval_globalbest_24ep_heldout.log"
+
+# Fixed-schedule baselines on the same held-out seed
+PYTHONUNBUFFERED=1 python -u python/baseline_e2.py --match-run "$R" \
+  --episodes 24 --seed 600000 --roi-radius 1 \
+  --cr-optimal \
+  --out "$R/baselines_heldout" \
+  2>&1 | tee "$R/baseline_heldout.log"
 
 # Final-stage policy (the "final ≠ best" comparison) — defaults to $R/policy.zip
 PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
@@ -1810,13 +1824,6 @@ export JULIA_NUM_THREADS=3
 
 for R in runs/e2/mf_runB_5sphere_hist_560s_gpu \
          runs/e2/mf_runB_5sphere_lstm_560s_gpu; do
-  # Global-best checkpoint — baseline-comparable seed (= 560 s baseline tables)
-  PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
-    --policy "$R/global_best/best_policy.zip" \
-    --vecnorm "$R/global_best/best_vecnorm.pkl" \
-    --episodes 24 --seed 500000 --roi-radius 1 \
-    2>&1 | tee "$R/eval_globalbest_24ep.log"
-
   # Global-best checkpoint — strictly held-out seed (never seen in training)
   PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
     --policy "$R/global_best/best_policy.zip" \
@@ -1838,6 +1845,14 @@ for R in runs/e2/mf_runB_5sphere_hist_560s_gpu \
     --out "$R/global_best/diagnostics" \
     2>&1 | tee "$R/diagnose_globalbest.log"
 done
+
+# Fixed-schedule baselines on the held-out seed — run once (both runs share the same env config)
+PYTHONUNBUFFERED=1 python -u python/baseline_e2.py \
+  --match-run runs/e2/mf_runB_5sphere_hist_560s_gpu \
+  --episodes 24 --seed 600000 --roi-radius 1 \
+  --cr-optimal \
+  --out runs/e2/baselines_heldout_560s \
+  2>&1 | tee runs/e2/baselines_heldout_560s/baseline_heldout.log
 ```
 
 For the report chapter: this section addresses **C1** (the optimal next

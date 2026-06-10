@@ -280,3 +280,146 @@ requires changing the window shape, which is exactly what the phantom
 library's Hamming option does, and the mechanism here is what underpins
 its use against the coarse-water truncation artefact in Chapter 3.
 \end{spacing}
+
+\section{E2 Noise Calibration}
+\label{app:noise-calibration}
+
+\begin{spacing}{1}
+The E2 noise model adds independent complex Gaussian noise of absolute
+standard deviation \(\sigma\) to every k-space sample. Because the noise-free
+signal scale is a linear sum over simulated spins, the mapping from \(\sigma\)
+to image SNR depends on the spin count, and therefore on voxel size, slice
+thickness, matrix size and whether background water is included. A \(\sigma\)
+calibrated at one geometry does not transfer to another: for example, slicing
+a 1\,mm slab through the T1 plate keeps 4{,}816 of the \({\sim}27\)k full-3D
+sphere spins, shrinking the k-space signal scale by a factor of
+\({\sim}5.6\). The operating \(\sigma\) was therefore derived by a sweep at
+exactly the training configuration (T15 field, 1\,mm slab, 1\,mm voxels,
+\(64\times32\)): for each \(\sigma\), 25 noise seeds were simulated under the
+Cramer--Rao-optimal fixed schedule and the resulting \(T_1\)-fit MAPE and
+three SNR conventions were recorded.
+
+Of the SNR conventions, the NEMA MS-1 dual-acquisition measurement (signal
+from the mean of two acquisitions, noise from their difference image) is the
+one comparable with clinical phantom QA; the single-image NEMA variant reads
+systematically low on coarse matrices because Gibbs ringing inflates the
+ROI variance. Figure~\ref{fig:app-snr-sweep} summarises the sweep. At
+\(\sigma=50\) the dual-acquisition SNR is \({\approx}27\) on the brightest
+spheres (the peak convention plotted on the figure's top axis) and
+\({\approx}17\) averaged across the T1 plate at the reference block
+(\texttt{scripts/e2\_snr\_report.jl}). Both bracket the in-vivo brain IR range
+of roughly 16--30 at 1.5\,T, and the fixed-schedule fit error at \(\sigma=50\)
+is still close to its noise-free floor. Fit quality degrades gracefully up to
+\(\sigma\approx85\) and collapses beyond, so \(\sigma=50\) stresses the agent
+with clinically realistic noise without making the task estimation-limited.
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.92\linewidth]{imgs/e2_rl/snr_mape_vs_sigma.png}
+    \caption{\textbf{Noise calibration sweep at the E2 training geometry}
+    (25 seeds per \(\sigma\), Cramer--Rao-optimal fixed schedule). Mean,
+    median and worst-sphere \(T_1\)-fit MAPE versus absolute k-space
+    \(\sigma\), with the corresponding SNR conventions on the top axes. The
+    NEMA MS-1 dual-acquisition row (top, blue) is the clinically comparable
+    measurement; the operating point \(\sigma=50\) corresponds to peak
+    dual-acquisition SNR \({\approx}27\). The worst-sphere curve is dominated
+    by the longest-\(T_1\) sphere, which the fixed schedule cannot constrain
+    even at \(\sigma=0\).}
+    \label{fig:app-snr-sweep}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=\linewidth]{imgs/e2_rl/snr_sweep_images.png}
+    \caption{\textbf{Visual artefact level across the noise sweep.}
+    Reconstructed magnitude images of one acquisition block (TI = 0.03 s)
+    as \(\sigma\) increases left to right, annotated with the measured
+    dual-acquisition SNR. At the operating point \(\sigma=50\)
+    (peak SNR \({\approx}27\)) the spheres remain clearly resolved over a visibly
+    noisy background; by \(\sigma\geq160\) the background noise approaches
+    the sphere contrast and fits collapse.}
+    \label{fig:app-snr-images}
+\end{figure}
+\end{spacing}
+
+\section{Cached Background-Water Validation}
+\label{app:water-cache}
+
+\begin{spacing}{1}
+This appendix supports Section~\ref{sec:e2-water-cache}: it shows why the
+background water must be Bloch-accurate but does not need to be re-simulated
+every step, and quantifies the accuracy of the cached-template model used by
+the \texttt{cached} fidelity rungs.
+
+Figure~\ref{fig:app-water-4up} compares reconstructions of the same
+acquisition under four water models. Two cached variants are shown: the
+\emph{scalar} variant rescales the whole template by a single shot amplitude,
+while the \emph{per-line} variant rescales each k-line by its own shot
+amplitude; E2 uses the per-line variant, which is the exact factorisation for
+a multi-shot acquisition. Both cached variants are visually indistinguishable
+from the full simulation (their signed difference images are blank at this
+colour scale), whereas analytic water leaves structured residuals across both
+the spheres and the background. Figure~\ref{fig:app-water-t1fit} quantifies
+the consequence for the quantity that actually matters, the fitted \(T_1\):
+the cached models stay at or below the \({\sim}1\%\) fitter grid floor on
+every sphere, while analytic water produces 4--40\% per-sphere deviations and
+even the fully analytic forward model 2--16\%. An analytic-water rung would
+therefore corrupt the reward signal; the cached rung does not.
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=\linewidth]{imgs/e2_rl/water_images_4up.png}
+    \caption{\textbf{Water-model comparison at matched sequence settings}
+    (TI = 0.55 s, \(\alpha=30^\circ\), \(64\times32\)). Top row: reconstructed
+    magnitude images for the full Bloch simulation (truth), Bloch spheres with
+    cached water (scalar and per-line variants), Bloch spheres with analytic
+    water, and the fully analytic forward model. Bottom row: signed difference
+    against the full simulation. The cached variants are exact at this colour
+    scale; the analytic water model leaves structured sphere and background
+    residuals that no TI rescaling can remove.}
+    \label{fig:app-water-4up}
+\end{figure}
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=\linewidth]{imgs/e2_rl/water_t1_fit_4variants.png}
+    \caption{\textbf{Per-sphere \(T_1\)-fit impact of the water model.} Left:
+    fitted versus true \(T_1\) for each variant. Right: per-sphere deviation
+    from the full-Bloch fit. The cached variants sit at or below the
+    \({\sim}1\%\) fitter grid floor on every sphere (most bars are below the
+    axis); analytic water deviates by 4--40\%, worst at short \(T_1\), and the
+    fully analytic model by 2--16\%.}
+    \label{fig:app-water-t1fit}
+\end{figure}
+
+Figure~\ref{fig:app-water-relerr} validates the \(\alpha\)-template bank of
+Section~\ref{sec:e2-water-cache} (36 templates spanning the action range)
+across TI and flip angle. The cached water k-space matches the Bloch water to
+\(10^{-3}\)--\(10^{-2}\) relative error over the operating TI range, with two
+readable features: the error collapses to \({\sim}10^{-8}\) at the template's
+reference TI (where the factorisation is evaluated at its construction
+point), and it rises towards TI \(\approx\) 1.6--2 s, where the water signal
+approaches its own inversion null and the relative-error denominator
+vanishes. For context, the right panel shows that modelling the water without
+\(B_0\) inhomogeneity changes the water k-space by 10--40\%: the cache
+approximation error is one to two orders of magnitude below a routine
+modelling choice, so it is not the binding fidelity constraint. End-to-end,
+cached-water \(T_1\) fits match the full simulation to 0.12\% on average
+(worst sphere 1.15\%, the fitter's discrete-grid floor), and the per-step
+speedup is \(8.0\times\) (4.47 s \(\to\) 0.56 s at the benchmark settings)
+for a one-off bank build cost of 153 s.
+
+\begin{figure}[!htbp]
+    \centering
+    \includegraphics[width=0.95\linewidth]{imgs/e2_rl/water_cache_relerr_vs_TI.png}
+    \caption{\textbf{\(\alpha\)-bank cache fidelity across TI and flip angle}
+    (36-template bank, \(64\times32\), 1 mm). Left: relative k-space error of
+    cached versus Bloch water at \(\alpha \in \{5^\circ, 17^\circ, 30^\circ,
+    90^\circ\}\); the dip is the template's reference TI and the rise towards
+    TI \(\approx\) 1.6--2 s reflects the water signal approaching its
+    inversion null. Right: the error made by modelling water without \(B_0\)
+    inhomogeneity (\(B_0\sigma = 0\) versus 5 Hz), one to two orders of
+    magnitude larger than the cache error at matched settings.}
+    \label{fig:app-water-relerr}
+\end{figure}
+\end{spacing}

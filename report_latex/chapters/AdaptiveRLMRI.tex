@@ -129,32 +129,100 @@ Each episode simulates a 2-D inversion-recovery spin-echo acquisition through
 the T1 plate of the digital phantom. At each decision point the agent chooses
 the timing of the next block. The reported runs use $N_\mathrm{pe}=32$,
 $N_\mathrm{fe}=64$, 1 mm sphere voxels, full background water at target
-fidelity, fixed echo time $\mathrm{TE}=20$ ms, and additive complex Gaussian
-noise with $\sigma=50$ in the simulator signal scale. The scan-time budget is
+fidelity, and fixed echo time $\mathrm{TE}=20$ ms. The scan-time budget is
 240 s for the main experiments in this chapter. Since one phase-encode line is
 acquired per shot, each block costs approximately
 $N_\mathrm{pe}\cdot \mathrm{TR}$ seconds.
 
-The action is a continuous choice of acquisition parameters. In Run A the policy
-learned $\mathrm{TI}$, $\mathrm{TR}$ and flip angle $\alpha$; in the later
-five-sphere ablations $\alpha$ was fixed at $90^\circ$ unless stated otherwise.
-This was an evidence-based simplification. In Run A the learned flip angles
-collapsed to $90^\circ$, and the Cramer--Rao fixed-schedule baseline also chose
-$90^\circ$ because it reduced the CRLB. The flip-angle degree of freedom was
-therefore redundant for the T1 experiments reported here, so later runs used the
-capacity on timing decisions rather than re-learning the same boundary solution.
-The environment repairs infeasible timing requests rather than terminating the
-episode: if $\mathrm{TR}$ is too short to contain $\mathrm{TI}+\mathrm{TE}$, it
-is lifted to the feasible minimum. This keeps early PPO rollouts from being
-dominated by invalid actions, but the repair rate is logged so it cannot hide a
-policy that relies on the guardrail.
+\paragraph{Noise model.} Independent complex Gaussian noise with absolute
+standard deviation $\sigma=50$ is added to every k-space sample. The value is
+calibrated, not arbitrary: the signal scale is a sum over simulated spins, so
+the $\sigma\!\to\!\mathrm{SNR}$ map depends on voxel size, slice geometry and
+matrix size, and must be derived at the training configuration. At this
+geometry $\sigma=50$ gives a NEMA MS-1 dual-acquisition SNR of ${\approx}17$
+averaged across the T1 plate at the reference block, rising to ${\approx}28$
+on the brightest spheres (measured by \texttt{scripts/e2\_snr\_report.jl}).
+This sits squarely in reported clinical inversion-recovery image quality: a
+normal-brain FLAIR study measured mean tissue SNRs of 16--30 at 1.5T across
+the structures analysed \cite{sohn2010flair}, while broader fMRI SNR work
+ emphasises the dependence of SNR on voxel volume and acquisition design \cite{murphy2007howlongscan}.
+The agent is therefore stressed with clinically realistic noise rather than an
+arbitrary level. A 25-seed noise sweep
+(Appendix~\ref{app:noise-calibration}) further shows that T1 fits degrade
+gracefully up to $\sigma\approx85$ and collapse beyond, so $\sigma=50$ leaves
+the task noise-limited but not estimation-broken.
 
-The observation contains the current fitted $T_1$ estimates for the active
-spheres and two budget variables: fraction of scan time used and fraction of
-blocks used. Some ablations add an uncertainty proxy from the fitter, but the
-main 240 s result does not. After each block, the environment reconstructs the
-image, extracts each sphere's region-of-interest signal, refits $T_1$, and
-computes the reward. The main reward is the improvement in log-MAPE:
+
+\paragraph{Action space.} The policy outputs a vector in $[-1,1]^n$ which the
+wrapper maps to physical timings. The bounds were fixed from the phantom and
+pulse physics rather than tuned:
+\begin{itemize}
+\setlength{\itemsep}{1pt}
+    \item $\mathrm{TI} \in [0.01, 3.0]$ s, chosen to bracket the plate's
+    inversion nulls (where signal contrast and $T_1$ information peak), from
+    the shortest sphere's ${\approx}17$ ms null ($T_1\ln 2$ at $T_1 = 24$ ms)
+    to the longest's ${\approx}1.3$ s ($T_1 = 1.88$ s). By 3 s the longitudinal
+    magnetisation has nearly fully recovered for every sphere, so the signal is
+    insensitive to $T_1$. The 10 ms
+    floor is not a hard physical limit (RF pulses occupy ${<}1$ ms at
+    $B_1 = 20\,\mu$T) but is realistic and never binds.
+    \item $\mathrm{TE} \in [5, 80]$ ms, fixed at 20 ms in all reported runs:
+    TE carries $T_2$, not $T_1$, information, and freezing it removes a
+    degree of freedom that only dilutes exploration on this task.
+    \item $\mathrm{TR} \in [0.5, 5.0]$ s. The upper bound does not reach full
+    recovery for the longest sphere (the $5\,T_1$ rule of thumb would want
+    ${\approx}9.4$ s at $T_1 = 1.88$ s): the intended regime is steady-state
+    partial recovery, never a fully relaxed start. The fitter models that
+    partial recovery (the generalised IR model of
+    Chapter~\ref{ch:mri-system-phantom}), so short-TR blocks are genuinely
+    informative rather than merely corrupted, and the agent trades recovery
+    against the $N_\mathrm{pe}\cdot\mathrm{TR}$ block cost.
+    \item $\alpha \in [5^\circ, 90^\circ]$ when learned (Run A), spanning the
+    full Ernst regime.
+\end{itemize}
+TI uses a logarithmic action mapping,
+$\mathrm{TI}(u) = \mathrm{TI}_{\min}(\mathrm{TI}_{\max}/\mathrm{TI}_{\min})^{u}$
+for $u\in[0,1]$, giving constant action resolution per decade of $T_1$; under
+a linear map the informative TIs for the shortest spheres occupy roughly the
+bottom $1.5\%$ of the interval, which starves them of policy resolution. In
+the later five-sphere ablations $\alpha$ was fixed at $90^\circ$. This was an
+evidence-based simplification: in Run A the learned flip angles collapsed to
+$90^\circ$, and the Cramer--Rao fixed-schedule baseline independently chose
+$90^\circ$ because it reduced the CRLB. The flip-angle degree of freedom was
+therefore redundant for these T1 experiments, and later runs spent the
+capacity on timing decisions rather than re-learning the same boundary
+solution.
+
+\paragraph{Action repair.} The environment repairs infeasible timing requests
+rather than terminating the episode: the executed repetition time is
+\[
+    \mathrm{TR}_\mathrm{exec} = \max\!\left(\mathrm{TR}_\mathrm{req},\;
+    0.5,\; (\mathrm{TI}+\mathrm{TE})/0.9\right),
+\]
+i.e.\ TR must contain the inversion and echo with 10\% headroom. Hard
+rejection would be cleaner semantically, but early random policies would burn
+rollouts learning the action-space geometry instead of sequence design, and
+the resulting penalties push PPO towards conservative long-TR choices. The
+guardrail is audited rather than hidden: every step emits both requested and
+executed timings plus a repaired flag, and the evaluation scripts report
+repair rates and mean TR lift. A policy that leans on the repair is therefore
+detectable; the reported Run B 240 s policy executes zero repairs, and the
+560 s policies repair 0.3--1.8\% of blocks.
+
+\paragraph{Observation.} The observation is deliberately compact:
+$\log_{10}$ of the running per-sphere $T_1$ estimates (a zero sentinel before
+the first valid fit, which requires at least two measurements), the fraction
+of scan time used, the fraction of blocks used, and a constant bias input.
+Observations and rewards are normalised online with clipping at $\pm10$. The
+agent never sees the reconstructed image or raw k-space: it acts only on the
+fitter's $T_1$ estimates and budget, the same interface a qMRI pipeline would
+expose. This keeps the policy on the genuine estimation objective rather than
+on simulator-specific pixel patterns that may not generalise to real hardware.
+Some ablations append an uncertainty proxy from the fitter
+(Section~\ref{sec:e2-ablations}); the main 240 s result does not. After each
+block, the environment reconstructs the image, extracts each sphere's
+region-of-interest signal, refits $T_1$, and computes the reward. The main
+reward is the improvement in log-MAPE:
 
 \[
     r_t =
@@ -164,88 +232,250 @@ computes the reward. The main reward is the improvement in log-MAPE:
 
 This reward is dense and local: it rewards a block for reducing the current
 estimation error, rather than only awarding a terminal score. This was important
-because the earlier E1 single-voxel experiment collapsed to a nearly fixed
-policy when a large terminal bonus made it sufficient to finish the episode
-rather than optimise the measurement sequence.
+because an initial single-voxel experiment (not reported here) collapsed to a
+nearly fixed policy when a large terminal bonus made it sufficient to finish the
+episode rather than optimise the measurement sequence.
 
 Training uses PPO~\cite{schulman_ppo_2017}. PPO was chosen because it is a
 robust on-policy baseline and can be used with continuous actions without
 needing a replay buffer. This matters for the Python--Julia simulator loop:
-rollouts are expensive, and keeping the algorithm simple made debugging the
-physics and reward path more important than tuning an off-policy learner.
+each rollout step triggers simulator, reconstruction, fitting, and reward code
+across the Python--Julia boundary. During development, a simple on-policy
+learner made it easier to diagnose whether failures came from the MRI model,
+the fitter, the reward, or the policy update itself.
 
 \section{Multi-fidelity curriculum}
 \label{sec:e2-mf-method}
 
-The main engineering difficulty is simulator cost. A full-fidelity KomaMRI call
-must simulate all sphere and water spins for a multi-shot 2-D acquisition. At
-the Run A configuration, a target-fidelity step took about 1 s on the GPU
-runtime and several seconds on CPU. A 200k-step single-fidelity run would
-therefore take days before evaluation overheads.
+\subsection{The cost wall and the fidelity ladder}
+\label{sec:e2-mf-ladder}
 
-The project uses a ladder of forward models:
+
+The main engineering difficulty is simulator cost. Every environment step
+triggers a multi-shot Bloch simulation of the whole phantom, followed by 2-D
+reconstruction and a refit. The cost is set mainly by how many RF pulses the
+integrator must resolve: KomaMRI steps through the free-precession delays
+(TI, TR) with large time steps, but each RF pulse needs fine time
+discretisation, so the per-step cost scales with the number of shots
+$N_\mathrm{pe}$ (one excitation and refocusing pulse per phase-encode line) and
+the spin count $n_\mathrm{spins}$, and only weakly with the requested timing.
+At the target configuration (T15, $64\times32$, 1 mm voxels, 1 mm slab through
+the T1 plate) the sliced phantom contains 23{,}735 spins, of which 18{,}919
+(80\%) are background water. The sphere material that the agent actually
+measures is only 4{,}816 spins. A full-Bloch step measured about 4 s on CPU, so
+a 200k-step PPO run is roughly nine days of simulation before any evaluation
+overhead. The reported Run B family was trained on GPU, where the same stages
+ran some $5$--$7\times$ faster (${\approx}0.06$ s/step at the cached and
+coarse-water stages); extrapolated by spin count to the 1 mm full plate this is
+still ${\approx}0.2$ s/step, leaving a single-fidelity full-Bloch run on the
+order of a day before evaluation overhead. Single-fidelity full-Bloch training
+therefore does not fit the project compute budget on either device.
+
+Because 80\% of the spins are water, both cost levers target the water:
+\emph{coarsen} it or \emph{cache} it. Coarsening reuses the digital twin's
+independent water grid (Chapter~\ref{ch:mri-system-phantom}): water spins are
+laid out on a coarser grid with proton density rescaled to conserve total
+magnetisation, and a 3 mm water grid cuts the water spin count by $9\times$
+(18{,}919 $\to$ 2{,}103), taking the phantom to 6{,}919 spins. Caching,
+described next, removes the water from the per-step simulation entirely.
+Together with the analytic surrogate these give the ladder in
+Table~\ref{tab:e2-fidelity-ladder}, spanning a ${\sim}30\times$ per-step cost
+range.
 
 \begin{table}[!htbp]
 \centering
 \small
 \setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{0.92}
-\begin{tabular}{lll}
+\begin{tabular}{llrrl}
 \toprule
-Fidelity & Computation & Main bias \\
+Fidelity & Water model & Bloch spins & s/step & Main bias \\
 \midrule
-\texttt{analytic} & closed-form per-sphere signal, no KomaMRI & no reconstruction or water crosstalk \\
-\texttt{cached3} & Bloch spheres + cached 3 mm water template & coarse/cached water approximation \\
-\texttt{cached} & Bloch spheres + cached 1 mm water template & cached water, target geometry \\
-\texttt{full3} & full Bloch with 3 mm water voxels & coarse water discretisation \\
-\texttt{full} & full Bloch with 1 mm water voxels & target fidelity \\
+\texttt{analytic} & closed form & 0 & 0.034 & no reconstruction, no water crosstalk \\
+\texttt{cached3} & cached template, 3 mm & 4{,}816 & 0.34 & cached and coarse water \\
+\texttt{cached} & cached template, 1 mm & 4{,}816 & ${\approx}$0.34 & cached water, target geometry \\
+\texttt{full3} & full Bloch, 3 mm & 6{,}919 & 0.42 & coarse water discretisation \\
+\texttt{full} & full Bloch, 1 mm & 23{,}735 & 1.03 & target fidelity \\
 \bottomrule
 \end{tabular}
-\caption{Fidelity ladder used for E2. Lower fidelities are cheaper but biased.
-The curriculum is useful only if switching is driven by target-fidelity
-performance, not by the cheap simulator validating itself.}
+\caption{Fidelity ladder used for E2. ``Bloch spins'' is the number simulated
+per step at the 14-sphere plate (exact counts from
+\texttt{scripts/e2\_spin\_counts.jl}; the cached rungs Bloch-simulate only the
+4{,}816 sphere spins and add the water from the template); s/step are measured
+Run A CPU stage averages, set mainly by $N_\mathrm{pe}$ and the spin count
+rather than the requested timing. The \texttt{cached} rung costs
+the same as \texttt{cached3} because the template add is resolution-independent;
+its standalone benchmark measured $8.0\times$ versus matched full Bloch. Lower
+rungs are cheaper but biased; Section~\ref{sec:e2-mf-switch} ensures the bias
+cannot validate itself.}
 \label{tab:e2-fidelity-ladder}
 \end{table}
 
-The switch rule was inspired by two strands of multi-fidelity RL. Sifaou and
-Simeone frame fidelity selection as maximising information gain about the target
-policy per unit simulation cost~\cite{sifaou_mf_hrl_2025}. Cutler, Walsh and
-How use a simulator hierarchy in which an agent should move to higher fidelity
-when lower-fidelity samples stop being useful for the real task
-~\cite{cutler_multifidelity_2015}. This project does not implement either paper
-directly: it does not maintain a posterior over policies, and it does not use
-their theoretical switching machinery. Instead, it adapts the same principle to
-the practical PPO setting.
+\subsection{Cached water: exploiting simulator linearity}
+\label{sec:e2-water-cache}
 
-The implemented rule periodically evaluates the current policy on a small
-held-out \texttt{full} probe, even while training at a cheaper fidelity. The
-target score is
+The cached rungs rest on two exact structural facts. First, the Bloch
+simulation is linear in spins, so the acquired k-space separates exactly:
+\[
+    S_\mathrm{full} = S_\mathrm{spheres} + S_\mathrm{water}.
+\]
+Second, the water is a single homogeneous material, so its contribution to
+phase-encode line $k$ (acquired on shot $k$) factorises into a scalar shot
+amplitude and a fixed geometric profile:
+\[
+    S_\mathrm{water}[k,:] = M_z^{(k)}(\mathrm{TI},\mathrm{TR},\alpha)\,
+    \sin\alpha \,\; W_\alpha[k,:].
+\]
+Here $M_z^{(k)}$ is the water's longitudinal magnetisation at the $k$-th
+excitation, available in closed form from the same transient recovery model
+the fitter inverts, and $W_\alpha$ is a template capturing everything
+geometric --- spin positions and Fourier encoding, $T_2$ decay at the
+reference echo time, static $B_0$ phase. The template is obtained once, by
+running a single Bloch simulation of the water alone and dividing the
+$M_z^{(k)}\sin\alpha$ factor out of each k-line.
 
+Evaluating a new $(\mathrm{TI},\mathrm{TR})$ then costs $O(N_\mathrm{pe})$
+arithmetic for the new $M_z^{(k)}$ plus a row-wise rescale of the template;
+only the sphere spins are re-simulated. This is the ${\sim}8\times$ per-step
+saving of the cached rungs. The alternative of modelling the water
+analytically as well is measurably too crude: it leaves visible
+reconstruction and crosstalk residuals and per-sphere $T_1$ deviations from
+the full simulation of up to ${\sim}40\%$, whereas the cached model matches
+full-Bloch $T_1$ fits to $0.12\%$ on average (worst sphere $1.15\%$, the
+fitter's discrete-grid floor). Appendix~\ref{app:water-cache} shows the
+validation images and fits.
+
+The flip angle is the subtle part: the factorisation is exact only at the
+$\alpha$ the template was built with. Two effects were measured. First, the
+closed-form transient mis-scales across $\alpha$: at $90^\circ$,
+$\cos\alpha=0$ and every shot starts from the same thermal state, but at
+$30^\circ$ residual magnetisation carries between shots and the ratio of
+simulated to analytic per-shot amplitude drifts from 1.01 on the first
+k-line to 1.40 on the sixteenth. Second, the template itself changes with
+$\alpha$ through spoiling and echo formation, by 7--21\% spatially between a
+$30^\circ$ and a $90^\circ$ template; this error is TI-independent, so no TI
+rescaling can correct it. The implementation therefore stores a \emph{bank}
+of $\alpha$-matched templates on a grid spanning the action range. At a
+matched $\alpha$ a template is exact to ${\sim}10^{-8}$ relative k-space
+error; an off-grid $\alpha$ is evaluated by computing the two bracketing
+templates, each at its own $\alpha$, and blending linearly in $\alpha$. A
+template is never rescaled to a different flip angle analytically --- that
+would reintroduce exactly the error the bank exists to avoid.
+
+One constraint follows from the construction: the template is keyed to the
+spin positions, so the cached rungs hold the phantom pose fixed, while the
+full-Bloch rungs and all full-fidelity probes apply the in-plane pose jitter.
+Cheap stages therefore optimise under slightly narrower conditions than the
+target measures --- a stated fidelity compromise, accepted because every
+promotion and checkpoint decision is scored on the full environment.
+
+\subsection{The switch rule: bias-aware promotion}
+\label{sec:e2-mf-switch}
+
+Warm-starting between fidelities is mechanically trivial; the design question
+is \emph{when} to promote. Fixed per-stage step counts are impossible to
+justify and waste budget. The switch rule adapts two ideas from
+multi-fidelity RL: Sifaou and Simeone select the fidelity with the best
+expected information gain about the target policy per unit simulation
+cost~\cite{sifaou_mf_hrl_2025}, and Cutler, Walsh and How promote when
+lower-fidelity samples stop being useful for the real
+task~\cite{cutler_multifidelity_2015}. Neither is implemented literally as
+this project maintains no posterior over policies, but their shared
+principle fixes the central design decision: \textbf{promotion is driven by
+held-out full-simulator validation, never by the cheap simulator's own
+score.} A biased simulator can keep improving its own score by exploiting its
+bias, the same failure mode as the single-voxel fitter exploit, so a cheap rung may
+generate rollouts but may not certify its own policy.
+
+Concretely, every fourth PPO rollout (2{,}048 steps at
+$n_\mathrm{steps}=512$) the current policy is probed for four episodes on the
+current-fidelity environment and four on the full environment, with identical
+seeds. The full-probe score is
 \[
     P_H = -\log_{10}\!\left(\mathrm{clamp}(\mathrm{MAPE}_H,
-    \epsilon, 1)\right),
+    10^{-3}, 1)\right),
 \]
+where the clamp models each rung's accuracy floor so a saturated cheap stage
+reads as flat. After a per-stage minimum-step gate, the trainer promotes out
+of a cheap stage when any of four signals fires:
+\begin{enumerate}
+\setlength{\itemsep}{1pt}
+    \item \textbf{Target plateau} (primary): the relative gain in $P_H$ over
+    the last three decision points falls below 2\% --- the cheap rung has
+    given what it can.
+    \item \textbf{Ranking breakdown}: the Spearman correlation between
+    cheap-probe and full-probe MAPE across the stage's decision points falls
+    below a per-rung guardrail (0.7 for \texttt{analytic}, 0.8 for the cached
+    rungs, 0.9 for \texttt{full3}), evaluated only once at least four points
+    exist. A cheap rung may be biased, but it must still \emph{rank} policies
+    like the target.
+    \item \textbf{Bias intolerance}: the cheap/full probe gap exceeds one
+    percentage point of mean MAPE or two points of p90.
+    \item \textbf{Budget reserve}: remaining wall-clock falls to the 20\% of
+    the total budget reserved for the final full stage. This overrides every
+    other gate, guaranteeing the target fidelity always receives compute.
+\end{enumerate}
+Each stage also has a hard step cap, and the whole curriculum runs under a
+hard wall-clock deadline (9 h for the reported runs). On every promotion the
+\emph{fidelity gap} is recorded --- the full-probe MAPE of the warm-started
+policy before any training at the new rung, minus the previous stage's final
+value --- as a direct transfer diagnostic. The decision logic is a pure
+Python module, unit-tested on synthetic metric histories separately from the
+PPO and Julia orchestration, and every decision is appended to a JSON history
+together with the signal that fired, so each run's switching behaviour can be
+audited afterwards.
 
-where $\mathrm{MAPE}_H$ is measured using the high-fidelity environment. The
-trainer promotes to the next fidelity when one of four signals fires: target
-score plateau, cheap/full ranking breakdown, cheap/full bias above tolerance,
-or the wall-clock reserve for the final full stage. A V2 extension adds a short
-lookahead: if the current target-fidelity slope per wall-clock second collapses,
-a clone of the policy is briefly trained at the next fidelity and scored on the
-same full-fidelity probe. Promotion on slope grounds happens only if this
-lookahead improves the target score per second by a margin.
+% in practice the bias intolerance was probably set too tight.
+\subsection{Next-fidelity lookahead (V2)}
+\label{sec:e2-mf-lookahead}
 
-This makes the method bias-aware. A cheap simulator is allowed to generate
-rollouts, but it is not allowed to decide that its own policy is good. The price
-is occasional full-Bloch probing during cheap stages. This is acceptable because
-the probe is small; it is used for switching, not for final statistical claims.
+The plateau rule has a blind spot: it says the current rung is exhausted, not
+that the next rung will help. The V2 controller adds a cheap empirical test
+before promoting on progress grounds. A lookahead is triggered when the
+recent slope of $P_H$ per wall-clock second falls below $0.25\times$ the
+stage's previous best slope (a scale-free collapse test that transfers across
+hardware), or when the relative gain comes within $2\times$ of the plateau
+threshold. The trainer then \emph{clones} the policy into a fresh PPO
+instance attached to the next-fidelity environment --- weights copied,
+observation-normalisation statistics deep-copied, reward normalisation reset
+--- trains the clone for a single rollout (512 steps, ${\sim}230$ s at
+\texttt{full3} in Run A), and re-scores it on the same full-probe seeds.
+Promotion on slope grounds happens only if the clone's improvement per second
+beats the current rung's by a factor of 1.15.
 
-The final implementation also stores a global-best checkpoint. This was added
-after Run A showed that the last policy in a curriculum can be worse than an
-earlier checkpoint. A four-episode probe can screen candidates, but a separate
-confirmation evaluation is required before replacing
-the global-best checkpoint.
-% Implementation checkpoint path: global_best/best_policy.zip.
+The lookahead carries its own guardrails: its cumulative wall-clock is capped
+at 10\% of the total budget; it never runs into the final-stage reserve; and
+the clone is discarded afterwards, never mutating the live model or its
+normalisation statistics --- the real model reaches the next rung by warm
+start, so the one-rollout clone is a probe, not a head start. The plateau
+rule remains as the fallback, and the logged switch reason distinguishes a
+lookahead-driven promotion from a fallback one.
+
+\subsection{Stage hand-off and global-best checkpointing}
+\label{sec:e2-mf-handoff}
+
+Only the forward-model and water settings change between rungs; the
+observation and action layout, reward, noise and resolution are held fixed so
+the warm-started weights remain valid. The observation-normalisation
+statistics carry across each switch --- the observation is physical
+($\log_{10} T_1$ in seconds), so its running statistics are comparable across
+fidelities --- but the reward normalisation is reset, because the reward
+scale shifts with each rung's bias. Optionally the optimizer is also rebuilt
+at each switch, so stale Adam moments from the previous rung do not distort
+the first updates at the new one.
+
+Finally, the trainer maintains a global-best checkpoint across the whole
+curriculum, selected on the target fidelity. This was added after Run A
+showed that the final policy of a curriculum can be worse than one it had
+already passed through (Section~\ref{sec:e2-run-a}). Selection is two-tier
+because four-episode probes are far too noisy to pick checkpoints: every full
+probe (switch decisions, stage starts and ends, periodic stage evaluations)
+only \emph{screens} candidates, and a candidate that beats the incumbent on
+its screen is re-evaluated on twelve independent episodes at a separate seed
+offset. Only a confirmed improvement overwrites the checkpoint, and its
+metadata records both the screening and the confirmed scores. Report-grade
+numbers are taken from neither: all tables in this chapter come from fresh
+24-episode evaluations with confidence intervals.
 
 \section{Run A: full 14-sphere T1 plate}
 \label{sec:e2-run-a}
@@ -298,19 +528,31 @@ long-T1 regime.}
 \label{fig:run-a-behaviour}
 \end{figure}
 
-Figure~\ref{fig:run-a-behaviour} is the main diagnostic. The analytic stage
-learned a rough timing policy very cheaply. The cached stage then improved the
-high-fidelity score into the 8--10\% range. The problem occurred after the
-switch to \texttt{full3}: the target-fidelity score jumped back up and remained
-worse than the cached basin. The 3 mm-water full-Bloch environment was therefore
-not a harmless bridge to the 1 mm target; it changed the policy optimum.
+Figure~\ref{fig:run-a-behaviour} is the main diagnostic, and the logged switch
+reasons make the controller's behaviour concrete. The analytic stage was left
+on a \emph{ranking breakdown} (the cheap probe stopped ordering policies like
+the full probe) after 8.2k steps; it had already collapsed the full-probe MAPE
+from ${\approx}42\%$ to ${\approx}10\%$ essentially for free. The
+\texttt{cached3} stage was left on a \emph{target plateau} at 41k steps, having
+improved the full-probe score into an 8--10\% basin --- the best the run ever
+reached. The problem occurred after the switch to \texttt{full3}: the
+target-fidelity score jumped back up and ended worse than the cached basin, and
+that stage was only left on the \emph{budget reserve} override at 74k steps,
+handing the last 20\% of wall-clock to the \texttt{full} stage. The 3 mm-water
+full-Bloch environment was therefore not a harmless bridge to the 1 mm target;
+its optimum differs from the 1 mm optimum the probe scores (rank correlation
+${\approx}0.6$, bias ${\pm}5\%$).
 
-The lookahead mechanism gave a useful warning. At the cached-to-full3 boundary,
-a clone trained briefly at \texttt{full3} became worse on the full-Bloch probe.
-The slope rule did not promote on that basis; the older plateau fallback
-promoted anyway. This is an important negative result. The controller detected
-that the next rung was not immediately useful, but the action space of the
-controller did not include ``skip this rung and keep the global best''.
+The lookahead mechanism gave a useful warning at exactly this boundary. When
+the \texttt{cached3} slope collapsed, the controller cloned the policy, trained
+it for one rollout (${\approx}230$ s) at \texttt{full3}, and re-scored it: the
+clone's full-Bloch MAPE got \emph{worse} (10.37\% $\to$ 11.69\%), so the slope
+gain was ${\approx}0$ and the rule correctly \emph{declined} to promote on
+slope grounds. The plateau fallback promoted anyway, and the regression the
+lookahead had predicted in 230 s then played out over the whole 3.9 h stage.
+This is an informative negative result: the V2 signal was meaningful, but the
+controller's action space did not include ``skip this rung and keep the global
+best'', which is what the evidence called for.
 
 Run A was evaluated on a strict seed-600000 held-out set. This seed was not used
 for policy training, curriculum switching, or checkpoint selection, so the
@@ -339,24 +581,44 @@ The agent was adaptive, but the fixed schedules were better on the full
 \label{tab:run-a-current-comparison}
 \end{table}
 
-The learned policy was nevertheless not the E1 failure mode. Diagnostics over
+The learned policy was nevertheless not the degenerate fixed-policy failure
+mode. Diagnostics over
 24 episodes gave TI intra-episode log standard deviation 0.281, inter-episode
 log standard deviation 0.290, and modal-bin share 11.9\%. The chosen TI also
 correlated positively with the running estimate and with the most uncertain
 sphere ($r=+0.50$ and $r=+0.64$ respectively). In other words, the policy was
 using the state, not replaying one fixed list of actions.
 
-The failure was more specific. The final policy concentrated its TIs below the
-longest inversion nulls, so the long-$T_1$ spheres dominated the error. Pool 1
-($T_1=1.88$ s) remained at about 41\% MAPE, while mid/short $T_1$ pools were far
-better. The cached-best checkpoint had reached longer TIs and reduced errors in
-Pools 2--4, but this behaviour was eroded by the later expensive stages. The
-flip-angle degree of freedom also collapsed to $90^\circ$: the final policy did
-not learn a useful Ernst-angle trade-off, and the best fixed Cramer--Rao
-baseline also selected $90^\circ$ flip angles. This is why $\alpha$ was fixed in
-the later Run B family: both the learned policy and the CRLB baseline indicated
-that the useful optimisation pressure was in TI/TR timing, not flip-angle
-selection.
+The failure was more specific, and Table~\ref{tab:run-a-current-comparison}
+reads as an unintended ablation of the curriculum itself: \emph{the cheap
+stages delivered the result and the expensive stages eroded it.} The
+\texttt{analytic} checkpoint scores 16.03\%, the \texttt{cached3}-best
+checkpoint 9.44\% --- the best the run produced --- and the final policy only
+11.68\%. The mechanism is visible in the learned TIs. The cached-best policy
+had pushed its TI ramp up to ${\approx}0.8$ s, long enough to characterise the
+mid-to-long-$T_1$ spheres, cutting Pool 2/3/4 ($T_1 = 1.43/1.03/0.75$ s) error
+to 18.7/13.8/10.7\%. The two expensive stages then shrank the ramp back to
+0.3--0.6 s and reduced intra-episode exploration (TI log-$\sigma$ 0.38 $\to$
+0.28), re-inflating those same pools to 28.2/23.8/19.0\%. The longest sphere,
+Pool 1 ($T_1=1.88$ s), was beyond reach for every checkpoint (${\approx}41\%$):
+even the cached-best 0.8 s TIs fall short of its ${\approx}1.3$ s inversion
+null, so this is an action-coverage ceiling, not only a training-time problem.
+
+The flip-angle degree of freedom told a consistent story. It collapsed to the
+$90^\circ$ bound and, if anything, the curriculum drove it there harder over
+training ($\alpha$ std $2.4^\circ \to 1.6^\circ \to 0.0^\circ$ across the
+checkpoints); the best fixed Cramer--Rao baseline also selected $90^\circ$.
+This is why $\alpha$ was fixed in the later Run B family: both the learned
+policy and the CRLB baseline indicated that the useful optimisation pressure
+was in TI/TR timing, not flip-angle selection.
+
+One caveat on the absolute numbers. The sibling digital twin was improved
+mid-project (a random-phantom sampler and an SO3 pose sampler), so the same
+saved Run A policy scores 11.68\% on the current simulator versus 10.16\% when
+first analysed. Table~\ref{tab:run-a-current-comparison} re-evaluates every
+policy and baseline on the \emph{current} simulator, so the comparison is
+internally consistent; the cross-version shift is reported only to explain why
+older logs differ.
 
 The Run A interpretation is therefore:
 \begin{itemize}
@@ -469,13 +731,27 @@ the sampled range, then shorten TI after the estimate has stabilised. This is a
 real adaptive pattern, but it is not the simple monotonic rule ``higher current
 $T_1$ implies longer next TI''.
 
-This result is the strongest evidence for A3. The task was deliberately
-constructed so that a fixed global schedule is less naturally optimal than in
-the 14-sphere case. The RL policy then found a compact closed-loop strategy that
-improved both mean and p90 error against the fixed comparator. The result is
-still bounded by two caveats: it uses one training seed, and the 240 s
-global-best policy still needs a strict seed-600000 re-evaluation to remove
-overlap with the training evaluation stream.
+The 240 s comparison shares its evaluation seed with the training stream, so
+the cleanest statistical claim comes from a longer-budget control trained with
+$\alpha$ fixed at $90^\circ$ and evaluated on a strict, never-seen
+seed-600000 held-out set. At a 560 s budget the global-best RL policy scores
+\textbf{4.16\%} MAPE ([3.41, 4.99], p90 6.64\%) against \textbf{5.86\%}
+([5.24, 6.45], p90 8.02\%) for the matched fixed log grid on the same held-out
+call --- the same ${\approx}1.7$ percentage-point advantage as at 240 s, now
+without any train/eval seed overlap. The fixed log grid is essentially flat
+from 240 to 560 s (5.60\% $\to$ 5.71\%), so the RL gain is not simply ``more
+blocks'': the 560 s policy uses its ${\approx}14$ blocks (versus the fixed
+grid's 10) in a different, closed-loop allocation, and the 240 s policy is the
+stronger efficiency story, beating the fixed schedule with only ${\approx}6$
+blocks and ${\approx}230$ s.
+
+This is the strongest evidence for A3. The task was deliberately constructed so
+that a fixed global schedule is less naturally optimal than in the 14-sphere
+case, and the RL policy then found a compact closed-loop strategy that improved
+both mean and p90 error against the fixed comparator at two budgets. The result
+is still bounded: it rests on one training seed per arm, and the headline 240 s
+global-best policy still needs a strict seed-600000 re-evaluation to fully
+remove overlap with the training evaluation stream.
 
 \section{560 s and ablation status}
 \label{sec:e2-ablations}
@@ -543,12 +819,35 @@ Run A is a strict held-out negative result, and Run B is a promising controlled
 positive result. It is not enough to claim that the method is insensitive to PPO
 initialisation, curriculum timing, or stochastic simulator noise.
 
-The fourth limitation is external validation. The original project plan included
+The fourth limitation is algorithmic breadth. PPO was a pragmatic baseline, not
+a claim that on-policy learning is the best optimiser for this problem. Because
+simulator samples are expensive, an off-policy actor-critic such as SAC could be
+a better fit: replay would reuse costly transitions and might reduce the number
+of simulator calls needed to reach a useful policy. That comparison was not
+run, so the results should be read as evidence that adaptive qMRI can be learned
+with a robust baseline, not as evidence that PPO is the most sample-efficient or
+highest-performing RL method for the task.
+
+The fifth limitation is external validation. The original project plan included
 testing the learned protocol on real scanner hardware, but this was not reached.
 All results in this chapter are therefore simulator results. They test whether
 closed-loop sequence design can work inside the KomaMRI-based digital twin; they
 do not yet show that the learned timings transfer to scanner constraints,
 sequence programming details, reconstruction pipelines, or real phantom data.
+
+A related geometric simplification is the slice thickness. To keep the spin
+count tractable, the reported runs image a single 1 mm axial slab through the
+T1 plate, whereas a real slice-selective acquisition would excite a 3--8 mm
+slice and so average over more through-plane water and partial-volume material.
+This makes the simulated scene cleaner than a clinical slice. The choice is not
+believed to change the qualitative result: experiments with thicker slabs gave
+similar \(T_1\)-fit-versus-truth behaviour, because the fitted quantity depends
+on the per-sphere recovery curve rather than on the absolute spin count, and
+the noise level is recalibrated to the geometry in any case
+(Appendix~\ref{app:noise-calibration}). A thicker slice mainly raises
+simulation cost and partial-volume blurring, both of which the multi-fidelity
+machinery is designed to absorb, but a slice-selective study at clinical
+thickness remains future work.
 
 Finally, the action space is still narrow. The current policy tunes an
 IR-SE-style block, mostly through TI and TR. It cannot choose a different
@@ -599,7 +898,7 @@ distinguishable~\cite{mehta_mrf_review:2019,Jordan_MRF_AUTO:21}. It also
 requires a more general fitter or dictionary model, because the current fitter
 assumes one generalized IR spin-echo signal family.
 
-Finally, the objective should become a Pareto curve rather than one fixed scan
+Finally, the objective could become a Pareto curve rather than one fixed scan
 time. In clinical use, a protocol that reaches 5\% MAPE in 120 s may be more
 valuable than one that reaches 3.5\% in 240 s. A stop action or explicit
 scan-time penalty would let the policy choose this trade-off, while fixed
