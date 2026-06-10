@@ -80,23 +80,31 @@ def _clinical_irse(step: int) -> np.ndarray:
                     dtype=np.float32)
 
 
-def _log_grid_trmatched(step: int) -> np.ndarray:
+_LOG_GRID_TR = 1.7  # s — TR used by the trmatched baseline
+
+
+def make_log_grid_trmatched(budget_s: float, npe: int):
     """log_grid with TR matched to V5's average (1.7 s).
 
-    Same TI grid as `_log_grid`, but TR shortened from 4.0 s → 1.7 s so the
-    schedule fits ≈ 8 blocks into the 120 s budget — the same data-points-
-    per-sphere count V5 achieves. Isolates "RL win is TR efficiency" from
-    "RL win is per-sphere TI targeting".
+    TR shortened from 4.0 s → 1.7 s to match the average TR the RL agent
+    uses. The number of TI grid points equals the number of blocks that fit
+    in the budget (floor(budget / (Npe * TR))), log-spaced over [0.05, 3.0] s.
+    This avoids the fixed-7 bug where a 560 s budget would repeat the first
+    3 TIs, or a 240 s budget would miss the upper TI range entirely.
     """
-    tis = log_ti_grid()
-    return np.array([float(tis[step % 7]), 0.020, 1.7, 90.0],
-                    dtype=np.float32)
+    n_steps = max(1, int(np.floor(budget_s / (npe * _LOG_GRID_TR))))
+    tis = log_ti_grid(n=n_steps)
+    def _sched(step: int) -> np.ndarray:
+        return np.array([float(tis[step % n_steps]), 0.020, _LOG_GRID_TR, 90.0],
+                        dtype=np.float32)
+    return _sched
 
 
 SCHEDULES = {
     "log_grid":            _log_grid,
     "clinical_irse":       _clinical_irse,
-    "log_grid_trmatched":  _log_grid_trmatched,
+    # log_grid_trmatched is budget-dependent; patched into `schedules` in main()
+    # after env_kwargs is resolved.
 }
 
 LONG_TR_FIXED_SCHEDULES = {
@@ -609,6 +617,12 @@ def main():
     # config so they can't disagree with what's being evaluated.
     field = env_kwargs.get("cfg_field", args.field)
     npe = int(env_kwargs.get("Npe", args.npe))
+    if not args.cr_only:
+        budget_s = float(env_kwargs["time_budget_s"])
+        schedules["log_grid_trmatched"] = make_log_grid_trmatched(budget_s, npe)
+        n_trmatched = max(1, int(np.floor(budget_s / (npe * _LOG_GRID_TR))))
+        print(f"[baseline_e2] log_grid_trmatched: {n_trmatched} TI points "
+              f"for budget={budget_s:.0f}s, Npe={npe}, TR={_LOG_GRID_TR}s")
     cr_timing = _cr_timing_constraints_from_env(env_kwargs, seed=args.seed)
     print("[baseline_e2] CR timing constraints from E2 env: "
           f"TR_lo_floor={cr_timing['tr_lo_floor']:.3f}s, "
