@@ -38,6 +38,90 @@ really changes from scan to scan, the RL policy does beat the matched fixed
 log-grid comparator. This is the positive adaptive result, but it should not be
 overstated as a solution to the full 14-sphere mapping problem.
 
+\section{Position relative to adaptive MRI work}
+\label{sec:e2-related-position}
+
+This chapter sits between three related literatures: adaptive model-based MRI,
+automated sequence design, and reinforcement-learning control of MRI scanners.
+It is not the first work to adapt an MR acquisition, nor the first work to use
+machine learning for sequence design. The narrower contribution is a
+simulation-in-the-loop RL environment for qMRI in which the agent controls a
+spatially encoded 2-D acquisition of a calibrated phantom, receives fitted
+tissue-parameter estimates during the scan, and is evaluated against fixed qMRI
+protocols.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{0.96}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{2.7cm}
+>{\raggedright\arraybackslash}p{4.2cm}
+>{\raggedright\arraybackslash}X}
+\toprule
+Work & What it demonstrates & Critical comparison \\
+\midrule
+Adaptive model-based MR~\cite{adaptive_mri:23} &
+Bayesian update of tissue-parameter uncertainty during a real-time multi-echo
+experiment, with simulation, phantom and healthy-volunteer validation &
+Stronger external validation than this project, including real hardware. It is
+not an RL controller, and the reported task is a model-based adaptive T2/MRS
+experiment rather than RL control over a 2-D qMRI phantom acquisition. \\
+\addlinespace
+MRzero~\cite{MRISeqSupLearning:21} &
+End-to-end differentiable optimisation of sequence parameters, including a
+clinical 3T scanner demonstration &
+Much stronger hardware evidence. However, the optimisation is supervised and
+offline: it learns a sequence, not a closed-loop policy that changes actions from
+the current fitted tissue estimates. \\
+\addlinespace
+AUTOSEQ~\cite{zhu2018autoseq} &
+Bayesian RL-style search over sequence actions in preliminary 1-D physics
+simulation experiments &
+Important early evidence that MR sequence design can be framed as sequential
+control, but the task is deliberately simplified. It does not evaluate adaptive
+qMRI estimation on a spatially encoded calibration phantom. \\
+\addlinespace
+Walker-Samuel~\cite{Walk_RL_CONTROL_MRI:19} &
+DDPG control of a simulated scanner for task-specific active sensing and
+shape classification &
+The closest direct deep-RL comparator. It shows an RL agent can actively choose
+scanner actions, but the objective is shape classification, not calibrated
+parameter mapping. Walker-Samuel's task is more open-ended in one important
+respect: the agent has to discover useful scanner behaviour from lower-level
+controls. This project gives the agent higher-level IR-SE building blocks and a
+fitter. The trade-off is realism of the quantitative evaluation: this chapter
+uses 2-D k-space reconstruction, a digital QalibreMD phantom, noise, and fitted
+$T_1$ error as the reward. It is still weaker because it remains simulator-only. \\
+\addlinespace
+MRF optimisation~\cite{Jordan_MRF_AUTO:21,mehta_mrf_review:2019} &
+Offline design of time-varying schedules for multi-parameter fingerprints &
+Directly relevant to quantitative imaging and multi-parameter contrast, but the
+schedule is fixed before acquisition. The missing ingredient, which this chapter
+tests in a narrower T1 setting, is observation-conditioned adaptation during the
+scan. \\
+\bottomrule
+\end{tabularx}
+\caption{Position of this chapter relative to the main adaptive and automated
+MRI sequence-design papers discussed in Chapter~\ref{ch2}. The comparison is not
+a claim that this work is broadly superior: existing adaptive MR and MRzero have
+stronger hardware validation, while this chapter contributes a more realistic
+deep-RL qMRI control setting than the closest prior RL scanner-control work.}
+\label{tab:e2-related-position}
+\end{table}
+
+The key distinction is therefore methodological rather than absolute
+performance. Compared with the strongest hardware-validated papers, this project
+is less mature because every result is still simulated. Compared with the
+closest RL scanner-control work, it is more structured but more quantitative:
+the agent is not discovering arbitrary pulse-sequence behaviour from scratch,
+because the sequence family and fitter are supplied. Instead, it must improve
+fitted relaxation estimates after a 2-D k-space acquisition of known phantom
+materials. The positive Run B result should be read in that context: it is
+evidence that RL can learn a useful closed-loop qMRI timing strategy in a more
+realistic evaluation pipeline, not proof that it is already ready for scanner
+use.
+
 \section{Environment formulation}
 \label{sec:e2-env}
 
@@ -54,6 +138,11 @@ $N_\mathrm{pe}\cdot \mathrm{TR}$ seconds.
 The action is a continuous choice of acquisition parameters. In Run A the policy
 learned $\mathrm{TI}$, $\mathrm{TR}$ and flip angle $\alpha$; in the later
 five-sphere ablations $\alpha$ was fixed at $90^\circ$ unless stated otherwise.
+This was an evidence-based simplification. In Run A the learned flip angles
+collapsed to $90^\circ$, and the Cramer--Rao fixed-schedule baseline also chose
+$90^\circ$ because it reduced the CRLB. The flip-angle degree of freedom was
+therefore redundant for the T1 experiments reported here, so later runs used the
+capacity on timing decisions rather than re-learning the same boundary solution.
 The environment repairs infeasible timing requests rather than terminating the
 episode: if $\mathrm{TR}$ is too short to contain $\mathrm{TI}+\mathrm{TE}$, it
 is lifted to the feasible minimum. This keeps early PPO rollouts from being
@@ -264,7 +353,10 @@ better. The cached-best checkpoint had reached longer TIs and reduced errors in
 Pools 2--4, but this behaviour was eroded by the later expensive stages. The
 flip-angle degree of freedom also collapsed to $90^\circ$: the final policy did
 not learn a useful Ernst-angle trade-off, and the best fixed Cramer--Rao
-baseline also selected $90^\circ$ flip angles.
+baseline also selected $90^\circ$ flip angles. This is why $\alpha$ was fixed in
+the later Run B family: both the learned policy and the CRLB baseline indicated
+that the useful optimisation pressure was in TI/TR timing, not flip-angle
+selection.
 
 The Run A interpretation is therefore:
 \begin{itemize}
@@ -467,12 +559,6 @@ study, not as a general autonomous MRI protocol designer.
 \section{Future work}
 \label{sec:e2-future}
 
-The immediate future work is to make the Run B result report-grade. The 240 s
-global-best policy should be re-evaluated on a strict seed-600000 held-out set,
-then repeated with at least two additional training seeds. If the effect remains
-near 3.6\% versus a 5.6\% fixed baseline, it becomes the cleanest quantitative
-claim in the report.
-
 The next algorithmic step is to improve the curriculum controller. Run A showed
 that \texttt{full3} can be a biased rung; Run B showed that global-best
 checkpointing protects against late drift. A simpler ladder,
@@ -497,15 +583,21 @@ sampled, while remaining compact and order-invariant. A recurrent policy is the
 learned alternative, but it is harder to debug and should be compared against
 the histogram baseline rather than used alone.
 
-The most important scientific extension is to widen the action space. The agent
-should eventually choose between sequence families: inversion-recovery spin
-echo, ordinary spin echo, multi-spin-echo trains, and possibly spoiled-GRE-like
-readouts. That would test a more interesting adaptive question: whether the next
-block should reduce $T_1$ uncertainty, $T_2$ uncertainty, or spatial uncertainty.
-This is closer to magnetic resonance fingerprinting, where sequence schedules
-are designed to make tissue trajectories distinguishable~\cite{mehta_mrf_review:2019,Jordan_MRF_AUTO:21}.
-It also requires a more general fitter or dictionary model, because the current
-fitter assumes one generalized IR spin-echo signal family.
+The most important scientific extension is to widen the action space and repeat
+the experiment beyond the T1 plate. First, the same adaptive framework should be
+tested with different sequence families: inversion-recovery spin echo, ordinary
+spin echo, multi-spin-echo trains, and possibly spoiled-GRE-like readouts. In
+parallel, the target should expand from the T1 spheres to the T2 and PD plates,
+where the informative acquisition parameters are different. The next step is a
+combined multi-parameter task in which the policy chooses not only TI and TR, but
+also echo time, echo-train structure, flip angle, and possibly readout budget.
+That would test a more interesting adaptive question: whether the next block
+should reduce $T_1$ uncertainty, $T_2$ uncertainty, PD uncertainty, or spatial
+uncertainty. This is closer to magnetic resonance fingerprinting, where sequence
+schedules are designed to make tissue trajectories
+distinguishable~\cite{mehta_mrf_review:2019,Jordan_MRF_AUTO:21}. It also
+requires a more general fitter or dictionary model, because the current fitter
+assumes one generalized IR spin-echo signal family.
 
 Finally, the objective should become a Pareto curve rather than one fixed scan
 time. In clinical use, a protocol that reaches 5\% MAPE in 120 s may be more
