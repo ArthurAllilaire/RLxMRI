@@ -633,7 +633,16 @@ def plot_alpha_vs_tr_vs_t1(episodes, out_path):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--policy",   type=Path, required=True)
+    p.add_argument("--from-run", type=Path, default=None,
+                   help="Load the env config from this run dir's run_config.json "
+                        "(so diagnostics match training exactly — no need to "
+                        "repeat --field/--fix-te/--learn-alpha/--subset-size/… by "
+                        "hand). Also defaults --policy/--vecnorm to "
+                        "<dir>/policy.zip,vecnorm.pkl. Inherits the run's "
+                        "forced_sphere_indices, t1_sampler, pose_mode and "
+                        "roi_radius, which this script otherwise can't set.")
+    p.add_argument("--policy",   type=Path, default=None,
+                   help="Policy .zip. Optional if --from-run is given.")
     p.add_argument("--vecnorm",  type=Path, default=None)
     p.add_argument("--episodes", type=int,  default=30)
     p.add_argument("--seed",     type=int,  default=500_000)
@@ -685,34 +694,57 @@ def main():
     p.add_argument("--npe", type=int, default=None)
     args = p.parse_args()
 
+    if args.from_run is not None:
+        # Inherit the exact env config from the run, so diagnostics can't drift
+        # from training. Default the policy/vecnorm to the run dir too.
+        from e2_config import load_run_env_kwargs
+        env_kwargs = load_run_env_kwargs(args.from_run)
+        if args.policy is None:
+            args.policy = args.from_run / "policy.zip"
+        if args.vecnorm is None and (args.from_run / "vecnorm.pkl").exists():
+            args.vecnorm = args.from_run / "vecnorm.pkl"
+        # The loaded config already carries forced_sphere_indices, t1_sampler,
+        # pose_mode, roi_radius, etc. Only overlay diagnostic-only knobs the user
+        # explicitly asked for; leave the env-shape args alone.
+        if args.subset_size is not None:
+            env_kwargs["subset_size"] = args.subset_size
+        if args.nfe is not None:
+            env_kwargs["Nfe"] = args.nfe
+        if args.npe is not None:
+            env_kwargs["Npe"] = args.npe
+        print(f"[diagnose] env config loaded from {args.from_run}/run_config.json")
+    else:
+        env_kwargs = dict(
+            cfg_field=args.field,
+            max_blocks=args.max_blocks,
+            time_budget_s=args.time_budget,
+            subset_size=args.subset_size,
+            phase_sensitive=args.phase_sensitive,
+            sigma_method=args.sigma_method,
+            simplified_action=args.simplified_action,
+            fix_te=args.fix_te,
+            learn_alpha=args.learn_alpha,
+            log_ti_action=args.log_ti_action,
+            include_image=args.include_image,
+            include_sigma=args.include_sigma,
+            water_model=args.water_model,
+            noise_sigma_abs=args.noise_sigma_abs,
+            reward_mode=args.reward_mode,
+            terminal_bonus=args.terminal_bonus,
+            mape_alpha=args.mape_alpha,
+            allow_stop=args.allow_stop,
+            use_gpu=args.use_gpu,
+        )
+        if args.nfe is not None:
+            env_kwargs["Nfe"] = args.nfe
+        if args.npe is not None:
+            env_kwargs["Npe"] = args.npe
+
+    if args.policy is None:
+        p.error("--policy is required unless --from-run is given.")
+
     out_dir = args.out or (args.policy.parent / "diagnostics")
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    env_kwargs = dict(
-        cfg_field=args.field,
-        max_blocks=args.max_blocks,
-        time_budget_s=args.time_budget,
-        subset_size=args.subset_size,
-        phase_sensitive=args.phase_sensitive,
-        sigma_method=args.sigma_method,
-        simplified_action=args.simplified_action,
-        fix_te=args.fix_te,
-        learn_alpha=args.learn_alpha,
-        log_ti_action=args.log_ti_action,
-        include_image=args.include_image,
-        include_sigma=args.include_sigma,
-        water_model=args.water_model,
-        noise_sigma_abs=args.noise_sigma_abs,
-        reward_mode=args.reward_mode,
-        terminal_bonus=args.terminal_bonus,
-        mape_alpha=args.mape_alpha,
-        allow_stop=args.allow_stop,
-        use_gpu=args.use_gpu,
-    )
-    if args.nfe is not None:
-        env_kwargs["Nfe"] = args.nfe
-    if args.npe is not None:
-        env_kwargs["Npe"] = args.npe
     snr_measurement = {}
     if args.from_json is not None:
         print(f"[diagnose] Loading episodes from {args.from_json} (skipping Julia) …")

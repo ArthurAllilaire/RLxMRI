@@ -1233,6 +1233,95 @@ the report tables. The lower-level Python `reset(..., forced_sphere_indices=...)
 path remains eval-only and historically used 0-based indices internally; do not
 mix the two conventions in report commands.
 
+**Run B GPU — eval & diagnose after the run finished.** The GPU run
+`runs/e2/mf_runB_cached3_cached_full3_full_gpu` is complete. The reporting
+checkpoint is `global_best/best_policy.zip` (selected on the full-Bloch target by
+the 12-episode confirmation eval, which scored 4.31% MAPE / p90 6.26% / 75%
+success — re-confirm on 24 held-out episodes below). Both `eval_e2.py` and
+`diagnose_e2.py` now take `--from-run`, which inherits the exact env config from
+`run_config.json` (field, `fix_te`, `learn_alpha`, `log_ti_action`,
+`forced_sphere_indices=1,3,6,8,14`, `t1_sampler=linear_uniform_range`,
+`pose_mode=inplane_jitter`, `roi_radius=1`, σ=50, …) so the eval can't drift from
+training. Note: `eval_e2 --from-run` overlays `roi_radius` from the `--roi-radius`
+arg (default 0), so re-pass `--roi-radius 1`; `diagnose_e2 --from-run` inherits
+`roi_radius` directly. `use_gpu=true` is baked into the config, but this is
+harmless on a CPU-only box: with the plain `julia_runtime` project, `using CUDA`
+fails, `_ensure_julia` warns once, and KomaMRI's `sim_params["gpu"]=true`
+falls back to the CPU automatically — no override needed. Only use the
+`julia_runtime_gpu` project when an NVIDIA/CUDA GPU is actually present. The three
+commands (global-best eval, final-policy eval for the "final ≠ best" comparison,
+and global-best diagnostics) are identical between the two variants; only the
+runtime project and thread counts differ.
+
+**CPU variant** (e.g. local Apple Silicon; 5 threads, plain runtime, `use_gpu`
+falls back):
+
+```bash
+source .venv/bin/activate
+export PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime"
+export PYTHON_JULIAPKG_OFFLINE=yes
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+export PYTHON_JULIACALL_THREADS=5
+export JULIA_NUM_THREADS=5
+R=runs/e2/mf_runB_cached3_cached_full3_full_gpu
+
+# Global-best checkpoint — the reporting policy, 24 held-out episodes
+PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+  --policy "$R/global_best/best_policy.zip" \
+  --vecnorm "$R/global_best/best_vecnorm.pkl" \
+  --episodes 24 --seed 500000 --roi-radius 1 \
+  2>&1 | tee "$R/eval_globalbest_24ep.log"
+
+# Final-stage policy (the "final ≠ best" comparison) — defaults to $R/policy.zip
+PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+  --episodes 24 --seed 500000 --roi-radius 1 \
+  2>&1 | tee "$R/eval_final_24ep.log"
+
+# Adaptivity diagnostics on the global-best checkpoint
+PYTHONUNBUFFERED=1 python -u python/diagnose_e2.py --from-run "$R" \
+  --policy "$R/global_best/best_policy.zip" \
+  --vecnorm "$R/global_best/best_vecnorm.pkl" \
+  --episodes 24 --seed 500000 \
+  --out "$R/global_best/diagnostics" \
+  2>&1 | tee "$R/diagnose_globalbest.log"
+```
+
+**GPU variant** (NVIDIA/CUDA box; 3 threads, GPU runtime):
+
+```bash
+source .venv/bin/activate
+export PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu"
+export PYTHON_JULIAPKG_OFFLINE=yes
+export PYTHON_JULIACALL_HANDLE_SIGNALS=yes
+export PYTHON_JULIACALL_THREADS=3
+export JULIA_NUM_THREADS=3
+R=runs/e2/mf_runB_cached3_cached_full3_full_gpu
+
+# Global-best checkpoint — the reporting policy, 24 held-out episodes
+PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+  --policy "$R/global_best/best_policy.zip" \
+  --vecnorm "$R/global_best/best_vecnorm.pkl" \
+  --episodes 24 --seed 500000 --roi-radius 1 \
+  2>&1 | tee "$R/eval_globalbest_24ep.log"
+
+# Final-stage policy (the "final ≠ best" comparison) — defaults to $R/policy.zip
+PYTHONUNBUFFERED=1 python -u python/eval_e2.py --from-run "$R" \
+  --episodes 24 --seed 500000 --roi-radius 1 \
+  2>&1 | tee "$R/eval_final_24ep.log"
+
+# Adaptivity diagnostics on the global-best checkpoint
+PYTHONUNBUFFERED=1 python -u python/diagnose_e2.py --from-run "$R" \
+  --policy "$R/global_best/best_policy.zip" \
+  --vecnorm "$R/global_best/best_vecnorm.pkl" \
+  --episodes 24 --seed 500000 \
+  --out "$R/global_best/diagnostics" \
+  2>&1 | tee "$R/diagnose_globalbest.log"
+```
+
+Seed `500000` matches the held-out eval seed of the §6.6 baseline tables, so the
+result is directly comparable to `cr_optimal_alpha` 4.70% and
+`log_grid_trmatched` 5.80% on the five-sphere task.
+
 **ROI=1 / clean recon branch.** I think `ROI=1` is worth testing before spending a
 full Run B budget. The current training hot path samples a single centre pixel
 from each sphere (`ROI=0`) in `_e2_sphere_signals`; SNR diagnostics already
