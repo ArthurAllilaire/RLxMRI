@@ -1,0 +1,528 @@
+\chapter{Adaptive qMRI Sequence Design with Reinforcement Learning}
+\label{ch:adaptive-rl}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% IMPORTANT
+\begin{spacing}{1} %THESE FOUR
+\minitoc % LINES MUST APPEAR IN
+\end{spacing} % EVERY
+\thesisspacing % CHAPTER
+% COPY THEM IN ANY NEW CHAPTER
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\setlength{\textfloatsep}{9pt plus 2pt minus 2pt}
+\setlength{\floatsep}{7pt plus 2pt minus 2pt}
+\setlength{\intextsep}{7pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{3pt}
+\setlength{\belowcaptionskip}{0pt}
+
+\section{Chapter aim}
+\label{sec:e2-chapter-aim}
+
+The previous chapters established the simulator and digital phantom. This
+chapter uses them for the central adaptive acquisition experiment: can a
+reinforcement learning (RL) agent choose inversion-recovery spin-echo blocks
+that estimate $T_1$ more efficiently than a fixed protocol?
+
+This chapter addresses C2 and C3 from Chapter~\ref{ch1}. C2 is the compute
+problem: a full KomaMRI Bloch simulation is too slow to use naively inside RL.
+C3 is the adaptive design problem: the best next acquisition should depend on
+what has already been measured, not only on a fixed protocol chosen before the
+scan. The main technical contribution is therefore a multi-fidelity RL training
+loop, plus a controlled evaluation of when adaptivity actually helps.
+
+The conclusion is deliberately nuanced. On the full 14-sphere $T_1$ plate, the
+agent learned a non-collapsed adaptive policy, but strong fixed schedules still
+beat it. On a smaller five-sphere continuous-$T_1$ task, where the episode
+really changes from scan to scan, the RL policy does beat the matched fixed
+log-grid comparator. This is the positive adaptive result, but it should not be
+overstated as a solution to the full 14-sphere mapping problem.
+
+\section{Environment formulation}
+\label{sec:e2-env}
+
+Each episode simulates a 2-D inversion-recovery spin-echo acquisition through
+the T1 plate of the digital phantom. At each decision point the agent chooses
+the timing of the next block. The reported runs use $N_\mathrm{pe}=32$,
+$N_\mathrm{fe}=64$, 1 mm sphere voxels, full background water at target
+fidelity, fixed echo time $\mathrm{TE}=20$ ms, and additive complex Gaussian
+noise with $\sigma=50$ in the simulator signal scale. The scan-time budget is
+240 s for the main experiments in this chapter. Since one phase-encode line is
+acquired per shot, each block costs approximately
+$N_\mathrm{pe}\cdot \mathrm{TR}$ seconds.
+
+The action is a continuous choice of acquisition parameters. In Run A the policy
+learned $\mathrm{TI}$, $\mathrm{TR}$ and flip angle $\alpha$; in the later
+five-sphere ablations $\alpha$ was fixed at $90^\circ$ unless stated otherwise.
+The environment repairs infeasible timing requests rather than terminating the
+episode: if $\mathrm{TR}$ is too short to contain $\mathrm{TI}+\mathrm{TE}$, it
+is lifted to the feasible minimum. This keeps early PPO rollouts from being
+dominated by invalid actions, but the repair rate is logged so it cannot hide a
+policy that relies on the guardrail.
+
+The observation contains the current fitted $T_1$ estimates for the active
+spheres and two budget variables: fraction of scan time used and fraction of
+blocks used. Some ablations add an uncertainty proxy from the fitter, but the
+main 240 s result does not. After each block, the environment reconstructs the
+image, extracts each sphere's region-of-interest signal, refits $T_1$, and
+computes the reward. The main reward is the improvement in log-MAPE:
+
+\[
+    r_t =
+    \log\!\left(\mathrm{MAPE}_{t-1} + \epsilon\right)
+    - \log\!\left(\mathrm{MAPE}_{t} + \epsilon\right).
+\]
+
+This reward is dense and local: it rewards a block for reducing the current
+estimation error, rather than only awarding a terminal score. This was important
+because the earlier E1 single-voxel experiment collapsed to a nearly fixed
+policy when a large terminal bonus made it sufficient to finish the episode
+rather than optimise the measurement sequence.
+
+Training uses PPO~\cite{schulman_ppo_2017}. PPO was chosen because it is a
+robust on-policy baseline and can be used with continuous actions without
+needing a replay buffer. This matters for the Python--Julia simulator loop:
+rollouts are expensive, and keeping the algorithm simple made debugging the
+physics and reward path more important than tuning an off-policy learner.
+
+\section{Multi-fidelity curriculum}
+\label{sec:e2-mf-method}
+
+The main engineering difficulty is simulator cost. A full-fidelity KomaMRI call
+must simulate all sphere and water spins for a multi-shot 2-D acquisition. At
+the Run A configuration, a target-fidelity step took about 1 s on the GPU
+runtime and several seconds on CPU. A 200k-step single-fidelity run would
+therefore take days before evaluation overheads.
+
+The project uses a ladder of forward models:
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{0.92}
+\begin{tabular}{lll}
+\toprule
+Fidelity & Computation & Main bias \\
+\midrule
+\texttt{analytic} & closed-form per-sphere signal, no KomaMRI & no reconstruction or water crosstalk \\
+\texttt{cached3} & Bloch spheres + cached 3 mm water template & coarse/cached water approximation \\
+\texttt{cached} & Bloch spheres + cached 1 mm water template & cached water, target geometry \\
+\texttt{full3} & full Bloch with 3 mm water voxels & coarse water discretisation \\
+\texttt{full} & full Bloch with 1 mm water voxels & target fidelity \\
+\bottomrule
+\end{tabular}
+\caption{Fidelity ladder used for E2. Lower fidelities are cheaper but biased.
+The curriculum is useful only if switching is driven by target-fidelity
+performance, not by the cheap simulator validating itself.}
+\label{tab:e2-fidelity-ladder}
+\end{table}
+
+The switch rule was inspired by two strands of multi-fidelity RL. Sifaou and
+Simeone frame fidelity selection as maximising information gain about the target
+policy per unit simulation cost~\cite{sifaou_mf_hrl_2025}. Cutler, Walsh and
+How use a simulator hierarchy in which an agent should move to higher fidelity
+when lower-fidelity samples stop being useful for the real task
+~\cite{cutler_multifidelity_2015}. This project does not implement either paper
+directly: it does not maintain a posterior over policies, and it does not use
+their theoretical switching machinery. Instead, it adapts the same principle to
+the practical PPO setting.
+
+The implemented rule periodically evaluates the current policy on a small
+held-out \texttt{full} probe, even while training at a cheaper fidelity. The
+target score is
+
+\[
+    P_H = -\log_{10}\!\left(\mathrm{clamp}(\mathrm{MAPE}_H,
+    \epsilon, 1)\right),
+\]
+
+where $\mathrm{MAPE}_H$ is measured using the high-fidelity environment. The
+trainer promotes to the next fidelity when one of four signals fires: target
+score plateau, cheap/full ranking breakdown, cheap/full bias above tolerance,
+or the wall-clock reserve for the final full stage. A V2 extension adds a short
+lookahead: if the current target-fidelity slope per wall-clock second collapses,
+a clone of the policy is briefly trained at the next fidelity and scored on the
+same full-fidelity probe. Promotion on slope grounds happens only if this
+lookahead improves the target score per second by a margin.
+
+This makes the method bias-aware. A cheap simulator is allowed to generate
+rollouts, but it is not allowed to decide that its own policy is good. The price
+is occasional full-Bloch probing during cheap stages. This is acceptable because
+the probe is small; it is used for switching, not for final statistical claims.
+
+The final implementation also stores a global-best checkpoint. This was added
+after Run A showed that the last policy in a curriculum can be worse than an
+earlier checkpoint. A four-episode probe can screen candidates, but a separate
+confirmation evaluation is required before replacing
+the global-best checkpoint.
+% Implementation checkpoint path: global_best/best_policy.zip.
+
+\section{Run A: full 14-sphere T1 plate}
+\label{sec:e2-run-a}
+
+Run A was the first end-to-end V2 curriculum. It used the full 14-sphere T1
+plate, a 240 s scan budget, $T15$ field values, $\sigma=50$, fixed TE, and
+learned $\alpha$. The ladder was
+\[
+\texttt{analytic} \rightarrow \texttt{cached3} \rightarrow
+\texttt{full3} \rightarrow \texttt{full}.
+\]
+The run was trained under a 9 h wall-clock budget.
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{0.92}
+\begin{tabular}{lrrrr}
+\toprule
+Stage & Steps & Wall [h] & s/step & End full-Bloch MAPE \\
+\midrule
+\texttt{analytic} & 8.2k & 0.08 & 0.034 & 16.60\% \\
+\texttt{cached3}  & 41.0k & 3.28 & 0.338 & \textbf{10.37\%} \\
+\texttt{full3}    & 73.7k & 3.94 & 0.416 & 14.03\% \\
+\texttt{full}     & 79.5k & 1.64 & 1.03  & 12.26\% \\
+\bottomrule
+\end{tabular}
+\caption{Run A stage summary. The productive stage was \texttt{cached3}; moving
+to \texttt{full3} degraded the target-fidelity score, and the final full stage
+did not recover the best cached checkpoint.}
+\label{tab:run-a-stages}
+\end{table}
+
+\begin{figure}[!htbp]
+\centering
+\begin{minipage}[c]{0.50\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runA_moneyplot.png}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.46\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runA_ti_per_episode.png}
+\end{minipage}
+\caption{Run A curriculum behaviour. Left: full-Bloch probe MAPE versus
+wall-clock time. The cached-water stage reached the best basin, then full3
+regressed. Right: the learned policy was not collapsed; TI varies across
+episodes and within an episode, but the final policy still under-sampled the
+long-T1 regime.}
+\label{fig:run-a-behaviour}
+\end{figure}
+
+Figure~\ref{fig:run-a-behaviour} is the main diagnostic. The analytic stage
+learned a rough timing policy very cheaply. The cached stage then improved the
+high-fidelity score into the 8--10\% range. The problem occurred after the
+switch to \texttt{full3}: the target-fidelity score jumped back up and remained
+worse than the cached basin. The 3 mm-water full-Bloch environment was therefore
+not a harmless bridge to the 1 mm target; it changed the policy optimum.
+
+The lookahead mechanism gave a useful warning. At the cached-to-full3 boundary,
+a clone trained briefly at \texttt{full3} became worse on the full-Bloch probe.
+The slope rule did not promote on that basis; the older plateau fallback
+promoted anyway. This is an important negative result. The controller detected
+that the next rung was not immediately useful, but the action space of the
+controller did not include ``skip this rung and keep the global best''.
+
+Run A was evaluated on a strict seed-600000 held-out set. This seed was not used
+for policy training, curriculum switching, or checkpoint selection, so the
+negative result in Table~\ref{tab:run-a-current-comparison} is not a validation
+leakage artefact.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.92}
+\begin{tabular}{lrrrr}
+\toprule
+Policy or schedule & Mean MAPE & 95\% CI & p90 & Mean time \\
+\midrule
+\texttt{cr\_optimal\_alpha} fixed schedule & \textbf{4.70\%} & [4.42, 5.00] & \textbf{5.68\%} & 240 s \\
+\texttt{log\_grid\_trmatched} fixed schedule & 5.80\% & [5.24, 6.40] & 8.06\% & 218 s \\
+Run A cached-best checkpoint & 9.44\% & [8.18, 10.94] & 14.11\% & 231 s \\
+Run A final policy & 11.68\% & [10.42, 13.03] & 15.22\% & 232 s \\
+Run A analytic checkpoint & 16.03\% & [13.97, 18.56] & 20.87\% & 223 s \\
+\bottomrule
+\end{tabular}
+\caption{Run A comparison on 24 strict seed-600000 held-out evaluation episodes.
+The agent was adaptive, but the fixed schedules were better on the full
+14-sphere task.}
+\label{tab:run-a-current-comparison}
+\end{table}
+
+The learned policy was nevertheless not the E1 failure mode. Diagnostics over
+24 episodes gave TI intra-episode log standard deviation 0.281, inter-episode
+log standard deviation 0.290, and modal-bin share 11.9\%. The chosen TI also
+correlated positively with the running estimate and with the most uncertain
+sphere ($r=+0.50$ and $r=+0.64$ respectively). In other words, the policy was
+using the state, not replaying one fixed list of actions.
+
+The failure was more specific. The final policy concentrated its TIs below the
+longest inversion nulls, so the long-$T_1$ spheres dominated the error. Pool 1
+($T_1=1.88$ s) remained at about 41\% MAPE, while mid/short $T_1$ pools were far
+better. The cached-best checkpoint had reached longer TIs and reduced errors in
+Pools 2--4, but this behaviour was eroded by the later expensive stages. The
+flip-angle degree of freedom also collapsed to $90^\circ$: the final policy did
+not learn a useful Ernst-angle trade-off, and the best fixed Cramer--Rao
+baseline also selected $90^\circ$ flip angles.
+
+The Run A interpretation is therefore:
+\begin{itemize}
+\setlength{\itemsep}{1pt}
+    \item multi-fidelity training made the experiment computationally feasible;
+    \item the policy learned a genuine state-dependent timing strategy;
+    \item the final 14-sphere agent did not beat fixed schedules;
+    \item global-best checkpointing is required because later fidelity stages can erase a useful cheap-stage policy;
+    \item the full 14-sphere task rewards robust global coverage, so it is not the best test of closed-loop adaptivity.
+\end{itemize}
+
+\section{Run B: five-sphere continuous-T1 task}
+\label{sec:e2-run-b}
+
+Run B changes the task so that adaptivity has a fairer chance to matter. The
+physical sphere labels are fixed at \(\{1,3,6,8,14\}\), covering the long, mid
+and short ends of the T1 plate. However, their $T_1$ values are sampled
+continuously each episode over the T15 phantom range, with $T_2$ and $T_2^*$
+preserving their nominal ratios to $T_1$. The geometry is therefore stable, but
+the realised relaxation distribution changes from scan to scan.
+
+This is easier than the full 14-sphere problem, and it is important to say so.
+It is not a replacement headline for full phantom mapping. Its purpose is to
+test the specific adaptive claim: when the episode's tissue parameters vary,
+can the agent use early measurements to choose a better later timing schedule
+than a fixed grid?
+
+The main completed Run B result is the 240 s no-uncertainty GPU run.
+% Source run directory: runs/e2/mf_runB_cached3_cached_full3_full_gpu.
+It used the ladder
+\[
+\texttt{analytic} \rightarrow \texttt{cached3} \rightarrow
+\texttt{cached} \rightarrow \texttt{full3} \rightarrow \texttt{full}.
+\]
+The extra \texttt{cached} stage is the target-resolution cached-water bridge
+missing from Run A. The reporting checkpoint is the global-best policy, not the
+last policy.
+
+\begin{figure}[!htbp]
+\centering
+\begin{minipage}[c]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runB_mape_comparison.png}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runB_per_pool.png}
+\end{minipage}
+\caption{Run B five-sphere results. Left: global-best RL policies compared with
+the matched fixed log-grid baseline. The 240 s result is baseline-comparable but
+not a strict held-out seed; the 560 s bars use strict held-out evaluation. Right:
+per-active-pool MAPE for the RL policies.}
+\label{fig:run-b-results}
+\end{figure}
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{0.92}
+\begin{tabular}{lrrrr}
+\toprule
+Policy or schedule & Mean MAPE & 95\% CI & p90 & Success $<5\%$ \\
+\midrule
+Run B RL global best & \textbf{3.61\%} & [3.26, 3.98] & \textbf{4.55\%} & \textbf{91.7\%} \\
+Run B RL final policy & 4.19\% & [3.82, 4.58] & 5.26\% & 83.3\% \\
+Fixed \texttt{log\_grid\_trmatched} & 5.60\% & [5.09, 6.13] & 7.08\% & -- \\
+\bottomrule
+\end{tabular}
+\caption{Run B 240 s five-sphere result on 24 seed-500000 evaluation episodes.
+This seed was also used by training evaluation, so the result should be
+confirmed with a strict held-out seed before becoming the sole headline table.
+It is nevertheless the matched comparison against the available 240 s fixed
+baseline.}
+\label{tab:run-b-240}
+\end{table}
+
+The 240 s policy beats the matched fixed log-grid comparator by about two
+percentage points of mean MAPE. The per-pool breakdown is also balanced: Pools
+1, 3, 6, 8 and 14 scored 3.67\%, 3.38\%, 3.22\%, 2.81\% and 4.97\% MAPE
+respectively. This matters because the result is not an average dominated by one
+easy pool. The shortest-$T_1$ active pool remains the hardest, but it is still
+below 5\% MAPE.
+
+\begin{figure}[!htbp]
+\centering
+\begin{minipage}[c]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runB_curriculum_probes.png}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runB_240_ti_per_episode.png}
+\end{minipage}
+\caption{Run B 240 s policy behaviour. Left: full-Bloch probes during the
+curriculum. The final full stage is noisy and global-best selection is needed.
+Right: the global-best policy opens with a high-TI probe and then uses shorter
+adaptive refinements.}
+\label{fig:run-b-policy}
+\end{figure}
+
+The learned schedule in Figure~\ref{fig:run-b-policy} is qualitatively
+different from Run A. The global-best 240 s policy uses 5.92 blocks on average,
+with no timing repairs. It usually starts with two high-TI probes around
+0.78--0.83 s and then moves to shorter refinements. The correlation between TI
+and current $T_1$ estimate is negative ($r=-0.720$ for the main diagnostic),
+which initially looks counter-intuitive. It is better interpreted as a
+two-phase strategy: first buy a long inversion probe that is informative across
+the sampled range, then shorten TI after the estimate has stabilised. This is a
+real adaptive pattern, but it is not the simple monotonic rule ``higher current
+$T_1$ implies longer next TI''.
+
+This result is the strongest evidence for A3. The task was deliberately
+constructed so that a fixed global schedule is less naturally optimal than in
+the 14-sphere case. The RL policy then found a compact closed-loop strategy that
+improved both mean and p90 error against the fixed comparator. The result is
+still bounded by two caveats: it uses one training seed, and the 240 s
+global-best policy still needs a strict seed-600000 re-evaluation to remove
+overlap with the training evaluation stream.
+
+\section{560 s and ablation status}
+\label{sec:e2-ablations}
+
+The longer-budget and observation ablations are not yet mature enough for a
+full results section, so they are summarised here.
+
+\begin{itemize}
+\setlength{\itemsep}{2pt}
+    \item \textbf{560 s no-uncertainty control.} The global-best policy scored
+    4.16\% MAPE on a strict 24-episode held-out evaluation, versus 5.86\% for
+    the fixed log-grid comparator on the same held-out call. This supports the
+    five-sphere adaptive result, but it is not a clean scan-time ablation of the
+    240 s run because the 560 s runs fixed $\alpha=90^\circ$ while the 240 s run
+    still learned $\alpha$.
+
+    \item \textbf{560 s uncertainty-channel treatment.} Adding
+    \(\log_{10}(\sigma_{T_1}/T_{1,\mathrm{est}})\) to the observation did not
+    improve strict held-out performance. The global-best policy scored 5.25\%
+    MAPE with p90 9.34\%, worse than the no-uncertainty control. The uncertainty
+    proxy is therefore not a positive result. It may be too noisy early in the
+    episode, when the fitter has only a few measurements.
+
+    \item \textbf{Global best versus final policy.} The 560 s no-uncertainty run
+    had an earlier confirmed global best near 3.45\% on the 12-episode
+    confirmation eval, but the final policy drifted to 7.12\% on the
+    seed-500000 24-episode eval. This reinforces the Run A lesson: the last
+    policy is not automatically the best policy in a multi-fidelity curriculum.
+
+    \item \textbf{Memory ablations.} Two memory mechanisms are planned but not
+    yet report-grade: an executed-TI histogram in the observation and a recurrent
+    PPO policy with an LSTM state. These test whether the current state
+    \([T_{1,\mathrm{est}},\mathrm{budget}]\) is an adequate summary of the
+    acquisition history. The hypothesis is concrete: two different TI histories
+    can produce similar current fits, but have different information value for
+    the next block.
+
+    \item \textbf{ROI and reconstruction ablations.} ROI radius 1 was used for
+    Run B to reduce centre-pixel sensitivity. A paired ROI 0/1 evaluation is
+    still needed before attributing gains specifically to adaptivity rather than
+    improved measurement extraction.
+\end{itemize}
+
+\section{Limitations}
+\label{sec:e2-limitations}
+
+The main limitation is scope. The positive result is a proof of concept on a
+controlled five-sphere task, not a solved full-phantom mapping problem. That task
+was deliberately engineered so that adaptivity could matter: the geometry was
+fixed, the active tissues were few, and the relaxation values changed between
+episodes. This is the right experiment for isolating closed-loop timing, but it
+is not yet evidence that the same policy class scales to all 14 T1 spheres, the
+T2 and PD plates, or pose uncertainty.
+
+The second limitation is task size. With five active spheres, the state estimate
+is compact and the reward signal is relatively direct. A full plate introduces a
+different regime: the policy must cover long and short relaxation times at once,
+avoid sacrificing hard pools for easy pools, and handle a larger set of coupled
+estimation errors. Run A shows this distinction clearly. It learned a
+state-dependent policy, but robust fixed coverage remained stronger.
+
+The third limitation is statistical breadth. The final tables use 24-episode
+evaluations and one training seed. This is adequate for the current conclusion:
+Run A is a strict held-out negative result, and Run B is a promising controlled
+positive result. It is not enough to claim that the method is insensitive to PPO
+initialisation, curriculum timing, or stochastic simulator noise.
+
+The fourth limitation is external validation. The original project plan included
+testing the learned protocol on real scanner hardware, but this was not reached.
+All results in this chapter are therefore simulator results. They test whether
+closed-loop sequence design can work inside the KomaMRI-based digital twin; they
+do not yet show that the learned timings transfer to scanner constraints,
+sequence programming details, reconstruction pipelines, or real phantom data.
+
+Finally, the action space is still narrow. The current policy tunes an
+IR-SE-style block, mostly through TI and TR. It cannot choose a different
+sequence family, change the phase-encode budget, or stop early to trade accuracy
+against scan time. The chapter should therefore be read as an adaptive T1 timing
+study, not as a general autonomous MRI protocol designer.
+
+\section{Future work}
+\label{sec:e2-future}
+
+The immediate future work is to make the Run B result report-grade. The 240 s
+global-best policy should be re-evaluated on a strict seed-600000 held-out set,
+then repeated with at least two additional training seeds. If the effect remains
+near 3.6\% versus a 5.6\% fixed baseline, it becomes the cleanest quantitative
+claim in the report.
+
+The next algorithmic step is to improve the curriculum controller. Run A showed
+that \texttt{full3} can be a biased rung; Run B showed that global-best
+checkpointing protects against late drift. A simpler ladder,
+\[
+\texttt{analytic} \rightarrow \texttt{cached} \rightarrow \texttt{full},
+\]
+should be tested against the current five-rung ladder. A more ambitious version
+would sample from several fidelities in parallel rather than treating the ladder
+as a serial hand-off. In the current runs, the GPU is largely idle during the
+analytic and cached stages; a parallel design could keep full-Bloch probes
+running while the cheap simulators generate high-throughput rollouts. Longer
+term, this becomes pooled multi-fidelity learning: cheap and expensive rollouts
+are used together with bias correction or control variates. This direction is
+directly connected to multi-fidelity control-variate and Gaussian-process RL
+methods~\cite{khairy_control_variates_2024,suryan_multifidelity_gp_2020}.
+
+The next state-representation step is to make acquisition history explicit. The
+uncertainty-channel ablation suggests that the fitter's own $\sigma$ estimate is
+not a reliable enough summary. A better engineered state is the executed-TI
+coverage histogram: it tells the policy which timing regions have already been
+sampled, while remaining compact and order-invariant. A recurrent policy is the
+learned alternative, but it is harder to debug and should be compared against
+the histogram baseline rather than used alone.
+
+The most important scientific extension is to widen the action space. The agent
+should eventually choose between sequence families: inversion-recovery spin
+echo, ordinary spin echo, multi-spin-echo trains, and possibly spoiled-GRE-like
+readouts. That would test a more interesting adaptive question: whether the next
+block should reduce $T_1$ uncertainty, $T_2$ uncertainty, or spatial uncertainty.
+This is closer to magnetic resonance fingerprinting, where sequence schedules
+are designed to make tissue trajectories distinguishable~\cite{mehta_mrf_review:2019,Jordan_MRF_AUTO:21}.
+It also requires a more general fitter or dictionary model, because the current
+fitter assumes one generalized IR spin-echo signal family.
+
+Finally, the objective should become a Pareto curve rather than one fixed scan
+time. In clinical use, a protocol that reaches 5\% MAPE in 120 s may be more
+valuable than one that reaches 3.5\% in 240 s. A stop action or explicit
+scan-time penalty would let the policy choose this trade-off, while fixed
+baselines can be compared across the same accuracy--time frontier.
+
+\section{Summary}
+\label{sec:e2-summary}
+
+This chapter produced two conclusions. First, multi-fidelity training is a
+necessary engineering mechanism for simulation-in-the-loop RL with KomaMRI. It
+made the experiments feasible and exposed where simulator bias affects policy
+selection. Second, adaptivity only showed a clear quantitative advantage on the
+task designed to require it. The full 14-sphere agent learned a state-dependent
+policy but lost to fixed schedules. The five-sphere continuous-$T_1$ agent beat
+the fixed log-grid comparator at 240 s, using a compact probe-then-refine
+strategy. That is the central positive result, and the limitations above define
+the work needed to turn it from a controlled demonstration into a robust qMRI
+sequence-design method.
