@@ -132,6 +132,14 @@ mutable struct E2Env
                                             # the obs. Default false (E2_RERUN_PLAN §6.3):
                                             # the σ-uncertainty machinery was a red herring
                                             # of the pre-fix sim.
+    include_ti_history::Bool               # include the executed-TI coverage histogram in
+                                            # the obs (E2_HISTORY_ABLATION.md §2): per-bin
+                                            # counts of executed blocks over uniform log-TI
+                                            # bins spanning the TI action bounds, divided by
+                                            # max_blocks. Permutation-invariant, matching the
+                                            # fitter (which consumes the SET of TI samples).
+    ti_hist_bins::Int                      # number of log-TI histogram bins (default 12 ≈
+                                            # 0.21 decades/bin over the 2.48-decade range).
     roi_radius::Int                        # square ROI half-width for per-sphere signal
                                             # extraction from the reconstructed image.
                                             # 0 = legacy centre pixel; 1 = 3×3 mean.
@@ -257,6 +265,8 @@ function E2Env(;
     fitter_n_grid::Integer         = 200,
     include_image::Bool            = false,            # E2_RERUN_PLAN §6.2
     include_sigma::Bool            = false,            # E2_RERUN_PLAN §6.3
+    include_ti_history::Bool       = false,            # E2_HISTORY_ABLATION.md §2
+    ti_hist_bins::Integer          = 12,               # log-TI bins over TI action bounds
     roi_radius::Integer             = 0,                # 0 = centre pixel; 1 = 3×3 mean
     include_water::Bool            = true,             # background-water spins on/off
     water_model::Symbol            = :bloch,           # :bloch | :cached_perline (water_cache.jl)
@@ -287,6 +297,8 @@ function E2Env(;
         error("mape_alpha must be in [0, 1]")
     Int(roi_radius) >= 0 ||
         error("roi_radius must be >= 0")
+    Int(ti_hist_bins) >= 1 ||
+        error("ti_hist_bins must be >= 1")
 
     # Base sphere info (no rotation/translation/jitter)
     base_cfg = PhantomConfig(field = cfg_field, include_plates = [:T1])
@@ -326,6 +338,8 @@ function E2Env(;
         Int(fitter_n_grid),
         Bool(include_image),
         Bool(include_sigma),
+        Bool(include_ti_history),
+        Int(ti_hist_bins),
         Int(roi_radius),
         Bool(include_water),
         water_model,
@@ -357,14 +371,16 @@ end
 
 """
 Observation dimension. The T1-estimate channel (n_spheres) and budget (3) are
-always present; the flattened image (Nfe*Npe) and the per-sphere σ-channel
-(n_spheres) are gated by `include_image` / `include_sigma` (both default false,
-E2_RERUN_PLAN §6.2–6.3). Default obs = n_spheres + 3.
+always present; the flattened image (Nfe*Npe), the per-sphere σ-channel
+(n_spheres) and the executed-TI coverage histogram (ti_hist_bins) are gated by
+`include_image` / `include_sigma` / `include_ti_history` (all default false,
+E2_RERUN_PLAN §6.2–6.3, E2_HISTORY_ABLATION.md §2). Default obs = n_spheres + 3.
 """
 e2_obs_dim(env::E2Env) =
     (env.include_image ? env.Nfe * env.Npe : 0) +
     env.n_spheres +
-    (env.include_sigma ? env.n_spheres : 0) + 3
+    (env.include_sigma ? env.n_spheres : 0) +
+    (env.include_ti_history ? env.ti_hist_bins : 0) + 3
 
 "Action space bounds: [TI_lo, TE_lo, TR_lo, α_deg_lo], same for hi."
 e2_action_lo(::E2Env) = Float64[0.010, 0.005, 0.5,   5.0]
@@ -521,9 +537,34 @@ function _e2_observation(env::E2Env)
         push!(parts, Float32.(sig_obs))
     end
 
+    # Optional executed-TI coverage histogram (E2_HISTORY_ABLATION.md §2).
+    if env.include_ti_history
+        push!(parts, _e2_ti_histogram(env))
+    end
+
     push!(parts, bgt)
 
     vcat(parts...)
+end
+
+"""
+Executed-TI coverage histogram: per-bin counts of executed blocks over
+`ti_hist_bins` uniform bins in the agent's log-TI action coordinate
+`u = log(TI/lo)/log(hi/lo)`, normalised by `max_blocks` so each bin sits in
+[0, 1]. Executed TIs come from `block_TIs` (recorded post-repair); they are
+identical across spheres, so sphere 1's history suffices. Order is discarded
+deliberately — the fitter consumes the SET of (TI, mag) pairs per sphere.
+"""
+function _e2_ti_histogram(env::E2Env)
+    lo = e2_action_lo(env)[1]
+    hi = e2_action_hi(env)[1]
+    hist = zeros(Float32, env.ti_hist_bins)
+    for TI in env.block_TIs[1]
+        u = log(clamp(TI, lo, hi) / lo) / log(hi / lo)
+        b = clamp(1 + floor(Int, u * env.ti_hist_bins), 1, env.ti_hist_bins)
+        hist[b] += 1f0
+    end
+    hist ./ Float32(env.max_blocks)
 end
 
 @inline function _e2_sigma_channel(σ::Float64, T1::Float64)

@@ -149,6 +149,15 @@ def add_e2_env_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--include-sigma", action="store_true",
                    help="Append the per-sphere fitter-σ channel to the "
                         "observation (E2_RERUN_PLAN §6.3). Default off.")
+    p.add_argument("--include-ti-history", action="store_true",
+                   help="Append the executed-TI coverage histogram to the "
+                        "observation: per-bin counts of executed blocks over "
+                        "uniform log-TI bins spanning the TI action bounds, "
+                        "divided by max_blocks (E2_HISTORY_ABLATION.md §2). "
+                        "Default off.")
+    p.add_argument("--ti-hist-bins", type=int, default=12,
+                   help="Number of log-TI histogram bins for "
+                        "--include-ti-history (default 12 ≈ 0.21 decades/bin).")
     p.add_argument("--roi-radius", type=int, default=0,
                    help="Square ROI half-width for per-sphere signal extraction "
                         "from the reconstructed image. 0 = centre pixel; "
@@ -214,6 +223,8 @@ def e2_env_kwargs(args: argparse.Namespace) -> dict:
         sigma_method=args.sigma_method,
         include_image=args.include_image,
         include_sigma=args.include_sigma,
+        include_ti_history=args.include_ti_history,
+        ti_hist_bins=args.ti_hist_bins,
         roi_radius=args.roi_radius,
         include_water=args.include_water,
         water_model=args.water_model,

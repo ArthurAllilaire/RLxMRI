@@ -131,12 +131,17 @@ class QalibreMDE2Env(gym.Env):
         # §17.10 control: bump fitter T1 grid resolution to test whether
         # baseline MAPE is grid-coarseness-limited.
         fitter_n_grid: int = 200,
-        # Observation channels (E2_RERUN_PLAN §6.2–6.3). Both default off, so
-        # obs = [log10(T1_est) per sphere, budget(3)]. Enable include_image to
-        # prepend the flattened normalised recon image (Nfe*Npe dims);
-        # include_sigma to append the per-sphere fitter-σ channel (n_spheres).
+        # Observation channels (E2_RERUN_PLAN §6.2–6.3, E2_HISTORY_ABLATION.md
+        # §2). All default off, so obs = [log10(T1_est) per sphere, budget(3)].
+        # Enable include_image to prepend the flattened normalised recon image
+        # (Nfe*Npe dims); include_sigma to append the per-sphere fitter-σ
+        # channel (n_spheres); include_ti_history to append the executed-TI
+        # coverage histogram (ti_hist_bins uniform log-TI bins, counts /
+        # max_blocks).
         include_image: bool = False,
         include_sigma: bool = False,
+        include_ti_history: bool = False,
+        ti_hist_bins: int = 12,
         roi_radius: int = 0,
         include_water: bool = True,
         water_voxel_size_mm: Optional[float] = None,
@@ -209,6 +214,8 @@ class QalibreMDE2Env(gym.Env):
             fitter_n_grid=int(fitter_n_grid),
             include_image=bool(include_image),
             include_sigma=bool(include_sigma),
+            include_ti_history=bool(include_ti_history),
+            ti_hist_bins=int(ti_hist_bins),
             roi_radius=int(roi_radius),
             include_water=bool(include_water),
             water_model=jl.Symbol(water_model),
