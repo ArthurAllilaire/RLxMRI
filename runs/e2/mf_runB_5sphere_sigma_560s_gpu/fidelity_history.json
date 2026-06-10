@@ -454,5 +454,13 @@
     "wall_s": 1781058156.3103948,
     "full_mape_pre_pct": 8.65940782637627,
     "fidelity_gap_pct": 0.0
+  },
+  {
+    "stage": "full",
+    "kind": "stage_end",
+    "step": 219649,
+    "wall_s": 1781086008.0099459,
+    "full_mape_pct": 4.315547375254394,
+    "full_p90_pct": 6.730470528589318
   }
 ]
