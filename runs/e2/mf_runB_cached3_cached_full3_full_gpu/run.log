@@ -10910,3 +10910,4578 @@ Logging to runs/e2/mf_runB_cached3_cached_full3_full_gpu/tb/analytic/PPO_1
 |    std                  | 0.376       |
 |    value_loss           | 0.282       |
 -----------------------------------------
+[E2] ~2.3h remaining (105440 steps left @ 0.08s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.3         |
+|    ep_rew_mean          | 1.17        |
+| time/                   |             |
+|    eta_hours            | 2.33        |
+|    fps                  | 12          |
+|    iterations           | 380         |
+|    sec_per_step         | 0.0795      |
+|    time_elapsed         | 15027       |
+|    total_timesteps      | 223232      |
+| train/                  |             |
+|    approx_kl            | 0.016657017 |
+|    clip_fraction        | 0.195       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.91       |
+|    explained_variance   | 0.743       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.196       |
+|    n_updates            | 4310        |
+|    policy_gradient_loss | -0.0202     |
+|    std                  | 0.376       |
+|    value_loss           | 0.345       |
+-----------------------------------------
+[E2] ~2.3h remaining (104928 steps left @ 0.08s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.29        |
+|    ep_rew_mean          | 1.2         |
+| time/                   |             |
+|    eta_hours            | 2.32        |
+|    fps                  | 12          |
+|    iterations           | 381         |
+|    sec_per_step         | 0.0795      |
+|    time_elapsed         | 15068       |
+|    total_timesteps      | 223744      |
+| train/                  |             |
+|    approx_kl            | 0.012302607 |
+|    clip_fraction        | 0.135       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.904      |
+|    explained_variance   | 0.72        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0905      |
+|    n_updates            | 4320        |
+|    policy_gradient_loss | -0.0164     |
+|    std                  | 0.375       |
+|    value_loss           | 0.361       |
+-----------------------------------------
+[E2] ~2.3h remaining (104416 steps left @ 0.08s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.4         |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 2.31        |
+|    fps                  | 12          |
+|    iterations           | 382         |
+|    sec_per_step         | 0.0795      |
+|    time_elapsed         | 15109       |
+|    total_timesteps      | 224256      |
+| train/                  |             |
+|    approx_kl            | 0.010626319 |
+|    clip_fraction        | 0.15        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.897      |
+|    explained_variance   | 0.746       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.145       |
+|    n_updates            | 4330        |
+|    policy_gradient_loss | -0.0136     |
+|    std                  | 0.374       |
+|    value_loss           | 0.361       |
+-----------------------------------------
+[E2] ~2.3h remaining (103904 steps left @ 0.08s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.5         |
+|    ep_rew_mean          | 1.19        |
+| time/                   |             |
+|    eta_hours            | 2.28        |
+|    fps                  | 12          |
+|    iterations           | 383         |
+|    sec_per_step         | 0.079       |
+|    time_elapsed         | 15149       |
+|    total_timesteps      | 224768      |
+| train/                  |             |
+|    approx_kl            | 0.013212724 |
+|    clip_fraction        | 0.145       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.893      |
+|    explained_variance   | 0.779       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.176       |
+|    n_updates            | 4340        |
+|    policy_gradient_loss | -0.0111     |
+|    std                  | 0.374       |
+|    value_loss           | 0.3         |
+-----------------------------------------
+[E2] ~2.3h remaining (103392 steps left @ 0.08s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.06        |
+|    ep_rew_mean          | 1.21        |
+| time/                   |             |
+|    eta_hours            | 2.27        |
+|    fps                  | 12          |
+|    iterations           | 384         |
+|    sec_per_step         | 0.0791      |
+|    time_elapsed         | 15189       |
+|    total_timesteps      | 225280      |
+| train/                  |             |
+|    approx_kl            | 0.015611146 |
+|    clip_fraction        | 0.197       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.889      |
+|    explained_variance   | 0.772       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.136       |
+|    n_updates            | 4350        |
+|    policy_gradient_loss | -0.0172     |
+|    std                  | 0.374       |
+|    value_loss           | 0.312       |
+-----------------------------------------
+[E2] ~2.3h remaining (102880 steps left @ 0.08s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.4         |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 2.26        |
+|    fps                  | 12          |
+|    iterations           | 385         |
+|    sec_per_step         | 0.0791      |
+|    time_elapsed         | 15230       |
+|    total_timesteps      | 225792      |
+| train/                  |             |
+|    approx_kl            | 0.014474212 |
+|    clip_fraction        | 0.183       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.879      |
+|    explained_variance   | 0.718       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.149       |
+|    n_updates            | 4360        |
+|    policy_gradient_loss | -0.0179     |
+|    std                  | 0.373       |
+|    value_loss           | 0.388       |
+-----------------------------------------
+[E2] ~2.5h remaining (102368 steps left @ 0.09s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.71        |
+|    ep_rew_mean          | 1.22        |
+| time/                   |             |
+|    eta_hours            | 2.54        |
+|    fps                  | 12          |
+|    iterations           | 386         |
+|    sec_per_step         | 0.0894      |
+|    time_elapsed         | 15288       |
+|    total_timesteps      | 226304      |
+| train/                  |             |
+|    approx_kl            | 0.013766336 |
+|    clip_fraction        | 0.141       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.87       |
+|    explained_variance   | 0.775       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.156       |
+|    n_updates            | 4370        |
+|    policy_gradient_loss | -0.0147     |
+|    std                  | 0.372       |
+|    value_loss           | 0.328       |
+-----------------------------------------
+[E2] ~2.8h remaining (101856 steps left @ 0.10s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.52       |
+|    ep_rew_mean          | 1.22       |
+| time/                   |            |
+|    eta_hours            | 2.77       |
+|    fps                  | 12         |
+|    iterations           | 387        |
+|    sec_per_step         | 0.0981     |
+|    time_elapsed         | 15348      |
+|    total_timesteps      | 226816     |
+| train/                  |            |
+|    approx_kl            | 0.01521123 |
+|    clip_fraction        | 0.15       |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.867     |
+|    explained_variance   | 0.76       |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.122      |
+|    n_updates            | 4380       |
+|    policy_gradient_loss | -0.0152    |
+|    std                  | 0.372      |
+|    value_loss           | 0.326      |
+----------------------------------------
+[E2] ~3.0h remaining (101344 steps left @ 0.11s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.56        |
+|    ep_rew_mean          | 1.15        |
+| time/                   |             |
+|    eta_hours            | 2.96        |
+|    fps                  | 12          |
+|    iterations           | 388         |
+|    sec_per_step         | 0.105       |
+|    time_elapsed         | 15411       |
+|    total_timesteps      | 227328      |
+| train/                  |             |
+|    approx_kl            | 0.016851742 |
+|    clip_fraction        | 0.182       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.862      |
+|    explained_variance   | 0.765       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.18        |
+|    n_updates            | 4390        |
+|    policy_gradient_loss | -0.0212     |
+|    std                  | 0.372       |
+|    value_loss           | 0.328       |
+-----------------------------------------
+[E2] ~3.3h remaining (100832 steps left @ 0.12s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.78        |
+|    ep_rew_mean          | 1.22        |
+| time/                   |             |
+|    eta_hours            | 3.28        |
+|    fps                  | 12          |
+|    iterations           | 389         |
+|    sec_per_step         | 0.117       |
+|    time_elapsed         | 15485       |
+|    total_timesteps      | 227840      |
+| train/                  |             |
+|    approx_kl            | 0.023825325 |
+|    clip_fraction        | 0.217       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.855      |
+|    explained_variance   | 0.741       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.13        |
+|    n_updates            | 4400        |
+|    policy_gradient_loss | -0.0175     |
+|    std                  | 0.371       |
+|    value_loss           | 0.345       |
+-----------------------------------------
+[E2] ~3.5h remaining (100320 steps left @ 0.12s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.4         |
+|    ep_rew_mean          | 1.2         |
+| time/                   |             |
+|    eta_hours            | 3.48        |
+|    fps                  | 12          |
+|    iterations           | 390         |
+|    sec_per_step         | 0.125       |
+|    time_elapsed         | 15558       |
+|    total_timesteps      | 228352      |
+| train/                  |             |
+|    approx_kl            | 0.021633126 |
+|    clip_fraction        | 0.217       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.845      |
+|    explained_variance   | 0.772       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.149       |
+|    n_updates            | 4410        |
+|    policy_gradient_loss | -0.0196     |
+|    std                  | 0.37        |
+|    value_loss           | 0.305       |
+-----------------------------------------
+[E2 eval @ step 228673]  MAPE=3.07%  p90=3.88%  success(<5%)=100.0%  mean_scan_time=235.1s
+[MF global-best] candidate from full/stage_eval_full screened at 3.07% but confirmed at 5.87% >= current best 5.13%
+[E2] ~4.0h remaining (99808 steps left @ 0.14s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.48        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 3.98        |
+|    fps                  | 12          |
+|    iterations           | 391         |
+|    sec_per_step         | 0.144       |
+|    time_elapsed         | 15654       |
+|    total_timesteps      | 228864      |
+| train/                  |             |
+|    approx_kl            | 0.017515482 |
+|    clip_fraction        | 0.188       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.836      |
+|    explained_variance   | 0.733       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.263       |
+|    n_updates            | 4420        |
+|    policy_gradient_loss | -0.0121     |
+|    std                  | 0.369       |
+|    value_loss           | 0.34        |
+-----------------------------------------
+[E2] ~4.1h remaining (99296 steps left @ 0.15s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.53        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 4.08        |
+|    fps                  | 12          |
+|    iterations           | 392         |
+|    sec_per_step         | 0.148       |
+|    time_elapsed         | 15735       |
+|    total_timesteps      | 229376      |
+| train/                  |             |
+|    approx_kl            | 0.024680138 |
+|    clip_fraction        | 0.206       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.83       |
+|    explained_variance   | 0.785       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0841      |
+|    n_updates            | 4430        |
+|    policy_gradient_loss | -0.0204     |
+|    std                  | 0.369       |
+|    value_loss           | 0.298       |
+-----------------------------------------
+[E2] ~4.4h remaining (98784 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.6         |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 4.39        |
+|    fps                  | 12          |
+|    iterations           | 393         |
+|    sec_per_step         | 0.16        |
+|    time_elapsed         | 15831       |
+|    total_timesteps      | 229888      |
+| train/                  |             |
+|    approx_kl            | 0.016104486 |
+|    clip_fraction        | 0.165       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.822      |
+|    explained_variance   | 0.8         |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.11        |
+|    n_updates            | 4440        |
+|    policy_gradient_loss | -0.0147     |
+|    std                  | 0.367       |
+|    value_loss           | 0.294       |
+-----------------------------------------
+[E2] ~4.6h remaining (98272 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.49        |
+|    ep_rew_mean          | 1.17        |
+| time/                   |             |
+|    eta_hours            | 4.57        |
+|    fps                  | 12          |
+|    iterations           | 394         |
+|    sec_per_step         | 0.167       |
+|    time_elapsed         | 15926       |
+|    total_timesteps      | 230400      |
+| train/                  |             |
+|    approx_kl            | 0.017715003 |
+|    clip_fraction        | 0.264       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.813      |
+|    explained_variance   | 0.777       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0825      |
+|    n_updates            | 4450        |
+|    policy_gradient_loss | -0.0201     |
+|    std                  | 0.367       |
+|    value_loss           | 0.29        |
+-----------------------------------------
+[E2] ~4.6h remaining (97760 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.22        |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 4.57        |
+|    fps                  | 12          |
+|    iterations           | 395         |
+|    sec_per_step         | 0.168       |
+|    time_elapsed         | 16014       |
+|    total_timesteps      | 230912      |
+| train/                  |             |
+|    approx_kl            | 0.014071818 |
+|    clip_fraction        | 0.159       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.808      |
+|    explained_variance   | 0.737       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.137       |
+|    n_updates            | 4460        |
+|    policy_gradient_loss | -0.0128     |
+|    std                  | 0.366       |
+|    value_loss           | 0.3         |
+-----------------------------------------
+[E2] ~4.6h remaining (97248 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.31        |
+|    ep_rew_mean          | 1.21        |
+| time/                   |             |
+|    eta_hours            | 4.56        |
+|    fps                  | 12          |
+|    iterations           | 396         |
+|    sec_per_step         | 0.169       |
+|    time_elapsed         | 16101       |
+|    total_timesteps      | 231424      |
+| train/                  |             |
+|    approx_kl            | 0.017258327 |
+|    clip_fraction        | 0.184       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.803      |
+|    explained_variance   | 0.752       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.178       |
+|    n_updates            | 4470        |
+|    policy_gradient_loss | -0.0222     |
+|    std                  | 0.366       |
+|    value_loss           | 0.361       |
+-----------------------------------------
+[E2] ~4.6h remaining (96736 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.45        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 4.58        |
+|    fps                  | 12          |
+|    iterations           | 397         |
+|    sec_per_step         | 0.171       |
+|    time_elapsed         | 16190       |
+|    total_timesteps      | 231936      |
+| train/                  |             |
+|    approx_kl            | 0.014003793 |
+|    clip_fraction        | 0.193       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.797      |
+|    explained_variance   | 0.775       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.151       |
+|    n_updates            | 4480        |
+|    policy_gradient_loss | -0.0177     |
+|    std                  | 0.365       |
+|    value_loss           | 0.294       |
+-----------------------------------------
+[E2] ~4.7h remaining (96224 steps left @ 0.17s/step)
+---------------------------------------
+| rollout/                |           |
+|    ep_len_mean          | 5.29      |
+|    ep_rew_mean          | 1.2       |
+| time/                   |           |
+|    eta_hours            | 4.67      |
+|    fps                  | 12        |
+|    iterations           | 398       |
+|    sec_per_step         | 0.175     |
+|    time_elapsed         | 16284     |
+|    total_timesteps      | 232448    |
+| train/                  |           |
+|    approx_kl            | 0.0148918 |
+|    clip_fraction        | 0.148     |
+|    clip_range           | 0.2       |
+|    entropy_loss         | -0.789    |
+|    explained_variance   | 0.804     |
+|    learning_rate        | 0.0001    |
+|    loss                 | 0.0791    |
+|    n_updates            | 4490      |
+|    policy_gradient_loss | -0.0191   |
+|    std                  | 0.364     |
+|    value_loss           | 0.263     |
+---------------------------------------
+[E2] ~4.6h remaining (95712 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.3         |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 4.61        |
+|    fps                  | 12          |
+|    iterations           | 399         |
+|    sec_per_step         | 0.173       |
+|    time_elapsed         | 16372       |
+|    total_timesteps      | 232960      |
+| train/                  |             |
+|    approx_kl            | 0.018795077 |
+|    clip_fraction        | 0.208       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.78       |
+|    explained_variance   | 0.74        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.127       |
+|    n_updates            | 4500        |
+|    policy_gradient_loss | -0.02       |
+|    std                  | 0.363       |
+|    value_loss           | 0.339       |
+-----------------------------------------
+[E2] ~4.6h remaining (95200 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.2         |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 4.57        |
+|    fps                  | 12          |
+|    iterations           | 400         |
+|    sec_per_step         | 0.173       |
+|    time_elapsed         | 16460       |
+|    total_timesteps      | 233472      |
+| train/                  |             |
+|    approx_kl            | 0.012853192 |
+|    clip_fraction        | 0.123       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.772      |
+|    explained_variance   | 0.801       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0962      |
+|    n_updates            | 4510        |
+|    policy_gradient_loss | -0.0134     |
+|    std                  | 0.362       |
+|    value_loss           | 0.242       |
+-----------------------------------------
+[E2] ~4.5h remaining (94688 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.25        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 4.47        |
+|    fps                  | 12          |
+|    iterations           | 401         |
+|    sec_per_step         | 0.17        |
+|    time_elapsed         | 16543       |
+|    total_timesteps      | 233984      |
+| train/                  |             |
+|    approx_kl            | 0.019602068 |
+|    clip_fraction        | 0.147       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.765      |
+|    explained_variance   | 0.791       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.125       |
+|    n_updates            | 4520        |
+|    policy_gradient_loss | -0.0126     |
+|    std                  | 0.362       |
+|    value_loss           | 0.281       |
+-----------------------------------------
+[E2] ~4.3h remaining (94176 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.47        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 4.33        |
+|    fps                  | 12          |
+|    iterations           | 402         |
+|    sec_per_step         | 0.165       |
+|    time_elapsed         | 16622       |
+|    total_timesteps      | 234496      |
+| train/                  |             |
+|    approx_kl            | 0.014733501 |
+|    clip_fraction        | 0.182       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.756      |
+|    explained_variance   | 0.734       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.244       |
+|    n_updates            | 4530        |
+|    policy_gradient_loss | -0.0189     |
+|    std                  | 0.36        |
+|    value_loss           | 0.388       |
+-----------------------------------------
+[E2] ~4.2h remaining (93664 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.31        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 4.21        |
+|    fps                  | 12          |
+|    iterations           | 403         |
+|    sec_per_step         | 0.162       |
+|    time_elapsed         | 16701       |
+|    total_timesteps      | 235008      |
+| train/                  |             |
+|    approx_kl            | 0.014699701 |
+|    clip_fraction        | 0.195       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.747      |
+|    explained_variance   | 0.755       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0881      |
+|    n_updates            | 4540        |
+|    policy_gradient_loss | -0.0158     |
+|    std                  | 0.36        |
+|    value_loss           | 0.343       |
+-----------------------------------------
+[E2] ~4.2h remaining (93152 steps left @ 0.16s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.25       |
+|    ep_rew_mean          | 1.19       |
+| time/                   |            |
+|    eta_hours            | 4.19       |
+|    fps                  | 12         |
+|    iterations           | 404        |
+|    sec_per_step         | 0.162      |
+|    time_elapsed         | 16784      |
+|    total_timesteps      | 235520     |
+| train/                  |            |
+|    approx_kl            | 0.02087449 |
+|    clip_fraction        | 0.21       |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.746     |
+|    explained_variance   | 0.797      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.171      |
+|    n_updates            | 4550       |
+|    policy_gradient_loss | -0.0166    |
+|    std                  | 0.36       |
+|    value_loss           | 0.283      |
+----------------------------------------
+[E2] ~4.0h remaining (92640 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.4         |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 4.02        |
+|    fps                  | 12          |
+|    iterations           | 405         |
+|    sec_per_step         | 0.156       |
+|    time_elapsed         | 16857       |
+|    total_timesteps      | 236032      |
+| train/                  |             |
+|    approx_kl            | 0.013641987 |
+|    clip_fraction        | 0.144       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.744      |
+|    explained_variance   | 0.707       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.175       |
+|    n_updates            | 4560        |
+|    policy_gradient_loss | -0.0152     |
+|    std                  | 0.36        |
+|    value_loss           | 0.348       |
+-----------------------------------------
+[E2] ~3.9h remaining (92128 steps left @ 0.15s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.29        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 3.88        |
+|    fps                  | 12          |
+|    iterations           | 406         |
+|    sec_per_step         | 0.152       |
+|    time_elapsed         | 16929       |
+|    total_timesteps      | 236544      |
+| train/                  |             |
+|    approx_kl            | 0.015699575 |
+|    clip_fraction        | 0.157       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.739      |
+|    explained_variance   | 0.75        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.148       |
+|    n_updates            | 4570        |
+|    policy_gradient_loss | -0.0168     |
+|    std                  | 0.36        |
+|    value_loss           | 0.331       |
+-----------------------------------------
+[E2] ~4.0h remaining (91616 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.19        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 3.98        |
+|    fps                  | 12          |
+|    iterations           | 407         |
+|    sec_per_step         | 0.156       |
+|    time_elapsed         | 17015       |
+|    total_timesteps      | 237056      |
+| train/                  |             |
+|    approx_kl            | 0.012249978 |
+|    clip_fraction        | 0.143       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.735      |
+|    explained_variance   | 0.753       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.126       |
+|    n_updates            | 4580        |
+|    policy_gradient_loss | -0.0163     |
+|    std                  | 0.359       |
+|    value_loss           | 0.35        |
+-----------------------------------------
+[E2] ~4.0h remaining (91104 steps left @ 0.16s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.31       |
+|    ep_rew_mean          | 1.25       |
+| time/                   |            |
+|    eta_hours            | 4.01       |
+|    fps                  | 12         |
+|    iterations           | 408        |
+|    sec_per_step         | 0.158      |
+|    time_elapsed         | 17098      |
+|    total_timesteps      | 237568     |
+| train/                  |            |
+|    approx_kl            | 0.02052364 |
+|    clip_fraction        | 0.215      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.728     |
+|    explained_variance   | 0.782      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.137      |
+|    n_updates            | 4590       |
+|    policy_gradient_loss | -0.0207    |
+|    std                  | 0.359      |
+|    value_loss           | 0.312      |
+----------------------------------------
+[E2] ~4.2h remaining (90592 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.26        |
+|    ep_rew_mean          | 1.2         |
+| time/                   |             |
+|    eta_hours            | 4.18        |
+|    fps                  | 12          |
+|    iterations           | 409         |
+|    sec_per_step         | 0.166       |
+|    time_elapsed         | 17192       |
+|    total_timesteps      | 238080      |
+| train/                  |             |
+|    approx_kl            | 0.014438086 |
+|    clip_fraction        | 0.16        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.723      |
+|    explained_variance   | 0.759       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.177       |
+|    n_updates            | 4600        |
+|    policy_gradient_loss | -0.0144     |
+|    std                  | 0.359       |
+|    value_loss           | 0.337       |
+-----------------------------------------
+[E2] ~4.2h remaining (90080 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.59        |
+|    ep_rew_mean          | 1.21        |
+| time/                   |             |
+|    eta_hours            | 4.22        |
+|    fps                  | 12          |
+|    iterations           | 410         |
+|    sec_per_step         | 0.168       |
+|    time_elapsed         | 17282       |
+|    total_timesteps      | 238592      |
+| train/                  |             |
+|    approx_kl            | 0.015203454 |
+|    clip_fraction        | 0.163       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.719      |
+|    explained_variance   | 0.725       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.248       |
+|    n_updates            | 4610        |
+|    policy_gradient_loss | -0.0146     |
+|    std                  | 0.359       |
+|    value_loss           | 0.38        |
+-----------------------------------------
+[E2 eval @ step 238673]  MAPE=4.11%  p90=5.27%  success(<5%)=75.0%  mean_scan_time=230.4s
+[MF global-best] candidate from full/stage_eval_full screened at 4.11% but confirmed at 7.48% >= current best 5.13%
+[E2] ~4.5h remaining (89568 steps left @ 0.18s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.53       |
+|    ep_rew_mean          | 1.21       |
+| time/                   |            |
+|    eta_hours            | 4.48       |
+|    fps                  | 12         |
+|    iterations           | 411        |
+|    sec_per_step         | 0.18       |
+|    time_elapsed         | 17388      |
+|    total_timesteps      | 239104     |
+| train/                  |            |
+|    approx_kl            | 0.01881444 |
+|    clip_fraction        | 0.193      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.715     |
+|    explained_variance   | 0.762      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.139      |
+|    n_updates            | 4620       |
+|    policy_gradient_loss | -0.0204    |
+|    std                  | 0.359      |
+|    value_loss           | 0.332      |
+----------------------------------------
+[E2] ~4.4h remaining (89056 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.52        |
+|    ep_rew_mean          | 1.21        |
+| time/                   |             |
+|    eta_hours            | 4.38        |
+|    fps                  | 12          |
+|    iterations           | 412         |
+|    sec_per_step         | 0.177       |
+|    time_elapsed         | 17475       |
+|    total_timesteps      | 239616      |
+| train/                  |             |
+|    approx_kl            | 0.014966266 |
+|    clip_fraction        | 0.163       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.716      |
+|    explained_variance   | 0.735       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.134       |
+|    n_updates            | 4630        |
+|    policy_gradient_loss | -0.0146     |
+|    std                  | 0.359       |
+|    value_loss           | 0.377       |
+-----------------------------------------
+[E2] ~4.3h remaining (88544 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.49        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 4.25        |
+|    fps                  | 12          |
+|    iterations           | 413         |
+|    sec_per_step         | 0.173       |
+|    time_elapsed         | 17558       |
+|    total_timesteps      | 240128      |
+| train/                  |             |
+|    approx_kl            | 0.026712906 |
+|    clip_fraction        | 0.239       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.714      |
+|    explained_variance   | 0.797       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.103       |
+|    n_updates            | 4640        |
+|    policy_gradient_loss | -0.0215     |
+|    std                  | 0.359       |
+|    value_loss           | 0.293       |
+-----------------------------------------
+[E2] ~4.3h remaining (88032 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.19        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 4.31        |
+|    fps                  | 12          |
+|    iterations           | 414         |
+|    sec_per_step         | 0.176       |
+|    time_elapsed         | 17652       |
+|    total_timesteps      | 240640      |
+| train/                  |             |
+|    approx_kl            | 0.014938535 |
+|    clip_fraction        | 0.175       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.71       |
+|    explained_variance   | 0.803       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.122       |
+|    n_updates            | 4650        |
+|    policy_gradient_loss | -0.0152     |
+|    std                  | 0.359       |
+|    value_loss           | 0.271       |
+-----------------------------------------
+[E2] ~4.3h remaining (87520 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.43        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 4.32        |
+|    fps                  | 11          |
+|    iterations           | 415         |
+|    sec_per_step         | 0.178       |
+|    time_elapsed         | 17745       |
+|    total_timesteps      | 241152      |
+| train/                  |             |
+|    approx_kl            | 0.015520297 |
+|    clip_fraction        | 0.155       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.704      |
+|    explained_variance   | 0.757       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.187       |
+|    n_updates            | 4660        |
+|    policy_gradient_loss | -0.0147     |
+|    std                  | 0.358       |
+|    value_loss           | 0.329       |
+-----------------------------------------
+[E2] ~4.4h remaining (87008 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.39        |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 4.35        |
+|    fps                  | 11          |
+|    iterations           | 416         |
+|    sec_per_step         | 0.18        |
+|    time_elapsed         | 17840       |
+|    total_timesteps      | 241664      |
+| train/                  |             |
+|    approx_kl            | 0.015331081 |
+|    clip_fraction        | 0.149       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.693      |
+|    explained_variance   | 0.819       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.125       |
+|    n_updates            | 4670        |
+|    policy_gradient_loss | -0.0144     |
+|    std                  | 0.357       |
+|    value_loss           | 0.244       |
+-----------------------------------------
+[E2] ~4.2h remaining (86496 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.48        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 4.2         |
+|    fps                  | 11          |
+|    iterations           | 417         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 17924       |
+|    total_timesteps      | 242176      |
+| train/                  |             |
+|    approx_kl            | 0.015584558 |
+|    clip_fraction        | 0.178       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.686      |
+|    explained_variance   | 0.754       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.144       |
+|    n_updates            | 4680        |
+|    policy_gradient_loss | -0.0199     |
+|    std                  | 0.356       |
+|    value_loss           | 0.333       |
+-----------------------------------------
+[E2] ~4.0h remaining (85984 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.29        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 3.99        |
+|    fps                  | 11          |
+|    iterations           | 418         |
+|    sec_per_step         | 0.167       |
+|    time_elapsed         | 18000       |
+|    total_timesteps      | 242688      |
+| train/                  |             |
+|    approx_kl            | 0.012519844 |
+|    clip_fraction        | 0.161       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.681      |
+|    explained_variance   | 0.79        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.234       |
+|    n_updates            | 4690        |
+|    policy_gradient_loss | -0.0125     |
+|    std                  | 0.356       |
+|    value_loss           | 0.29        |
+-----------------------------------------
+[E2] ~3.8h remaining (85472 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.3         |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 3.76        |
+|    fps                  | 11          |
+|    iterations           | 419         |
+|    sec_per_step         | 0.158       |
+|    time_elapsed         | 18071       |
+|    total_timesteps      | 243200      |
+| train/                  |             |
+|    approx_kl            | 0.018790616 |
+|    clip_fraction        | 0.217       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.677      |
+|    explained_variance   | 0.752       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.175       |
+|    n_updates            | 4700        |
+|    policy_gradient_loss | -0.0171     |
+|    std                  | 0.356       |
+|    value_loss           | 0.342       |
+-----------------------------------------
+[E2] ~3.7h remaining (84960 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.39        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 3.69        |
+|    fps                  | 11          |
+|    iterations           | 420         |
+|    sec_per_step         | 0.156       |
+|    time_elapsed         | 18149       |
+|    total_timesteps      | 243712      |
+| train/                  |             |
+|    approx_kl            | 0.021692675 |
+|    clip_fraction        | 0.219       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.673      |
+|    explained_variance   | 0.772       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0757      |
+|    n_updates            | 4710        |
+|    policy_gradient_loss | -0.0239     |
+|    std                  | 0.356       |
+|    value_loss           | 0.327       |
+-----------------------------------------
+[E2] ~3.7h remaining (84448 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.53        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 3.75        |
+|    fps                  | 11          |
+|    iterations           | 421         |
+|    sec_per_step         | 0.16        |
+|    time_elapsed         | 18234       |
+|    total_timesteps      | 244224      |
+| train/                  |             |
+|    approx_kl            | 0.019489635 |
+|    clip_fraction        | 0.162       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.668      |
+|    explained_variance   | 0.776       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0985      |
+|    n_updates            | 4720        |
+|    policy_gradient_loss | -0.0133     |
+|    std                  | 0.355       |
+|    value_loss           | 0.302       |
+-----------------------------------------
+[E2] ~3.7h remaining (83936 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.71        |
+|    ep_rew_mean          | 1.21        |
+| time/                   |             |
+|    eta_hours            | 3.73        |
+|    fps                  | 11          |
+|    iterations           | 422         |
+|    sec_per_step         | 0.16        |
+|    time_elapsed         | 18317       |
+|    total_timesteps      | 244736      |
+| train/                  |             |
+|    approx_kl            | 0.013914859 |
+|    clip_fraction        | 0.142       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.661      |
+|    explained_variance   | 0.802       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.104       |
+|    n_updates            | 4730        |
+|    policy_gradient_loss | -0.0158     |
+|    std                  | 0.354       |
+|    value_loss           | 0.271       |
+-----------------------------------------
+[E2] ~3.8h remaining (83424 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.36        |
+|    ep_rew_mean          | 1.22        |
+| time/                   |             |
+|    eta_hours            | 3.78        |
+|    fps                  | 11          |
+|    iterations           | 423         |
+|    sec_per_step         | 0.163       |
+|    time_elapsed         | 18404       |
+|    total_timesteps      | 245248      |
+| train/                  |             |
+|    approx_kl            | 0.014939815 |
+|    clip_fraction        | 0.177       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.651      |
+|    explained_variance   | 0.784       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.119       |
+|    n_updates            | 4740        |
+|    policy_gradient_loss | -0.0164     |
+|    std                  | 0.354       |
+|    value_loss           | 0.268       |
+-----------------------------------------
+[E2] ~3.9h remaining (82912 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.55        |
+|    ep_rew_mean          | 1.22        |
+| time/                   |             |
+|    eta_hours            | 3.91        |
+|    fps                  | 11          |
+|    iterations           | 424         |
+|    sec_per_step         | 0.17        |
+|    time_elapsed         | 18499       |
+|    total_timesteps      | 245760      |
+| train/                  |             |
+|    approx_kl            | 0.017468799 |
+|    clip_fraction        | 0.198       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.643      |
+|    explained_variance   | 0.759       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.111       |
+|    n_updates            | 4750        |
+|    policy_gradient_loss | -0.0177     |
+|    std                  | 0.353       |
+|    value_loss           | 0.327       |
+-----------------------------------------
+[E2] ~3.8h remaining (82400 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.41        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 3.82        |
+|    fps                  | 11          |
+|    iterations           | 425         |
+|    sec_per_step         | 0.167       |
+|    time_elapsed         | 18581       |
+|    total_timesteps      | 246272      |
+| train/                  |             |
+|    approx_kl            | 0.017821126 |
+|    clip_fraction        | 0.191       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.641      |
+|    explained_variance   | 0.792       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0977      |
+|    n_updates            | 4760        |
+|    policy_gradient_loss | -0.0145     |
+|    std                  | 0.353       |
+|    value_loss           | 0.265       |
+-----------------------------------------
+[E2] ~3.8h remaining (81888 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.71        |
+|    ep_rew_mean          | 1.22        |
+| time/                   |             |
+|    eta_hours            | 3.78        |
+|    fps                  | 11          |
+|    iterations           | 426         |
+|    sec_per_step         | 0.166       |
+|    time_elapsed         | 18665       |
+|    total_timesteps      | 246784      |
+| train/                  |             |
+|    approx_kl            | 0.018906094 |
+|    clip_fraction        | 0.175       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.638      |
+|    explained_variance   | 0.806       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0601      |
+|    n_updates            | 4770        |
+|    policy_gradient_loss | -0.0158     |
+|    std                  | 0.352       |
+|    value_loss           | 0.253       |
+-----------------------------------------
+[E2] ~3.7h remaining (81376 steps left @ 0.16s/step)
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 5.73         |
+|    ep_rew_mean          | 1.19         |
+| time/                   |              |
+|    eta_hours            | 3.67         |
+|    fps                  | 11           |
+|    iterations           | 427          |
+|    sec_per_step         | 0.162        |
+|    time_elapsed         | 18743        |
+|    total_timesteps      | 247296       |
+| train/                  |              |
+|    approx_kl            | 0.0140764825 |
+|    clip_fraction        | 0.183        |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -0.634       |
+|    explained_variance   | 0.808        |
+|    learning_rate        | 0.0001       |
+|    loss                 | 0.0563       |
+|    n_updates            | 4780         |
+|    policy_gradient_loss | -0.0192      |
+|    std                  | 0.352        |
+|    value_loss           | 0.266        |
+------------------------------------------
+[E2] ~3.5h remaining (80864 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.47        |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 3.54        |
+|    fps                  | 11          |
+|    iterations           | 428         |
+|    sec_per_step         | 0.158       |
+|    time_elapsed         | 18818       |
+|    total_timesteps      | 247808      |
+| train/                  |             |
+|    approx_kl            | 0.020263538 |
+|    clip_fraction        | 0.174       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.634      |
+|    explained_variance   | 0.767       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.162       |
+|    n_updates            | 4790        |
+|    policy_gradient_loss | -0.0178     |
+|    std                  | 0.352       |
+|    value_loss           | 0.284       |
+-----------------------------------------
+[E2] ~3.4h remaining (80352 steps left @ 0.15s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.61       |
+|    ep_rew_mean          | 1.26       |
+| time/                   |            |
+|    eta_hours            | 3.36       |
+|    fps                  | 11         |
+|    iterations           | 429        |
+|    sec_per_step         | 0.151      |
+|    time_elapsed         | 18887      |
+|    total_timesteps      | 248320     |
+| train/                  |            |
+|    approx_kl            | 0.01818827 |
+|    clip_fraction        | 0.219      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.627     |
+|    explained_variance   | 0.802      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.103      |
+|    n_updates            | 4800       |
+|    policy_gradient_loss | -0.0216    |
+|    std                  | 0.352      |
+|    value_loss           | 0.274      |
+----------------------------------------
+[E2 eval @ step 248673]  MAPE=3.80%  p90=4.81%  success(<5%)=87.5%  mean_scan_time=227.2s
+[MF global-best] 4.51% confirmed full-Bloch MAPE saved from full/stage_eval_full @ step 248673 (screen=3.80%) → runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best
+[E2] ~3.5h remaining (79840 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.74        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 3.45        |
+|    fps                  | 11          |
+|    iterations           | 430         |
+|    sec_per_step         | 0.156       |
+|    time_elapsed         | 18973       |
+|    total_timesteps      | 248832      |
+| train/                  |             |
+|    approx_kl            | 0.015065328 |
+|    clip_fraction        | 0.209       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.617      |
+|    explained_variance   | 0.785       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0852      |
+|    n_updates            | 4810        |
+|    policy_gradient_loss | -0.0185     |
+|    std                  | 0.351       |
+|    value_loss           | 0.303       |
+-----------------------------------------
+[E2] ~3.4h remaining (79328 steps left @ 0.15s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.61        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 3.39        |
+|    fps                  | 11          |
+|    iterations           | 431         |
+|    sec_per_step         | 0.154       |
+|    time_elapsed         | 19049       |
+|    total_timesteps      | 249344      |
+| train/                  |             |
+|    approx_kl            | 0.018868782 |
+|    clip_fraction        | 0.224       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.611      |
+|    explained_variance   | 0.828       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.133       |
+|    n_updates            | 4820        |
+|    policy_gradient_loss | -0.0208     |
+|    std                  | 0.35        |
+|    value_loss           | 0.23        |
+-----------------------------------------
+[E2] ~3.4h remaining (78816 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.49        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 3.4         |
+|    fps                  | 11          |
+|    iterations           | 432         |
+|    sec_per_step         | 0.155       |
+|    time_elapsed         | 19131       |
+|    total_timesteps      | 249856      |
+| train/                  |             |
+|    approx_kl            | 0.013200115 |
+|    clip_fraction        | 0.171       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.606      |
+|    explained_variance   | 0.782       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0471      |
+|    n_updates            | 4830        |
+|    policy_gradient_loss | -0.0182     |
+|    std                  | 0.35        |
+|    value_loss           | 0.296       |
+-----------------------------------------
+[E2] ~3.5h remaining (78304 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.47        |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 3.46        |
+|    fps                  | 11          |
+|    iterations           | 433         |
+|    sec_per_step         | 0.159       |
+|    time_elapsed         | 19217       |
+|    total_timesteps      | 250368      |
+| train/                  |             |
+|    approx_kl            | 0.013881224 |
+|    clip_fraction        | 0.15        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.601      |
+|    explained_variance   | 0.797       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.107       |
+|    n_updates            | 4840        |
+|    policy_gradient_loss | -0.0138     |
+|    std                  | 0.349       |
+|    value_loss           | 0.286       |
+-----------------------------------------
+[E2] ~3.5h remaining (77792 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.44        |
+|    ep_rew_mean          | 1.2         |
+| time/                   |             |
+|    eta_hours            | 3.46        |
+|    fps                  | 11          |
+|    iterations           | 434         |
+|    sec_per_step         | 0.16        |
+|    time_elapsed         | 19300       |
+|    total_timesteps      | 250880      |
+| train/                  |             |
+|    approx_kl            | 0.018802613 |
+|    clip_fraction        | 0.174       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.592      |
+|    explained_variance   | 0.792       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0958      |
+|    n_updates            | 4850        |
+|    policy_gradient_loss | -0.0193     |
+|    std                  | 0.348       |
+|    value_loss           | 0.294       |
+-----------------------------------------
+[E2] ~3.5h remaining (77280 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.18        |
+|    ep_rew_mean          | 1.22        |
+| time/                   |             |
+|    eta_hours            | 3.49        |
+|    fps                  | 11          |
+|    iterations           | 435         |
+|    sec_per_step         | 0.163       |
+|    time_elapsed         | 19386       |
+|    total_timesteps      | 251392      |
+| train/                  |             |
+|    approx_kl            | 0.011454995 |
+|    clip_fraction        | 0.161       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.588      |
+|    explained_variance   | 0.792       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.123       |
+|    n_updates            | 4860        |
+|    policy_gradient_loss | -0.0134     |
+|    std                  | 0.349       |
+|    value_loss           | 0.28        |
+-----------------------------------------
+[E2] ~3.6h remaining (76768 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.37        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 3.6         |
+|    fps                  | 11          |
+|    iterations           | 436         |
+|    sec_per_step         | 0.169       |
+|    time_elapsed         | 19480       |
+|    total_timesteps      | 251904      |
+| train/                  |             |
+|    approx_kl            | 0.026959108 |
+|    clip_fraction        | 0.279       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.585      |
+|    explained_variance   | 0.75        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.185       |
+|    n_updates            | 4870        |
+|    policy_gradient_loss | -0.0233     |
+|    std                  | 0.348       |
+|    value_loss           | 0.34        |
+-----------------------------------------
+[E2] ~3.6h remaining (76256 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.42        |
+|    ep_rew_mean          | 1.21        |
+| time/                   |             |
+|    eta_hours            | 3.64        |
+|    fps                  | 11          |
+|    iterations           | 437         |
+|    sec_per_step         | 0.172       |
+|    time_elapsed         | 19572       |
+|    total_timesteps      | 252416      |
+| train/                  |             |
+|    approx_kl            | 0.013919867 |
+|    clip_fraction        | 0.12        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.578      |
+|    explained_variance   | 0.794       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.123       |
+|    n_updates            | 4880        |
+|    policy_gradient_loss | -0.0115     |
+|    std                  | 0.347       |
+|    value_loss           | 0.28        |
+-----------------------------------------
+[E2] ~3.7h remaining (75744 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.63        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 3.66        |
+|    fps                  | 11          |
+|    iterations           | 438         |
+|    sec_per_step         | 0.174       |
+|    time_elapsed         | 19663       |
+|    total_timesteps      | 252928      |
+| train/                  |             |
+|    approx_kl            | 0.023583582 |
+|    clip_fraction        | 0.26        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.572      |
+|    explained_variance   | 0.796       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.114       |
+|    n_updates            | 4890        |
+|    policy_gradient_loss | -0.0271     |
+|    std                  | 0.346       |
+|    value_loss           | 0.26        |
+-----------------------------------------
+[E2] ~3.6h remaining (75232 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.54        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 3.65        |
+|    fps                  | 11          |
+|    iterations           | 439         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 19753       |
+|    total_timesteps      | 253440      |
+| train/                  |             |
+|    approx_kl            | 0.020116977 |
+|    clip_fraction        | 0.169       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.564      |
+|    explained_variance   | 0.776       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.213       |
+|    n_updates            | 4900        |
+|    policy_gradient_loss | -0.0167     |
+|    std                  | 0.346       |
+|    value_loss           | 0.319       |
+-----------------------------------------
+[E2] ~3.7h remaining (74720 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.4         |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 3.73        |
+|    fps                  | 11          |
+|    iterations           | 440         |
+|    sec_per_step         | 0.18        |
+|    time_elapsed         | 19851       |
+|    total_timesteps      | 253952      |
+| train/                  |             |
+|    approx_kl            | 0.011681627 |
+|    clip_fraction        | 0.13        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.558      |
+|    explained_variance   | 0.812       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.138       |
+|    n_updates            | 4910        |
+|    policy_gradient_loss | -0.0162     |
+|    std                  | 0.345       |
+|    value_loss           | 0.268       |
+-----------------------------------------
+[E2] ~3.7h remaining (74208 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.54        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 3.72        |
+|    fps                  | 11          |
+|    iterations           | 441         |
+|    sec_per_step         | 0.18        |
+|    time_elapsed         | 19945       |
+|    total_timesteps      | 254464      |
+| train/                  |             |
+|    approx_kl            | 0.013508405 |
+|    clip_fraction        | 0.163       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.554      |
+|    explained_variance   | 0.792       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.164       |
+|    n_updates            | 4920        |
+|    policy_gradient_loss | -0.0167     |
+|    std                  | 0.344       |
+|    value_loss           | 0.299       |
+-----------------------------------------
+[E2] ~3.6h remaining (73696 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.48        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 3.64        |
+|    fps                  | 11          |
+|    iterations           | 442         |
+|    sec_per_step         | 0.178       |
+|    time_elapsed         | 20032       |
+|    total_timesteps      | 254976      |
+| train/                  |             |
+|    approx_kl            | 0.016393468 |
+|    clip_fraction        | 0.184       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.548      |
+|    explained_variance   | 0.814       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.124       |
+|    n_updates            | 4930        |
+|    policy_gradient_loss | -0.0147     |
+|    std                  | 0.344       |
+|    value_loss           | 0.265       |
+-----------------------------------------
+[E2] ~3.6h remaining (73184 steps left @ 0.18s/step)
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 5.38         |
+|    ep_rew_mean          | 1.25         |
+| time/                   |              |
+|    eta_hours            | 3.64         |
+|    fps                  | 11           |
+|    iterations           | 443          |
+|    sec_per_step         | 0.179        |
+|    time_elapsed         | 20126        |
+|    total_timesteps      | 255488       |
+| train/                  |              |
+|    approx_kl            | 0.0148573555 |
+|    clip_fraction        | 0.19         |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -0.542       |
+|    explained_variance   | 0.793        |
+|    learning_rate        | 0.0001       |
+|    loss                 | 0.091        |
+|    n_updates            | 4940         |
+|    policy_gradient_loss | -0.0151      |
+|    std                  | 0.344        |
+|    value_loss           | 0.295        |
+------------------------------------------
+[E2] ~3.6h remaining (72672 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.31        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 3.61        |
+|    fps                  | 11          |
+|    iterations           | 444         |
+|    sec_per_step         | 0.179       |
+|    time_elapsed         | 20217       |
+|    total_timesteps      | 256000      |
+| train/                  |             |
+|    approx_kl            | 0.016074043 |
+|    clip_fraction        | 0.204       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.535      |
+|    explained_variance   | 0.685       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.186       |
+|    n_updates            | 4950        |
+|    policy_gradient_loss | -0.0191     |
+|    std                  | 0.343       |
+|    value_loss           | 0.44        |
+-----------------------------------------
+[E2] ~3.6h remaining (72160 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.35        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 3.59        |
+|    fps                  | 11          |
+|    iterations           | 445         |
+|    sec_per_step         | 0.179       |
+|    time_elapsed         | 20309       |
+|    total_timesteps      | 256512      |
+| train/                  |             |
+|    approx_kl            | 0.020325456 |
+|    clip_fraction        | 0.191       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.529      |
+|    explained_variance   | 0.81        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.117       |
+|    n_updates            | 4960        |
+|    policy_gradient_loss | -0.0164     |
+|    std                  | 0.343       |
+|    value_loss           | 0.252       |
+-----------------------------------------
+[E2] ~3.5h remaining (71648 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.4         |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 3.54        |
+|    fps                  | 11          |
+|    iterations           | 446         |
+|    sec_per_step         | 0.178       |
+|    time_elapsed         | 20398       |
+|    total_timesteps      | 257024      |
+| train/                  |             |
+|    approx_kl            | 0.010146417 |
+|    clip_fraction        | 0.132       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.518      |
+|    explained_variance   | 0.769       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.167       |
+|    n_updates            | 4970        |
+|    policy_gradient_loss | -0.0126     |
+|    std                  | 0.341       |
+|    value_loss           | 0.332       |
+-----------------------------------------
+[E2] ~3.5h remaining (71136 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.45        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 3.49        |
+|    fps                  | 11          |
+|    iterations           | 447         |
+|    sec_per_step         | 0.177       |
+|    time_elapsed         | 20488       |
+|    total_timesteps      | 257536      |
+| train/                  |             |
+|    approx_kl            | 0.018853806 |
+|    clip_fraction        | 0.188       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.507      |
+|    explained_variance   | 0.795       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0642      |
+|    n_updates            | 4980        |
+|    policy_gradient_loss | -0.0196     |
+|    std                  | 0.341       |
+|    value_loss           | 0.293       |
+-----------------------------------------
+[E2] ~3.4h remaining (70624 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.49        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 3.43        |
+|    fps                  | 11          |
+|    iterations           | 448         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 20575       |
+|    total_timesteps      | 258048      |
+| train/                  |             |
+|    approx_kl            | 0.014362535 |
+|    clip_fraction        | 0.158       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.498      |
+|    explained_variance   | 0.809       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.134       |
+|    n_updates            | 4990        |
+|    policy_gradient_loss | -0.0156     |
+|    std                  | 0.34        |
+|    value_loss           | 0.275       |
+-----------------------------------------
+[E2] ~3.3h remaining (70112 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.31        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 3.29        |
+|    fps                  | 11          |
+|    iterations           | 449         |
+|    sec_per_step         | 0.169       |
+|    time_elapsed         | 20654       |
+|    total_timesteps      | 258560      |
+| train/                  |             |
+|    approx_kl            | 0.019082677 |
+|    clip_fraction        | 0.215       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.492      |
+|    explained_variance   | 0.796       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0837      |
+|    n_updates            | 5000        |
+|    policy_gradient_loss | -0.0188     |
+|    std                  | 0.34        |
+|    value_loss           | 0.287       |
+-----------------------------------------
+[E2 eval @ step 258673]  MAPE=2.86%  p90=3.68%  success(<5%)=100.0%  mean_scan_time=232.6s
+[MF global-best] 4.31% confirmed full-Bloch MAPE saved from full/stage_eval_full @ step 258673 (screen=2.86%) → runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best
+[E2] ~3.2h remaining (69600 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.46        |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 3.24        |
+|    fps                  | 11          |
+|    iterations           | 450         |
+|    sec_per_step         | 0.168       |
+|    time_elapsed         | 20739       |
+|    total_timesteps      | 259072      |
+| train/                  |             |
+|    approx_kl            | 0.016443368 |
+|    clip_fraction        | 0.186       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.486      |
+|    explained_variance   | 0.791       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.129       |
+|    n_updates            | 5010        |
+|    policy_gradient_loss | -0.0141     |
+|    std                  | 0.339       |
+|    value_loss           | 0.292       |
+-----------------------------------------
+[E2] ~3.1h remaining (69088 steps left @ 0.16s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.36       |
+|    ep_rew_mean          | 1.2        |
+| time/                   |            |
+|    eta_hours            | 3.07       |
+|    fps                  | 11         |
+|    iterations           | 451        |
+|    sec_per_step         | 0.16       |
+|    time_elapsed         | 20811      |
+|    total_timesteps      | 259584     |
+| train/                  |            |
+|    approx_kl            | 0.01641661 |
+|    clip_fraction        | 0.187      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.478     |
+|    explained_variance   | 0.796      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.104      |
+|    n_updates            | 5020       |
+|    policy_gradient_loss | -0.0143    |
+|    std                  | 0.338      |
+|    value_loss           | 0.287      |
+----------------------------------------
+[E2] ~3.0h remaining (68576 steps left @ 0.16s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.41       |
+|    ep_rew_mean          | 1.26       |
+| time/                   |            |
+|    eta_hours            | 2.97       |
+|    fps                  | 11         |
+|    iterations           | 452        |
+|    sec_per_step         | 0.156      |
+|    time_elapsed         | 20887      |
+|    total_timesteps      | 260096     |
+| train/                  |            |
+|    approx_kl            | 0.01996522 |
+|    clip_fraction        | 0.231      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.472     |
+|    explained_variance   | 0.777      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.0964     |
+|    n_updates            | 5030       |
+|    policy_gradient_loss | -0.021     |
+|    std                  | 0.339      |
+|    value_loss           | 0.3        |
+----------------------------------------
+[E2] ~3.0h remaining (68064 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.56        |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 2.98        |
+|    fps                  | 11          |
+|    iterations           | 453         |
+|    sec_per_step         | 0.158       |
+|    time_elapsed         | 20970       |
+|    total_timesteps      | 260608      |
+| train/                  |             |
+|    approx_kl            | 0.013273079 |
+|    clip_fraction        | 0.177       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.471      |
+|    explained_variance   | 0.777       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.085       |
+|    n_updates            | 5040        |
+|    policy_gradient_loss | -0.0142     |
+|    std                  | 0.339       |
+|    value_loss           | 0.306       |
+-----------------------------------------
+[E2] ~3.1h remaining (67552 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.44        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 3.06        |
+|    fps                  | 11          |
+|    iterations           | 454         |
+|    sec_per_step         | 0.163       |
+|    time_elapsed         | 21060       |
+|    total_timesteps      | 261120      |
+| train/                  |             |
+|    approx_kl            | 0.016985904 |
+|    clip_fraction        | 0.208       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.467      |
+|    explained_variance   | 0.801       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.159       |
+|    n_updates            | 5050        |
+|    policy_gradient_loss | -0.0174     |
+|    std                  | 0.338       |
+|    value_loss           | 0.271       |
+-----------------------------------------
+[E2] ~3.1h remaining (67040 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.47        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 3.12        |
+|    fps                  | 11          |
+|    iterations           | 455         |
+|    sec_per_step         | 0.168       |
+|    time_elapsed         | 21151       |
+|    total_timesteps      | 261632      |
+| train/                  |             |
+|    approx_kl            | 0.018266622 |
+|    clip_fraction        | 0.192       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.464      |
+|    explained_variance   | 0.775       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0907      |
+|    n_updates            | 5060        |
+|    policy_gradient_loss | -0.0183     |
+|    std                  | 0.338       |
+|    value_loss           | 0.31        |
+-----------------------------------------
+[E2] ~3.2h remaining (66528 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.29        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 3.19        |
+|    fps                  | 10          |
+|    iterations           | 456         |
+|    sec_per_step         | 0.173       |
+|    time_elapsed         | 21245       |
+|    total_timesteps      | 262144      |
+| train/                  |             |
+|    approx_kl            | 0.016040578 |
+|    clip_fraction        | 0.159       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.455      |
+|    explained_variance   | 0.797       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0896      |
+|    n_updates            | 5070        |
+|    policy_gradient_loss | -0.0159     |
+|    std                  | 0.337       |
+|    value_loss           | 0.261       |
+-----------------------------------------
+[E2] ~3.2h remaining (66016 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.36        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 3.17        |
+|    fps                  | 10          |
+|    iterations           | 457         |
+|    sec_per_step         | 0.173       |
+|    time_elapsed         | 21334       |
+|    total_timesteps      | 262656      |
+| train/                  |             |
+|    approx_kl            | 0.010361249 |
+|    clip_fraction        | 0.203       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.449      |
+|    explained_variance   | 0.767       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.152       |
+|    n_updates            | 5080        |
+|    policy_gradient_loss | -0.0174     |
+|    std                  | 0.336       |
+|    value_loss           | 0.345       |
+-----------------------------------------
+[E2] ~3.2h remaining (65504 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.42        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 3.16        |
+|    fps                  | 10          |
+|    iterations           | 458         |
+|    sec_per_step         | 0.174       |
+|    time_elapsed         | 21423       |
+|    total_timesteps      | 263168      |
+| train/                  |             |
+|    approx_kl            | 0.015630532 |
+|    clip_fraction        | 0.216       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.441      |
+|    explained_variance   | 0.768       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0972      |
+|    n_updates            | 5090        |
+|    policy_gradient_loss | -0.0174     |
+|    std                  | 0.336       |
+|    value_loss           | 0.312       |
+-----------------------------------------
+[E2] ~3.1h remaining (64992 steps left @ 0.17s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.21       |
+|    ep_rew_mean          | 1.34       |
+| time/                   |            |
+|    eta_hours            | 3.14       |
+|    fps                  | 10         |
+|    iterations           | 459        |
+|    sec_per_step         | 0.174      |
+|    time_elapsed         | 21513      |
+|    total_timesteps      | 263680     |
+| train/                  |            |
+|    approx_kl            | 0.01806108 |
+|    clip_fraction        | 0.203      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.433     |
+|    explained_variance   | 0.74       |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.162      |
+|    n_updates            | 5100       |
+|    policy_gradient_loss | -0.0161    |
+|    std                  | 0.335      |
+|    value_loss           | 0.363      |
+----------------------------------------
+[E2] ~3.1h remaining (64480 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.46        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 3.14        |
+|    fps                  | 10          |
+|    iterations           | 460         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 21604       |
+|    total_timesteps      | 264192      |
+| train/                  |             |
+|    approx_kl            | 0.013362147 |
+|    clip_fraction        | 0.141       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.426      |
+|    explained_variance   | 0.809       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.123       |
+|    n_updates            | 5110        |
+|    policy_gradient_loss | -0.0119     |
+|    std                  | 0.334       |
+|    value_loss           | 0.272       |
+-----------------------------------------
+[E2] ~2.9h remaining (63968 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.44        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 2.93        |
+|    fps                  | 10          |
+|    iterations           | 461         |
+|    sec_per_step         | 0.165       |
+|    time_elapsed         | 21676       |
+|    total_timesteps      | 264704      |
+| train/                  |             |
+|    approx_kl            | 0.020031076 |
+|    clip_fraction        | 0.184       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.42       |
+|    explained_variance   | 0.757       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.137       |
+|    n_updates            | 5120        |
+|    policy_gradient_loss | -0.0146     |
+|    std                  | 0.334       |
+|    value_loss           | 0.327       |
+-----------------------------------------
+[E2] ~2.8h remaining (63456 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.5         |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 2.84        |
+|    fps                  | 10          |
+|    iterations           | 462         |
+|    sec_per_step         | 0.161       |
+|    time_elapsed         | 21754       |
+|    total_timesteps      | 265216      |
+| train/                  |             |
+|    approx_kl            | 0.013432724 |
+|    clip_fraction        | 0.146       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.417      |
+|    explained_variance   | 0.808       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.139       |
+|    n_updates            | 5130        |
+|    policy_gradient_loss | -0.0108     |
+|    std                  | 0.333       |
+|    value_loss           | 0.272       |
+-----------------------------------------
+[E2] ~2.8h remaining (62944 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.55        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 2.83        |
+|    fps                  | 10          |
+|    iterations           | 463         |
+|    sec_per_step         | 0.162       |
+|    time_elapsed         | 21838       |
+|    total_timesteps      | 265728      |
+| train/                  |             |
+|    approx_kl            | 0.014692965 |
+|    clip_fraction        | 0.199       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.405      |
+|    explained_variance   | 0.783       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.144       |
+|    n_updates            | 5140        |
+|    policy_gradient_loss | -0.0177     |
+|    std                  | 0.332       |
+|    value_loss           | 0.3         |
+-----------------------------------------
+[E2] ~2.9h remaining (62432 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.39        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 2.86        |
+|    fps                  | 10          |
+|    iterations           | 464         |
+|    sec_per_step         | 0.165       |
+|    time_elapsed         | 21926       |
+|    total_timesteps      | 266240      |
+| train/                  |             |
+|    approx_kl            | 0.015720002 |
+|    clip_fraction        | 0.201       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.394      |
+|    explained_variance   | 0.811       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.131       |
+|    n_updates            | 5150        |
+|    policy_gradient_loss | -0.0201     |
+|    std                  | 0.331       |
+|    value_loss           | 0.267       |
+-----------------------------------------
+[E2] ~2.9h remaining (61920 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.35        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 2.88        |
+|    fps                  | 10          |
+|    iterations           | 465         |
+|    sec_per_step         | 0.167       |
+|    time_elapsed         | 22015       |
+|    total_timesteps      | 266752      |
+| train/                  |             |
+|    approx_kl            | 0.020925185 |
+|    clip_fraction        | 0.186       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.388      |
+|    explained_variance   | 0.745       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.143       |
+|    n_updates            | 5160        |
+|    policy_gradient_loss | -0.0135     |
+|    std                  | 0.331       |
+|    value_loss           | 0.34        |
+-----------------------------------------
+[E2] ~2.9h remaining (61408 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.41        |
+|    ep_rew_mean          | 1.32        |
+| time/                   |             |
+|    eta_hours            | 2.93        |
+|    fps                  | 10          |
+|    iterations           | 466         |
+|    sec_per_step         | 0.172       |
+|    time_elapsed         | 22108       |
+|    total_timesteps      | 267264      |
+| train/                  |             |
+|    approx_kl            | 0.023015644 |
+|    clip_fraction        | 0.261       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.38       |
+|    explained_variance   | 0.797       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.138       |
+|    n_updates            | 5170        |
+|    policy_gradient_loss | -0.0237     |
+|    std                  | 0.33        |
+|    value_loss           | 0.299       |
+-----------------------------------------
+[E2] ~2.9h remaining (60896 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.41        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 2.9         |
+|    fps                  | 10          |
+|    iterations           | 467         |
+|    sec_per_step         | 0.172       |
+|    time_elapsed         | 22196       |
+|    total_timesteps      | 267776      |
+| train/                  |             |
+|    approx_kl            | 0.020282105 |
+|    clip_fraction        | 0.199       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.37       |
+|    explained_variance   | 0.802       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0537      |
+|    n_updates            | 5180        |
+|    policy_gradient_loss | -0.0229     |
+|    std                  | 0.329       |
+|    value_loss           | 0.305       |
+-----------------------------------------
+[E2] ~3.0h remaining (60384 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.35        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 2.95        |
+|    fps                  | 10          |
+|    iterations           | 468         |
+|    sec_per_step         | 0.176       |
+|    time_elapsed         | 22291       |
+|    total_timesteps      | 268288      |
+| train/                  |             |
+|    approx_kl            | 0.016490106 |
+|    clip_fraction        | 0.182       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.366      |
+|    explained_variance   | 0.734       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.111       |
+|    n_updates            | 5190        |
+|    policy_gradient_loss | -0.0172     |
+|    std                  | 0.329       |
+|    value_loss           | 0.37        |
+-----------------------------------------
+[E2 eval @ step 268673]  MAPE=3.36%  p90=4.33%  success(<5%)=100.0%  mean_scan_time=226.7s
+[MF global-best] candidate from full/stage_eval_full screened at 3.36% but confirmed at 4.59% >= current best 4.31%
+[E2] ~3.1h remaining (59872 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.44        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 3.06        |
+|    fps                  | 10          |
+|    iterations           | 469         |
+|    sec_per_step         | 0.184       |
+|    time_elapsed         | 22395       |
+|    total_timesteps      | 268800      |
+| train/                  |             |
+|    approx_kl            | 0.016616069 |
+|    clip_fraction        | 0.186       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.362      |
+|    explained_variance   | 0.802       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.127       |
+|    n_updates            | 5200        |
+|    policy_gradient_loss | -0.0223     |
+|    std                  | 0.329       |
+|    value_loss           | 0.262       |
+-----------------------------------------
+[E2] ~3.1h remaining (59360 steps left @ 0.19s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.34        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 3.05        |
+|    fps                  | 10          |
+|    iterations           | 470         |
+|    sec_per_step         | 0.185       |
+|    time_elapsed         | 22491       |
+|    total_timesteps      | 269312      |
+| train/                  |             |
+|    approx_kl            | 0.024616126 |
+|    clip_fraction        | 0.289       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.356      |
+|    explained_variance   | 0.803       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.17        |
+|    n_updates            | 5210        |
+|    policy_gradient_loss | -0.0261     |
+|    std                  | 0.328       |
+|    value_loss           | 0.269       |
+-----------------------------------------
+[E2] ~3.0h remaining (58848 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.4         |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 2.99        |
+|    fps                  | 10          |
+|    iterations           | 471         |
+|    sec_per_step         | 0.183       |
+|    time_elapsed         | 22582       |
+|    total_timesteps      | 269824      |
+| train/                  |             |
+|    approx_kl            | 0.020025935 |
+|    clip_fraction        | 0.246       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.35       |
+|    explained_variance   | 0.781       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.117       |
+|    n_updates            | 5220        |
+|    policy_gradient_loss | -0.0227     |
+|    std                  | 0.328       |
+|    value_loss           | 0.301       |
+-----------------------------------------
+[E2] ~2.9h remaining (58336 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.37        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 2.94        |
+|    fps                  | 10          |
+|    iterations           | 472         |
+|    sec_per_step         | 0.182       |
+|    time_elapsed         | 22674       |
+|    total_timesteps      | 270336      |
+| train/                  |             |
+|    approx_kl            | 0.025135465 |
+|    clip_fraction        | 0.231       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.344      |
+|    explained_variance   | 0.806       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.115       |
+|    n_updates            | 5230        |
+|    policy_gradient_loss | -0.0188     |
+|    std                  | 0.327       |
+|    value_loss           | 0.268       |
+-----------------------------------------
+[E2] ~2.9h remaining (57824 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.24        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 2.92        |
+|    fps                  | 10          |
+|    iterations           | 473         |
+|    sec_per_step         | 0.182       |
+|    time_elapsed         | 22767       |
+|    total_timesteps      | 270848      |
+| train/                  |             |
+|    approx_kl            | 0.018003654 |
+|    clip_fraction        | 0.191       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.336      |
+|    explained_variance   | 0.831       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.11        |
+|    n_updates            | 5240        |
+|    policy_gradient_loss | -0.0158     |
+|    std                  | 0.327       |
+|    value_loss           | 0.224       |
+-----------------------------------------
+[E2] ~2.9h remaining (57312 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.31        |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 2.91        |
+|    fps                  | 10          |
+|    iterations           | 474         |
+|    sec_per_step         | 0.183       |
+|    time_elapsed         | 22862       |
+|    total_timesteps      | 271360      |
+| train/                  |             |
+|    approx_kl            | 0.015896417 |
+|    clip_fraction        | 0.179       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.329      |
+|    explained_variance   | 0.766       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.154       |
+|    n_updates            | 5250        |
+|    policy_gradient_loss | -0.0169     |
+|    std                  | 0.326       |
+|    value_loss           | 0.317       |
+-----------------------------------------
+[E2] ~2.9h remaining (56800 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.26        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 2.89        |
+|    fps                  | 10          |
+|    iterations           | 475         |
+|    sec_per_step         | 0.183       |
+|    time_elapsed         | 22956       |
+|    total_timesteps      | 271872      |
+| train/                  |             |
+|    approx_kl            | 0.015507452 |
+|    clip_fraction        | 0.208       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.321      |
+|    explained_variance   | 0.77        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.131       |
+|    n_updates            | 5260        |
+|    policy_gradient_loss | -0.0218     |
+|    std                  | 0.325       |
+|    value_loss           | 0.317       |
+-----------------------------------------
+[E2] ~2.9h remaining (56288 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.32        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 2.86        |
+|    fps                  | 10          |
+|    iterations           | 476         |
+|    sec_per_step         | 0.183       |
+|    time_elapsed         | 23050       |
+|    total_timesteps      | 272384      |
+| train/                  |             |
+|    approx_kl            | 0.014953852 |
+|    clip_fraction        | 0.202       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.315      |
+|    explained_variance   | 0.811       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.097       |
+|    n_updates            | 5270        |
+|    policy_gradient_loss | -0.0193     |
+|    std                  | 0.325       |
+|    value_loss           | 0.269       |
+-----------------------------------------
+[E2] ~2.8h remaining (55776 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.29        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 2.8         |
+|    fps                  | 10          |
+|    iterations           | 477         |
+|    sec_per_step         | 0.181       |
+|    time_elapsed         | 23140       |
+|    total_timesteps      | 272896      |
+| train/                  |             |
+|    approx_kl            | 0.018313017 |
+|    clip_fraction        | 0.179       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.31       |
+|    explained_variance   | 0.769       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.171       |
+|    n_updates            | 5280        |
+|    policy_gradient_loss | -0.0155     |
+|    std                  | 0.324       |
+|    value_loss           | 0.325       |
+-----------------------------------------
+[E2] ~2.7h remaining (55264 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.25        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 2.71        |
+|    fps                  | 10          |
+|    iterations           | 478         |
+|    sec_per_step         | 0.177       |
+|    time_elapsed         | 23225       |
+|    total_timesteps      | 273408      |
+| train/                  |             |
+|    approx_kl            | 0.024079049 |
+|    clip_fraction        | 0.268       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.304      |
+|    explained_variance   | 0.8         |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0209      |
+|    n_updates            | 5290        |
+|    policy_gradient_loss | -0.0259     |
+|    std                  | 0.323       |
+|    value_loss           | 0.259       |
+-----------------------------------------
+[E2] ~2.6h remaining (54752 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.28        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 2.59        |
+|    fps                  | 10          |
+|    iterations           | 479         |
+|    sec_per_step         | 0.17        |
+|    time_elapsed         | 23304       |
+|    total_timesteps      | 273920      |
+| train/                  |             |
+|    approx_kl            | 0.025762307 |
+|    clip_fraction        | 0.221       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.293      |
+|    explained_variance   | 0.782       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.141       |
+|    n_updates            | 5300        |
+|    policy_gradient_loss | -0.0182     |
+|    std                  | 0.322       |
+|    value_loss           | 0.294       |
+-----------------------------------------
+[E2] ~2.5h remaining (54240 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.41        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 2.48        |
+|    fps                  | 10          |
+|    iterations           | 480         |
+|    sec_per_step         | 0.165       |
+|    time_elapsed         | 23382       |
+|    total_timesteps      | 274432      |
+| train/                  |             |
+|    approx_kl            | 0.021310758 |
+|    clip_fraction        | 0.244       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.283      |
+|    explained_variance   | 0.774       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.131       |
+|    n_updates            | 5310        |
+|    policy_gradient_loss | -0.0232     |
+|    std                  | 0.322       |
+|    value_loss           | 0.314       |
+-----------------------------------------
+[E2] ~2.5h remaining (53728 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.62        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 2.5         |
+|    fps                  | 10          |
+|    iterations           | 481         |
+|    sec_per_step         | 0.167       |
+|    time_elapsed         | 23471       |
+|    total_timesteps      | 274944      |
+| train/                  |             |
+|    approx_kl            | 0.018708427 |
+|    clip_fraction        | 0.163       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.279      |
+|    explained_variance   | 0.787       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.166       |
+|    n_updates            | 5320        |
+|    policy_gradient_loss | -0.0119     |
+|    std                  | 0.322       |
+|    value_loss           | 0.273       |
+-----------------------------------------
+[E2] ~2.5h remaining (53216 steps left @ 0.17s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.53       |
+|    ep_rew_mean          | 1.3        |
+| time/                   |            |
+|    eta_hours            | 2.49       |
+|    fps                  | 10         |
+|    iterations           | 482        |
+|    sec_per_step         | 0.168      |
+|    time_elapsed         | 23558      |
+|    total_timesteps      | 275456     |
+| train/                  |            |
+|    approx_kl            | 0.01673001 |
+|    clip_fraction        | 0.214      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.278     |
+|    explained_variance   | 0.789      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.123      |
+|    n_updates            | 5330       |
+|    policy_gradient_loss | -0.0181    |
+|    std                  | 0.322      |
+|    value_loss           | 0.271      |
+----------------------------------------
+[E2] ~2.5h remaining (52704 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.55        |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 2.48        |
+|    fps                  | 10          |
+|    iterations           | 483         |
+|    sec_per_step         | 0.169       |
+|    time_elapsed         | 23647       |
+|    total_timesteps      | 275968      |
+| train/                  |             |
+|    approx_kl            | 0.016448632 |
+|    clip_fraction        | 0.213       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.275      |
+|    explained_variance   | 0.808       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0683      |
+|    n_updates            | 5340        |
+|    policy_gradient_loss | -0.0172     |
+|    std                  | 0.322       |
+|    value_loss           | 0.277       |
+-----------------------------------------
+[E2] ~2.5h remaining (52192 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.37        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 2.48        |
+|    fps                  | 10          |
+|    iterations           | 484         |
+|    sec_per_step         | 0.171       |
+|    time_elapsed         | 23736       |
+|    total_timesteps      | 276480      |
+| train/                  |             |
+|    approx_kl            | 0.012851596 |
+|    clip_fraction        | 0.141       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.272      |
+|    explained_variance   | 0.779       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.206       |
+|    n_updates            | 5350        |
+|    policy_gradient_loss | -0.0118     |
+|    std                  | 0.322       |
+|    value_loss           | 0.318       |
+-----------------------------------------
+[E2] ~2.4h remaining (51680 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.45        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 2.45        |
+|    fps                  | 10          |
+|    iterations           | 485         |
+|    sec_per_step         | 0.171       |
+|    time_elapsed         | 23823       |
+|    total_timesteps      | 276992      |
+| train/                  |             |
+|    approx_kl            | 0.014254767 |
+|    clip_fraction        | 0.192       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.269      |
+|    explained_variance   | 0.799       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.158       |
+|    n_updates            | 5360        |
+|    policy_gradient_loss | -0.0139     |
+|    std                  | 0.321       |
+|    value_loss           | 0.279       |
+-----------------------------------------
+[E2] ~2.5h remaining (51168 steps left @ 0.17s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.46       |
+|    ep_rew_mean          | 1.33       |
+| time/                   |            |
+|    eta_hours            | 2.48       |
+|    fps                  | 10         |
+|    iterations           | 486        |
+|    sec_per_step         | 0.175      |
+|    time_elapsed         | 23917      |
+|    total_timesteps      | 277504     |
+| train/                  |            |
+|    approx_kl            | 0.01665736 |
+|    clip_fraction        | 0.188      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.261     |
+|    explained_variance   | 0.796      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.079      |
+|    n_updates            | 5370       |
+|    policy_gradient_loss | -0.014     |
+|    std                  | 0.321      |
+|    value_loss           | 0.285      |
+----------------------------------------
+[E2] ~2.5h remaining (50656 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.29        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 2.46        |
+|    fps                  | 10          |
+|    iterations           | 487         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 24007       |
+|    total_timesteps      | 278016      |
+| train/                  |             |
+|    approx_kl            | 0.009884488 |
+|    clip_fraction        | 0.133       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.253      |
+|    explained_variance   | 0.831       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.112       |
+|    n_updates            | 5380        |
+|    policy_gradient_loss | -0.00971    |
+|    std                  | 0.32        |
+|    value_loss           | 0.245       |
+-----------------------------------------
+[E2] ~2.4h remaining (50144 steps left @ 0.17s/step)
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 5.54         |
+|    ep_rew_mean          | 1.33         |
+| time/                   |              |
+|    eta_hours            | 2.43         |
+|    fps                  | 10           |
+|    iterations           | 488          |
+|    sec_per_step         | 0.174        |
+|    time_elapsed         | 24096        |
+|    total_timesteps      | 278528       |
+| train/                  |              |
+|    approx_kl            | 0.0124750305 |
+|    clip_fraction        | 0.139        |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -0.244       |
+|    explained_variance   | 0.82         |
+|    learning_rate        | 0.0001       |
+|    loss                 | 0.027        |
+|    n_updates            | 5390         |
+|    policy_gradient_loss | -0.0144      |
+|    std                  | 0.32         |
+|    value_loss           | 0.253        |
+------------------------------------------
+[E2 eval @ step 278673]  MAPE=3.18%  p90=4.16%  success(<5%)=87.5%  mean_scan_time=232.1s
+[MF global-best] candidate from full/stage_eval_full screened at 3.18% but confirmed at 4.72% >= current best 4.31%
+[E2] ~2.5h remaining (49632 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.38        |
+|    ep_rew_mean          | 1.33        |
+| time/                   |             |
+|    eta_hours            | 2.51        |
+|    fps                  | 10          |
+|    iterations           | 489         |
+|    sec_per_step         | 0.182       |
+|    time_elapsed         | 24198       |
+|    total_timesteps      | 279040      |
+| train/                  |             |
+|    approx_kl            | 0.018451251 |
+|    clip_fraction        | 0.166       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.238      |
+|    explained_variance   | 0.817       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0762      |
+|    n_updates            | 5400        |
+|    policy_gradient_loss | -0.0184     |
+|    std                  | 0.319       |
+|    value_loss           | 0.27        |
+-----------------------------------------
+[E2] ~2.5h remaining (49120 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.41        |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 2.47        |
+|    fps                  | 10          |
+|    iterations           | 490         |
+|    sec_per_step         | 0.181       |
+|    time_elapsed         | 24289       |
+|    total_timesteps      | 279552      |
+| train/                  |             |
+|    approx_kl            | 0.021045674 |
+|    clip_fraction        | 0.207       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.235      |
+|    explained_variance   | 0.783       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.147       |
+|    n_updates            | 5410        |
+|    policy_gradient_loss | -0.0212     |
+|    std                  | 0.319       |
+|    value_loss           | 0.308       |
+-----------------------------------------
+[E2] ~2.4h remaining (48608 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.49        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 2.4         |
+|    fps                  | 10          |
+|    iterations           | 491         |
+|    sec_per_step         | 0.178       |
+|    time_elapsed         | 24377       |
+|    total_timesteps      | 280064      |
+| train/                  |             |
+|    approx_kl            | 0.014452304 |
+|    clip_fraction        | 0.166       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.228      |
+|    explained_variance   | 0.764       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.145       |
+|    n_updates            | 5420        |
+|    policy_gradient_loss | -0.0141     |
+|    std                  | 0.318       |
+|    value_loss           | 0.337       |
+-----------------------------------------
+[E2] ~2.3h remaining (48096 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.41        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 2.3         |
+|    fps                  | 10          |
+|    iterations           | 492         |
+|    sec_per_step         | 0.172       |
+|    time_elapsed         | 24458       |
+|    total_timesteps      | 280576      |
+| train/                  |             |
+|    approx_kl            | 0.017294979 |
+|    clip_fraction        | 0.239       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.224      |
+|    explained_variance   | 0.787       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0904      |
+|    n_updates            | 5430        |
+|    policy_gradient_loss | -0.0187     |
+|    std                  | 0.318       |
+|    value_loss           | 0.281       |
+-----------------------------------------
+[E2] ~2.1h remaining (47584 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.21        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 2.12        |
+|    fps                  | 10          |
+|    iterations           | 493         |
+|    sec_per_step         | 0.16        |
+|    time_elapsed         | 24526       |
+|    total_timesteps      | 281088      |
+| train/                  |             |
+|    approx_kl            | 0.022278965 |
+|    clip_fraction        | 0.245       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.222      |
+|    explained_variance   | 0.813       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.106       |
+|    n_updates            | 5440        |
+|    policy_gradient_loss | -0.0243     |
+|    std                  | 0.319       |
+|    value_loss           | 0.259       |
+-----------------------------------------
+[E2] ~2.0h remaining (47072 steps left @ 0.16s/step)
+---------------------------------------
+| rollout/                |           |
+|    ep_len_mean          | 5.34      |
+|    ep_rew_mean          | 1.27      |
+| time/                   |           |
+|    eta_hours            | 2.04      |
+|    fps                  | 10        |
+|    iterations           | 494       |
+|    sec_per_step         | 0.156     |
+|    time_elapsed         | 24601     |
+|    total_timesteps      | 281600    |
+| train/                  |           |
+|    approx_kl            | 0.0160821 |
+|    clip_fraction        | 0.158     |
+|    clip_range           | 0.2       |
+|    entropy_loss         | -0.22     |
+|    explained_variance   | 0.766     |
+|    learning_rate        | 0.0001    |
+|    loss                 | 0.131     |
+|    n_updates            | 5450      |
+|    policy_gradient_loss | -0.0103   |
+|    std                  | 0.319     |
+|    value_loss           | 0.308     |
+---------------------------------------
+[E2] ~2.0h remaining (46560 steps left @ 0.16s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.3        |
+|    ep_rew_mean          | 1.25       |
+| time/                   |            |
+|    eta_hours            | 2.05       |
+|    fps                  | 10         |
+|    iterations           | 495        |
+|    sec_per_step         | 0.158      |
+|    time_elapsed         | 24685      |
+|    total_timesteps      | 282112     |
+| train/                  |            |
+|    approx_kl            | 0.01590076 |
+|    clip_fraction        | 0.16       |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.212     |
+|    explained_variance   | 0.744      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.222      |
+|    n_updates            | 5460       |
+|    policy_gradient_loss | -0.0155    |
+|    std                  | 0.318      |
+|    value_loss           | 0.338      |
+----------------------------------------
+[E2] ~2.1h remaining (46048 steps left @ 0.16s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.4        |
+|    ep_rew_mean          | 1.28       |
+| time/                   |            |
+|    eta_hours            | 2.1        |
+|    fps                  | 10         |
+|    iterations           | 496        |
+|    sec_per_step         | 0.164      |
+|    time_elapsed         | 24775      |
+|    total_timesteps      | 282624     |
+| train/                  |            |
+|    approx_kl            | 0.02113004 |
+|    clip_fraction        | 0.227      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.204     |
+|    explained_variance   | 0.788      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.0924     |
+|    n_updates            | 5470       |
+|    policy_gradient_loss | -0.0202    |
+|    std                  | 0.318      |
+|    value_loss           | 0.292      |
+----------------------------------------
+[E2] ~2.1h remaining (45536 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.21        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 2.11        |
+|    fps                  | 10          |
+|    iterations           | 497         |
+|    sec_per_step         | 0.167       |
+|    time_elapsed         | 24864       |
+|    total_timesteps      | 283136      |
+| train/                  |             |
+|    approx_kl            | 0.017927587 |
+|    clip_fraction        | 0.22        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.201      |
+|    explained_variance   | 0.774       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0306      |
+|    n_updates            | 5480        |
+|    policy_gradient_loss | -0.0219     |
+|    std                  | 0.317       |
+|    value_loss           | 0.292       |
+-----------------------------------------
+[E2] ~2.1h remaining (45024 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.29        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 2.11        |
+|    fps                  | 10          |
+|    iterations           | 498         |
+|    sec_per_step         | 0.169       |
+|    time_elapsed         | 24953       |
+|    total_timesteps      | 283648      |
+| train/                  |             |
+|    approx_kl            | 0.009223541 |
+|    clip_fraction        | 0.146       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.195      |
+|    explained_variance   | 0.795       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.13        |
+|    n_updates            | 5490        |
+|    policy_gradient_loss | -0.0132     |
+|    std                  | 0.317       |
+|    value_loss           | 0.274       |
+-----------------------------------------
+[E2] ~2.2h remaining (44512 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.24        |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 2.18        |
+|    fps                  | 10          |
+|    iterations           | 499         |
+|    sec_per_step         | 0.177       |
+|    time_elapsed         | 25053       |
+|    total_timesteps      | 284160      |
+| train/                  |             |
+|    approx_kl            | 0.013509572 |
+|    clip_fraction        | 0.186       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.187      |
+|    explained_variance   | 0.798       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.111       |
+|    n_updates            | 5500        |
+|    policy_gradient_loss | -0.0121     |
+|    std                  | 0.316       |
+|    value_loss           | 0.278       |
+-----------------------------------------
+[E2] ~2.2h remaining (44000 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.3         |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 2.2         |
+|    fps                  | 10          |
+|    iterations           | 500         |
+|    sec_per_step         | 0.18        |
+|    time_elapsed         | 25148       |
+|    total_timesteps      | 284672      |
+| train/                  |             |
+|    approx_kl            | 0.016260915 |
+|    clip_fraction        | 0.181       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.179      |
+|    explained_variance   | 0.803       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.116       |
+|    n_updates            | 5510        |
+|    policy_gradient_loss | -0.0165     |
+|    std                  | 0.316       |
+|    value_loss           | 0.267       |
+-----------------------------------------
+[E2] ~2.2h remaining (43488 steps left @ 0.18s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.48       |
+|    ep_rew_mean          | 1.27       |
+| time/                   |            |
+|    eta_hours            | 2.19       |
+|    fps                  | 10         |
+|    iterations           | 501        |
+|    sec_per_step         | 0.181      |
+|    time_elapsed         | 25243      |
+|    total_timesteps      | 285184     |
+| train/                  |            |
+|    approx_kl            | 0.01641226 |
+|    clip_fraction        | 0.198      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.173     |
+|    explained_variance   | 0.73       |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.107      |
+|    n_updates            | 5520       |
+|    policy_gradient_loss | -0.0146    |
+|    std                  | 0.315      |
+|    value_loss           | 0.385      |
+----------------------------------------
+[E2] ~2.2h remaining (42976 steps left @ 0.18s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.36       |
+|    ep_rew_mean          | 1.28       |
+| time/                   |            |
+|    eta_hours            | 2.16       |
+|    fps                  | 10         |
+|    iterations           | 502        |
+|    sec_per_step         | 0.181      |
+|    time_elapsed         | 25335      |
+|    total_timesteps      | 285696     |
+| train/                  |            |
+|    approx_kl            | 0.00852632 |
+|    clip_fraction        | 0.0979     |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.17      |
+|    explained_variance   | 0.815      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.109      |
+|    n_updates            | 5530       |
+|    policy_gradient_loss | -0.00804   |
+|    std                  | 0.315      |
+|    value_loss           | 0.245      |
+----------------------------------------
+[E2] ~2.1h remaining (42464 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.6         |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 2.13        |
+|    fps                  | 10          |
+|    iterations           | 503         |
+|    sec_per_step         | 0.181       |
+|    time_elapsed         | 25428       |
+|    total_timesteps      | 286208      |
+| train/                  |             |
+|    approx_kl            | 0.011640482 |
+|    clip_fraction        | 0.184       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.163      |
+|    explained_variance   | 0.794       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.113       |
+|    n_updates            | 5540        |
+|    policy_gradient_loss | -0.0201     |
+|    std                  | 0.314       |
+|    value_loss           | 0.284       |
+-----------------------------------------
+[E2] ~2.1h remaining (41952 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.49        |
+|    ep_rew_mean          | 1.32        |
+| time/                   |             |
+|    eta_hours            | 2.13        |
+|    fps                  | 10          |
+|    iterations           | 504         |
+|    sec_per_step         | 0.182       |
+|    time_elapsed         | 25523       |
+|    total_timesteps      | 286720      |
+| train/                  |             |
+|    approx_kl            | 0.014195623 |
+|    clip_fraction        | 0.236       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.153      |
+|    explained_variance   | 0.832       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0798      |
+|    n_updates            | 5550        |
+|    policy_gradient_loss | -0.0222     |
+|    std                  | 0.313       |
+|    value_loss           | 0.235       |
+-----------------------------------------
+[E2] ~2.1h remaining (41440 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.37        |
+|    ep_rew_mean          | 1.26        |
+| time/                   |             |
+|    eta_hours            | 2.11        |
+|    fps                  | 10          |
+|    iterations           | 505         |
+|    sec_per_step         | 0.184       |
+|    time_elapsed         | 25618       |
+|    total_timesteps      | 287232      |
+| train/                  |             |
+|    approx_kl            | 0.013672664 |
+|    clip_fraction        | 0.177       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.143      |
+|    explained_variance   | 0.826       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0846      |
+|    n_updates            | 5560        |
+|    policy_gradient_loss | -0.0173     |
+|    std                  | 0.313       |
+|    value_loss           | 0.241       |
+-----------------------------------------
+[E2] ~2.1h remaining (40928 steps left @ 0.19s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.44        |
+|    ep_rew_mean          | 1.33        |
+| time/                   |             |
+|    eta_hours            | 2.11        |
+|    fps                  | 10          |
+|    iterations           | 506         |
+|    sec_per_step         | 0.186       |
+|    time_elapsed         | 25715       |
+|    total_timesteps      | 287744      |
+| train/                  |             |
+|    approx_kl            | 0.015656414 |
+|    clip_fraction        | 0.185       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.136      |
+|    explained_variance   | 0.779       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.139       |
+|    n_updates            | 5570        |
+|    policy_gradient_loss | -0.019      |
+|    std                  | 0.312       |
+|    value_loss           | 0.263       |
+-----------------------------------------
+[E2] ~2.1h remaining (40416 steps left @ 0.19s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.53        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 2.09        |
+|    fps                  | 10          |
+|    iterations           | 507         |
+|    sec_per_step         | 0.186       |
+|    time_elapsed         | 25811       |
+|    total_timesteps      | 288256      |
+| train/                  |             |
+|    approx_kl            | 0.016075477 |
+|    clip_fraction        | 0.213       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.133      |
+|    explained_variance   | 0.782       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.152       |
+|    n_updates            | 5580        |
+|    policy_gradient_loss | -0.0182     |
+|    std                  | 0.312       |
+|    value_loss           | 0.316       |
+-----------------------------------------
+[E2 eval @ step 288673]  MAPE=3.22%  p90=4.71%  success(<5%)=87.5%  mean_scan_time=227.1s
+[MF global-best] candidate from full/stage_eval_full screened at 3.22% but confirmed at 7.66% >= current best 4.31%
+[E2] ~2.1h remaining (39904 steps left @ 0.19s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.34       |
+|    ep_rew_mean          | 1.29       |
+| time/                   |            |
+|    eta_hours            | 2.13       |
+|    fps                  | 10         |
+|    iterations           | 508        |
+|    sec_per_step         | 0.192      |
+|    time_elapsed         | 25917      |
+|    total_timesteps      | 288768     |
+| train/                  |            |
+|    approx_kl            | 0.01165846 |
+|    clip_fraction        | 0.156      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.128     |
+|    explained_variance   | 0.771      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.116      |
+|    n_updates            | 5590       |
+|    policy_gradient_loss | -0.0129    |
+|    std                  | 0.311      |
+|    value_loss           | 0.312      |
+----------------------------------------
+[E2] ~2.0h remaining (39392 steps left @ 0.19s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.46        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 2.04        |
+|    fps                  | 10          |
+|    iterations           | 509         |
+|    sec_per_step         | 0.187       |
+|    time_elapsed         | 26006       |
+|    total_timesteps      | 289280      |
+| train/                  |             |
+|    approx_kl            | 0.014583567 |
+|    clip_fraction        | 0.163       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.121      |
+|    explained_variance   | 0.802       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0665      |
+|    n_updates            | 5600        |
+|    policy_gradient_loss | -0.0127     |
+|    std                  | 0.311       |
+|    value_loss           | 0.287       |
+-----------------------------------------
+[E2] ~2.0h remaining (38880 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.6         |
+|    ep_rew_mean          | 1.25        |
+| time/                   |             |
+|    eta_hours            | 1.98        |
+|    fps                  | 10          |
+|    iterations           | 510         |
+|    sec_per_step         | 0.183       |
+|    time_elapsed         | 26096       |
+|    total_timesteps      | 289792      |
+| train/                  |             |
+|    approx_kl            | 0.015005317 |
+|    clip_fraction        | 0.132       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.122      |
+|    explained_variance   | 0.78        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.168       |
+|    n_updates            | 5610        |
+|    policy_gradient_loss | -0.0114     |
+|    std                  | 0.312       |
+|    value_loss           | 0.317       |
+-----------------------------------------
+[E2] ~1.9h remaining (38368 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.57        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 1.91        |
+|    fps                  | 9           |
+|    iterations           | 511         |
+|    sec_per_step         | 0.179       |
+|    time_elapsed         | 26183       |
+|    total_timesteps      | 290304      |
+| train/                  |             |
+|    approx_kl            | 0.020202374 |
+|    clip_fraction        | 0.263       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.123      |
+|    explained_variance   | 0.809       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0833      |
+|    n_updates            | 5620        |
+|    policy_gradient_loss | -0.0221     |
+|    std                  | 0.312       |
+|    value_loss           | 0.247       |
+-----------------------------------------
+[E2] ~1.9h remaining (37856 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.63        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 1.86        |
+|    fps                  | 9           |
+|    iterations           | 512         |
+|    sec_per_step         | 0.177       |
+|    time_elapsed         | 26271       |
+|    total_timesteps      | 290816      |
+| train/                  |             |
+|    approx_kl            | 0.013628603 |
+|    clip_fraction        | 0.175       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.119      |
+|    explained_variance   | 0.796       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.21        |
+|    n_updates            | 5630        |
+|    policy_gradient_loss | -0.0143     |
+|    std                  | 0.311       |
+|    value_loss           | 0.286       |
+-----------------------------------------
+[E2] ~1.8h remaining (37344 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.53        |
+|    ep_rew_mean          | 1.34        |
+| time/                   |             |
+|    eta_hours            | 1.83        |
+|    fps                  | 9           |
+|    iterations           | 513         |
+|    sec_per_step         | 0.176       |
+|    time_elapsed         | 26360       |
+|    total_timesteps      | 291328      |
+| train/                  |             |
+|    approx_kl            | 0.008081811 |
+|    clip_fraction        | 0.107       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.111      |
+|    explained_variance   | 0.781       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.146       |
+|    n_updates            | 5640        |
+|    policy_gradient_loss | -0.00905    |
+|    std                  | 0.31        |
+|    value_loss           | 0.302       |
+-----------------------------------------
+[E2] ~1.8h remaining (36832 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.64        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 1.81        |
+|    fps                  | 9           |
+|    iterations           | 514         |
+|    sec_per_step         | 0.176       |
+|    time_elapsed         | 26451       |
+|    total_timesteps      | 291840      |
+| train/                  |             |
+|    approx_kl            | 0.016589368 |
+|    clip_fraction        | 0.163       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.104      |
+|    explained_variance   | 0.787       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.18        |
+|    n_updates            | 5650        |
+|    policy_gradient_loss | -0.0136     |
+|    std                  | 0.31        |
+|    value_loss           | 0.308       |
+-----------------------------------------
+[E2] ~1.8h remaining (36320 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.58        |
+|    ep_rew_mean          | 1.33        |
+| time/                   |             |
+|    eta_hours            | 1.78        |
+|    fps                  | 9           |
+|    iterations           | 515         |
+|    sec_per_step         | 0.176       |
+|    time_elapsed         | 26540       |
+|    total_timesteps      | 292352      |
+| train/                  |             |
+|    approx_kl            | 0.015762078 |
+|    clip_fraction        | 0.23        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0994     |
+|    explained_variance   | 0.796       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0876      |
+|    n_updates            | 5660        |
+|    policy_gradient_loss | -0.0208     |
+|    std                  | 0.309       |
+|    value_loss           | 0.283       |
+-----------------------------------------
+[E2] ~1.7h remaining (35808 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.68        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 1.74        |
+|    fps                  | 9           |
+|    iterations           | 516         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 26628       |
+|    total_timesteps      | 292864      |
+| train/                  |             |
+|    approx_kl            | 0.016798839 |
+|    clip_fraction        | 0.206       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0949     |
+|    explained_variance   | 0.795       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0897      |
+|    n_updates            | 5670        |
+|    policy_gradient_loss | -0.0153     |
+|    std                  | 0.309       |
+|    value_loss           | 0.278       |
+-----------------------------------------
+[E2] ~1.7h remaining (35296 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.38        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 1.67        |
+|    fps                  | 9           |
+|    iterations           | 517         |
+|    sec_per_step         | 0.17        |
+|    time_elapsed         | 26710       |
+|    total_timesteps      | 293376      |
+| train/                  |             |
+|    approx_kl            | 0.022138786 |
+|    clip_fraction        | 0.215       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0888     |
+|    explained_variance   | 0.827       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0927      |
+|    n_updates            | 5680        |
+|    policy_gradient_loss | -0.0227     |
+|    std                  | 0.309       |
+|    value_loss           | 0.242       |
+-----------------------------------------
+[E2] ~1.6h remaining (34784 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.46        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 1.64        |
+|    fps                  | 9           |
+|    iterations           | 518         |
+|    sec_per_step         | 0.17        |
+|    time_elapsed         | 26796       |
+|    total_timesteps      | 293888      |
+| train/                  |             |
+|    approx_kl            | 0.017582897 |
+|    clip_fraction        | 0.234       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0852     |
+|    explained_variance   | 0.814       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0579      |
+|    n_updates            | 5690        |
+|    policy_gradient_loss | -0.021      |
+|    std                  | 0.309       |
+|    value_loss           | 0.25        |
+-----------------------------------------
+[E2] ~1.6h remaining (34272 steps left @ 0.17s/step)
+------------------------------------------
+| rollout/                |              |
+|    ep_len_mean          | 5.73         |
+|    ep_rew_mean          | 1.3          |
+| time/                   |              |
+|    eta_hours            | 1.63         |
+|    fps                  | 9            |
+|    iterations           | 519          |
+|    sec_per_step         | 0.172        |
+|    time_elapsed         | 26886        |
+|    total_timesteps      | 294400       |
+| train/                  |              |
+|    approx_kl            | 0.0155919865 |
+|    clip_fraction        | 0.188        |
+|    clip_range           | 0.2          |
+|    entropy_loss         | -0.0799      |
+|    explained_variance   | 0.804        |
+|    learning_rate        | 0.0001       |
+|    loss                 | 0.0803       |
+|    n_updates            | 5700         |
+|    policy_gradient_loss | -0.0153      |
+|    std                  | 0.308        |
+|    value_loss           | 0.265        |
+------------------------------------------
+[E2] ~1.6h remaining (33760 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.7         |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 1.63        |
+|    fps                  | 9           |
+|    iterations           | 520         |
+|    sec_per_step         | 0.174       |
+|    time_elapsed         | 26978       |
+|    total_timesteps      | 294912      |
+| train/                  |             |
+|    approx_kl            | 0.014433678 |
+|    clip_fraction        | 0.193       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0757     |
+|    explained_variance   | 0.775       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.181       |
+|    n_updates            | 5710        |
+|    policy_gradient_loss | -0.0129     |
+|    std                  | 0.309       |
+|    value_loss           | 0.32        |
+-----------------------------------------
+[E2] ~1.6h remaining (33248 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.61        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 1.62        |
+|    fps                  | 9           |
+|    iterations           | 521         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 27069       |
+|    total_timesteps      | 295424      |
+| train/                  |             |
+|    approx_kl            | 0.013658479 |
+|    clip_fraction        | 0.165       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0758     |
+|    explained_variance   | 0.801       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0836      |
+|    n_updates            | 5720        |
+|    policy_gradient_loss | -0.0176     |
+|    std                  | 0.308       |
+|    value_loss           | 0.278       |
+-----------------------------------------
+[E2] ~1.6h remaining (32736 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.62        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 1.58        |
+|    fps                  | 9           |
+|    iterations           | 522         |
+|    sec_per_step         | 0.174       |
+|    time_elapsed         | 27156       |
+|    total_timesteps      | 295936      |
+| train/                  |             |
+|    approx_kl            | 0.015740585 |
+|    clip_fraction        | 0.198       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0757     |
+|    explained_variance   | 0.775       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.124       |
+|    n_updates            | 5730        |
+|    policy_gradient_loss | -0.0225     |
+|    std                  | 0.309       |
+|    value_loss           | 0.311       |
+-----------------------------------------
+[E2] ~1.6h remaining (32224 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.6         |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 1.57        |
+|    fps                  | 9           |
+|    iterations           | 523         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 27247       |
+|    total_timesteps      | 296448      |
+| train/                  |             |
+|    approx_kl            | 0.010046275 |
+|    clip_fraction        | 0.15        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0738     |
+|    explained_variance   | 0.819       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0726      |
+|    n_updates            | 5740        |
+|    policy_gradient_loss | -0.00813    |
+|    std                  | 0.308       |
+|    value_loss           | 0.243       |
+-----------------------------------------
+[E2] ~1.5h remaining (31712 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.75        |
+|    ep_rew_mean          | 1.28        |
+| time/                   |             |
+|    eta_hours            | 1.52        |
+|    fps                  | 9           |
+|    iterations           | 524         |
+|    sec_per_step         | 0.172       |
+|    time_elapsed         | 27332       |
+|    total_timesteps      | 296960      |
+| train/                  |             |
+|    approx_kl            | 0.011665707 |
+|    clip_fraction        | 0.148       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0675     |
+|    explained_variance   | 0.795       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.161       |
+|    n_updates            | 5750        |
+|    policy_gradient_loss | -0.00957    |
+|    std                  | 0.308       |
+|    value_loss           | 0.294       |
+-----------------------------------------
+[E2] ~1.5h remaining (31200 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.91        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 1.45        |
+|    fps                  | 9           |
+|    iterations           | 525         |
+|    sec_per_step         | 0.168       |
+|    time_elapsed         | 27413       |
+|    total_timesteps      | 297472      |
+| train/                  |             |
+|    approx_kl            | 0.018731702 |
+|    clip_fraction        | 0.244       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0622     |
+|    explained_variance   | 0.791       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.138       |
+|    n_updates            | 5760        |
+|    policy_gradient_loss | -0.0179     |
+|    std                  | 0.308       |
+|    value_loss           | 0.283       |
+-----------------------------------------
+[E2] ~1.4h remaining (30688 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.84        |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 1.35        |
+|    fps                  | 9           |
+|    iterations           | 526         |
+|    sec_per_step         | 0.159       |
+|    time_elapsed         | 27483       |
+|    total_timesteps      | 297984      |
+| train/                  |             |
+|    approx_kl            | 0.020487538 |
+|    clip_fraction        | 0.165       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0566     |
+|    explained_variance   | 0.773       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.172       |
+|    n_updates            | 5770        |
+|    policy_gradient_loss | -0.016      |
+|    std                  | 0.307       |
+|    value_loss           | 0.314       |
+-----------------------------------------
+[E2] ~1.3h remaining (30176 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.86        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 1.32        |
+|    fps                  | 9           |
+|    iterations           | 527         |
+|    sec_per_step         | 0.157       |
+|    time_elapsed         | 27562       |
+|    total_timesteps      | 298496      |
+| train/                  |             |
+|    approx_kl            | 0.014173646 |
+|    clip_fraction        | 0.167       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0518     |
+|    explained_variance   | 0.796       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0969      |
+|    n_updates            | 5780        |
+|    policy_gradient_loss | -0.0124     |
+|    std                  | 0.308       |
+|    value_loss           | 0.278       |
+-----------------------------------------
+[E2 eval @ step 298673]  MAPE=4.03%  p90=5.50%  success(<5%)=75.0%  mean_scan_time=229.3s
+[MF global-best] candidate from full/stage_eval_full screened at 4.03% but confirmed at 7.25% >= current best 4.31%
+[E2] ~1.4h remaining (29664 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.74        |
+|    ep_rew_mean          | 1.33        |
+| time/                   |             |
+|    eta_hours            | 1.37        |
+|    fps                  | 9           |
+|    iterations           | 528         |
+|    sec_per_step         | 0.166       |
+|    time_elapsed         | 27657       |
+|    total_timesteps      | 299008      |
+| train/                  |             |
+|    approx_kl            | 0.017100856 |
+|    clip_fraction        | 0.215       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0487     |
+|    explained_variance   | 0.774       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.131       |
+|    n_updates            | 5790        |
+|    policy_gradient_loss | -0.0176     |
+|    std                  | 0.307       |
+|    value_loss           | 0.317       |
+-----------------------------------------
+[E2] ~1.3h remaining (29152 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.74        |
+|    ep_rew_mean          | 1.33        |
+| time/                   |             |
+|    eta_hours            | 1.34        |
+|    fps                  | 9           |
+|    iterations           | 529         |
+|    sec_per_step         | 0.165       |
+|    time_elapsed         | 27741       |
+|    total_timesteps      | 299520      |
+| train/                  |             |
+|    approx_kl            | 0.009401109 |
+|    clip_fraction        | 0.127       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0426     |
+|    explained_variance   | 0.78        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.175       |
+|    n_updates            | 5800        |
+|    policy_gradient_loss | -0.00891    |
+|    std                  | 0.306       |
+|    value_loss           | 0.32        |
+-----------------------------------------
+[E2] ~1.3h remaining (28640 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 6.02        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 1.33        |
+|    fps                  | 9           |
+|    iterations           | 530         |
+|    sec_per_step         | 0.167       |
+|    time_elapsed         | 27829       |
+|    total_timesteps      | 300032      |
+| train/                  |             |
+|    approx_kl            | 0.021351608 |
+|    clip_fraction        | 0.247       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0382     |
+|    explained_variance   | 0.774       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.14        |
+|    n_updates            | 5810        |
+|    policy_gradient_loss | -0.02       |
+|    std                  | 0.306       |
+|    value_loss           | 0.312       |
+-----------------------------------------
+[E2] ~1.3h remaining (28128 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.7         |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 1.32        |
+|    fps                  | 9           |
+|    iterations           | 531         |
+|    sec_per_step         | 0.168       |
+|    time_elapsed         | 27917       |
+|    total_timesteps      | 300544      |
+| train/                  |             |
+|    approx_kl            | 0.017353334 |
+|    clip_fraction        | 0.21        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0338     |
+|    explained_variance   | 0.796       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.123       |
+|    n_updates            | 5820        |
+|    policy_gradient_loss | -0.0193     |
+|    std                  | 0.306       |
+|    value_loss           | 0.27        |
+-----------------------------------------
+[E2] ~1.3h remaining (27616 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.75        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 1.31        |
+|    fps                  | 9           |
+|    iterations           | 532         |
+|    sec_per_step         | 0.171       |
+|    time_elapsed         | 28008       |
+|    total_timesteps      | 301056      |
+| train/                  |             |
+|    approx_kl            | 0.015783139 |
+|    clip_fraction        | 0.186       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0305     |
+|    explained_variance   | 0.784       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.149       |
+|    n_updates            | 5830        |
+|    policy_gradient_loss | -0.0154     |
+|    std                  | 0.306       |
+|    value_loss           | 0.293       |
+-----------------------------------------
+[E2] ~1.3h remaining (27104 steps left @ 0.17s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.68       |
+|    ep_rew_mean          | 1.32       |
+| time/                   |            |
+|    eta_hours            | 1.3        |
+|    fps                  | 9          |
+|    iterations           | 533        |
+|    sec_per_step         | 0.173      |
+|    time_elapsed         | 28098      |
+|    total_timesteps      | 301568     |
+| train/                  |            |
+|    approx_kl            | 0.02226405 |
+|    clip_fraction        | 0.242      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.0269    |
+|    explained_variance   | 0.796      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.178      |
+|    n_updates            | 5840       |
+|    policy_gradient_loss | -0.021     |
+|    std                  | 0.306      |
+|    value_loss           | 0.283      |
+----------------------------------------
+[E2] ~1.3h remaining (26592 steps left @ 0.18s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.88       |
+|    ep_rew_mean          | 1.31       |
+| time/                   |            |
+|    eta_hours            | 1.29       |
+|    fps                  | 9          |
+|    iterations           | 534        |
+|    sec_per_step         | 0.175      |
+|    time_elapsed         | 28191      |
+|    total_timesteps      | 302080     |
+| train/                  |            |
+|    approx_kl            | 0.02321991 |
+|    clip_fraction        | 0.172      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.0238    |
+|    explained_variance   | 0.824      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.0522     |
+|    n_updates            | 5850       |
+|    policy_gradient_loss | -0.0147    |
+|    std                  | 0.306      |
+|    value_loss           | 0.229      |
+----------------------------------------
+[E2] ~1.3h remaining (26080 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.85        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 1.25        |
+|    fps                  | 9           |
+|    iterations           | 535         |
+|    sec_per_step         | 0.173       |
+|    time_elapsed         | 28276       |
+|    total_timesteps      | 302592      |
+| train/                  |             |
+|    approx_kl            | 0.015180728 |
+|    clip_fraction        | 0.165       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0227     |
+|    explained_variance   | 0.82        |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.108       |
+|    n_updates            | 5860        |
+|    policy_gradient_loss | -0.0109     |
+|    std                  | 0.306       |
+|    value_loss           | 0.249       |
+-----------------------------------------
+[E2] ~1.2h remaining (25568 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.73        |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 1.22        |
+|    fps                  | 9           |
+|    iterations           | 536         |
+|    sec_per_step         | 0.172       |
+|    time_elapsed         | 28363       |
+|    total_timesteps      | 303104      |
+| train/                  |             |
+|    approx_kl            | 0.009184573 |
+|    clip_fraction        | 0.149       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.0159     |
+|    explained_variance   | 0.829       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.102       |
+|    n_updates            | 5870        |
+|    policy_gradient_loss | -0.0121     |
+|    std                  | 0.306       |
+|    value_loss           | 0.23        |
+-----------------------------------------
+[E2] ~1.2h remaining (25056 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.58        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 1.22        |
+|    fps                  | 9           |
+|    iterations           | 537         |
+|    sec_per_step         | 0.176       |
+|    time_elapsed         | 28458       |
+|    total_timesteps      | 303616      |
+| train/                  |             |
+|    approx_kl            | 0.018276755 |
+|    clip_fraction        | 0.228       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.00901    |
+|    explained_variance   | 0.849       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0606      |
+|    n_updates            | 5880        |
+|    policy_gradient_loss | -0.0183     |
+|    std                  | 0.305       |
+|    value_loss           | 0.208       |
+-----------------------------------------
+[E2] ~1.1h remaining (24544 steps left @ 0.17s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.61       |
+|    ep_rew_mean          | 1.33       |
+| time/                   |            |
+|    eta_hours            | 1.14       |
+|    fps                  | 9          |
+|    iterations           | 538        |
+|    sec_per_step         | 0.167      |
+|    time_elapsed         | 28532      |
+|    total_timesteps      | 304128     |
+| train/                  |            |
+|    approx_kl            | 0.01745233 |
+|    clip_fraction        | 0.181      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | -0.00842   |
+|    explained_variance   | 0.789      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.0642     |
+|    n_updates            | 5890       |
+|    policy_gradient_loss | -0.0192    |
+|    std                  | 0.306      |
+|    value_loss           | 0.269      |
+----------------------------------------
+[E2] ~1.1h remaining (24032 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.52        |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 1.08        |
+|    fps                  | 9           |
+|    iterations           | 539         |
+|    sec_per_step         | 0.162       |
+|    time_elapsed         | 28610       |
+|    total_timesteps      | 304640      |
+| train/                  |             |
+|    approx_kl            | 0.010415039 |
+|    clip_fraction        | 0.13        |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.00697    |
+|    explained_variance   | 0.795       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.12        |
+|    n_updates            | 5900        |
+|    policy_gradient_loss | -0.0119     |
+|    std                  | 0.305       |
+|    value_loss           | 0.3         |
+-----------------------------------------
+[E2] ~1.1h remaining (23520 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.72        |
+|    ep_rew_mean          | 1.32        |
+| time/                   |             |
+|    eta_hours            | 1.05        |
+|    fps                  | 9           |
+|    iterations           | 540         |
+|    sec_per_step         | 0.161       |
+|    time_elapsed         | 28691       |
+|    total_timesteps      | 305152      |
+| train/                  |             |
+|    approx_kl            | 0.023333158 |
+|    clip_fraction        | 0.241       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -0.00176    |
+|    explained_variance   | 0.832       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.131       |
+|    n_updates            | 5910        |
+|    policy_gradient_loss | -0.0272     |
+|    std                  | 0.305       |
+|    value_loss           | 0.234       |
+-----------------------------------------
+[E2] ~1.0h remaining (23008 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.78        |
+|    ep_rew_mean          | 1.33        |
+| time/                   |             |
+|    eta_hours            | 1.05        |
+|    fps                  | 9           |
+|    iterations           | 541         |
+|    sec_per_step         | 0.164       |
+|    time_elapsed         | 28778       |
+|    total_timesteps      | 305664      |
+| train/                  |             |
+|    approx_kl            | 0.012915095 |
+|    clip_fraction        | 0.166       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.00248     |
+|    explained_variance   | 0.802       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0594      |
+|    n_updates            | 5920        |
+|    policy_gradient_loss | -0.0134     |
+|    std                  | 0.305       |
+|    value_loss           | 0.274       |
+-----------------------------------------
+[E2] ~1.0h remaining (22496 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.62        |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 1.04        |
+|    fps                  | 9           |
+|    iterations           | 542         |
+|    sec_per_step         | 0.166       |
+|    time_elapsed         | 28866       |
+|    total_timesteps      | 306176      |
+| train/                  |             |
+|    approx_kl            | 0.015905628 |
+|    clip_fraction        | 0.166       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.00574     |
+|    explained_variance   | 0.823       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0466      |
+|    n_updates            | 5930        |
+|    policy_gradient_loss | -0.0135     |
+|    std                  | 0.305       |
+|    value_loss           | 0.24        |
+-----------------------------------------
+[E2] ~1.0h remaining (21984 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.77        |
+|    ep_rew_mean          | 1.31        |
+| time/                   |             |
+|    eta_hours            | 1.03        |
+|    fps                  | 9           |
+|    iterations           | 543         |
+|    sec_per_step         | 0.168       |
+|    time_elapsed         | 28955       |
+|    total_timesteps      | 306688      |
+| train/                  |             |
+|    approx_kl            | 0.026597302 |
+|    clip_fraction        | 0.273       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.00767     |
+|    explained_variance   | 0.809       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.105       |
+|    n_updates            | 5940        |
+|    policy_gradient_loss | -0.0242     |
+|    std                  | 0.305       |
+|    value_loss           | 0.277       |
+-----------------------------------------
+[E2] ~1.0h remaining (21472 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.61        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 1.03        |
+|    fps                  | 9           |
+|    iterations           | 544         |
+|    sec_per_step         | 0.173       |
+|    time_elapsed         | 29048       |
+|    total_timesteps      | 307200      |
+| train/                  |             |
+|    approx_kl            | 0.021166883 |
+|    clip_fraction        | 0.194       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0118      |
+|    explained_variance   | 0.8         |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.208       |
+|    n_updates            | 5950        |
+|    policy_gradient_loss | -0.0159     |
+|    std                  | 0.304       |
+|    value_loss           | 0.279       |
+-----------------------------------------
+[E2] ~1.0h remaining (20960 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.42        |
+|    ep_rew_mean          | 1.32        |
+| time/                   |             |
+|    eta_hours            | 1.02        |
+|    fps                  | 9           |
+|    iterations           | 545         |
+|    sec_per_step         | 0.174       |
+|    time_elapsed         | 29140       |
+|    total_timesteps      | 307712      |
+| train/                  |             |
+|    approx_kl            | 0.020147365 |
+|    clip_fraction        | 0.206       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0176      |
+|    explained_variance   | 0.807       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0887      |
+|    n_updates            | 5960        |
+|    policy_gradient_loss | -0.0193     |
+|    std                  | 0.304       |
+|    value_loss           | 0.268       |
+-----------------------------------------
+[E2] ~1.0h remaining (20448 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.61        |
+|    ep_rew_mean          | 1.36        |
+| time/                   |             |
+|    eta_hours            | 0.997       |
+|    fps                  | 9           |
+|    iterations           | 546         |
+|    sec_per_step         | 0.176       |
+|    time_elapsed         | 29231       |
+|    total_timesteps      | 308224      |
+| train/                  |             |
+|    approx_kl            | 0.016055726 |
+|    clip_fraction        | 0.166       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0211      |
+|    explained_variance   | 0.811       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0963      |
+|    n_updates            | 5970        |
+|    policy_gradient_loss | -0.013      |
+|    std                  | 0.304       |
+|    value_loss           | 0.259       |
+-----------------------------------------
+[E2 eval @ step 308673]  MAPE=3.97%  p90=5.24%  success(<5%)=87.5%  mean_scan_time=229.4s
+[MF global-best] candidate from full/stage_eval_full screened at 3.97% but confirmed at 5.21% >= current best 4.31%
+[E2] ~1.0h remaining (19936 steps left @ 0.19s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.44        |
+|    ep_rew_mean          | 1.33        |
+| time/                   |             |
+|    eta_hours            | 1.03        |
+|    fps                  | 9           |
+|    iterations           | 547         |
+|    sec_per_step         | 0.185       |
+|    time_elapsed         | 29337       |
+|    total_timesteps      | 308736      |
+| train/                  |             |
+|    approx_kl            | 0.014792108 |
+|    clip_fraction        | 0.183       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0228      |
+|    explained_variance   | 0.818       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.101       |
+|    n_updates            | 5980        |
+|    policy_gradient_loss | -0.0161     |
+|    std                  | 0.305       |
+|    value_loss           | 0.25        |
+-----------------------------------------
+[E2] ~1.0h remaining (19424 steps left @ 0.18s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.51       |
+|    ep_rew_mean          | 1.31       |
+| time/                   |            |
+|    eta_hours            | 0.996      |
+|    fps                  | 9          |
+|    iterations           | 548        |
+|    sec_per_step         | 0.185      |
+|    time_elapsed         | 29431      |
+|    total_timesteps      | 309248     |
+| train/                  |            |
+|    approx_kl            | 0.01896697 |
+|    clip_fraction        | 0.192      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | 0.0254     |
+|    explained_variance   | 0.821      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.0588     |
+|    n_updates            | 5990       |
+|    policy_gradient_loss | -0.0103    |
+|    std                  | 0.304      |
+|    value_loss           | 0.244      |
+----------------------------------------
+[E2] ~1.0h remaining (18912 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.11        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 0.966       |
+|    fps                  | 9           |
+|    iterations           | 549         |
+|    sec_per_step         | 0.184       |
+|    time_elapsed         | 29524       |
+|    total_timesteps      | 309760      |
+| train/                  |             |
+|    approx_kl            | 0.019770458 |
+|    clip_fraction        | 0.209       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.03        |
+|    explained_variance   | 0.757       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.203       |
+|    n_updates            | 6000        |
+|    policy_gradient_loss | -0.0154     |
+|    std                  | 0.304       |
+|    value_loss           | 0.339       |
+-----------------------------------------
+[E2] ~0.9h remaining (18400 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.37        |
+|    ep_rew_mean          | 1.24        |
+| time/                   |             |
+|    eta_hours            | 0.931       |
+|    fps                  | 9           |
+|    iterations           | 550         |
+|    sec_per_step         | 0.182       |
+|    time_elapsed         | 29616       |
+|    total_timesteps      | 310272      |
+| train/                  |             |
+|    approx_kl            | 0.013204738 |
+|    clip_fraction        | 0.188       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0324      |
+|    explained_variance   | 0.795       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.141       |
+|    n_updates            | 6010        |
+|    policy_gradient_loss | -0.0166     |
+|    std                  | 0.303       |
+|    value_loss           | 0.268       |
+-----------------------------------------
+[E2] ~0.9h remaining (17888 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.53        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 0.911       |
+|    fps                  | 9           |
+|    iterations           | 551         |
+|    sec_per_step         | 0.183       |
+|    time_elapsed         | 29711       |
+|    total_timesteps      | 310784      |
+| train/                  |             |
+|    approx_kl            | 0.018736627 |
+|    clip_fraction        | 0.207       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0382      |
+|    explained_variance   | 0.739       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.171       |
+|    n_updates            | 6020        |
+|    policy_gradient_loss | -0.0106     |
+|    std                  | 0.302       |
+|    value_loss           | 0.345       |
+-----------------------------------------
+[E2] ~0.9h remaining (17376 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.47        |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 0.868       |
+|    fps                  | 9           |
+|    iterations           | 552         |
+|    sec_per_step         | 0.18        |
+|    time_elapsed         | 29799       |
+|    total_timesteps      | 311296      |
+| train/                  |             |
+|    approx_kl            | 0.013450988 |
+|    clip_fraction        | 0.159       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0441      |
+|    explained_variance   | 0.777       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.137       |
+|    n_updates            | 6030        |
+|    policy_gradient_loss | -0.0107     |
+|    std                  | 0.302       |
+|    value_loss           | 0.303       |
+-----------------------------------------
+[E2] ~0.8h remaining (16864 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.4         |
+|    ep_rew_mean          | 1.29        |
+| time/                   |             |
+|    eta_hours            | 0.822       |
+|    fps                  | 9           |
+|    iterations           | 553         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 29883       |
+|    total_timesteps      | 311808      |
+| train/                  |             |
+|    approx_kl            | 0.008451297 |
+|    clip_fraction        | 0.176       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0513      |
+|    explained_variance   | 0.811       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.091       |
+|    n_updates            | 6040        |
+|    policy_gradient_loss | -0.0123     |
+|    std                  | 0.301       |
+|    value_loss           | 0.255       |
+-----------------------------------------
+[E2] ~0.8h remaining (16352 steps left @ 0.17s/step)
+---------------------------------------
+| rollout/                |           |
+|    ep_len_mean          | 5.4       |
+|    ep_rew_mean          | 1.34      |
+| time/                   |           |
+|    eta_hours            | 0.754     |
+|    fps                  | 9         |
+|    iterations           | 554       |
+|    sec_per_step         | 0.166     |
+|    time_elapsed         | 29957     |
+|    total_timesteps      | 312320    |
+| train/                  |           |
+|    approx_kl            | 0.0200033 |
+|    clip_fraction        | 0.228     |
+|    clip_range           | 0.2       |
+|    entropy_loss         | 0.0541    |
+|    explained_variance   | 0.804     |
+|    learning_rate        | 0.0001    |
+|    loss                 | 0.0837    |
+|    n_updates            | 6050      |
+|    policy_gradient_loss | -0.0162   |
+|    std                  | 0.302     |
+|    value_loss           | 0.261     |
+---------------------------------------
+[E2] ~0.7h remaining (15840 steps left @ 0.16s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.64       |
+|    ep_rew_mean          | 1.29       |
+| time/                   |            |
+|    eta_hours            | 0.7        |
+|    fps                  | 9          |
+|    iterations           | 555        |
+|    sec_per_step         | 0.159      |
+|    time_elapsed         | 30030      |
+|    total_timesteps      | 312832     |
+| train/                  |            |
+|    approx_kl            | 0.02043851 |
+|    clip_fraction        | 0.206      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | 0.0541     |
+|    explained_variance   | 0.805      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.132      |
+|    n_updates            | 6060       |
+|    policy_gradient_loss | -0.0173    |
+|    std                  | 0.301      |
+|    value_loss           | 0.274      |
+----------------------------------------
+[E2] ~0.7h remaining (15328 steps left @ 0.16s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.64        |
+|    ep_rew_mean          | 1.23        |
+| time/                   |             |
+|    eta_hours            | 0.7         |
+|    fps                  | 9           |
+|    iterations           | 556         |
+|    sec_per_step         | 0.164       |
+|    time_elapsed         | 30121       |
+|    total_timesteps      | 313344      |
+| train/                  |             |
+|    approx_kl            | 0.022205288 |
+|    clip_fraction        | 0.237       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.059       |
+|    explained_variance   | 0.759       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.109       |
+|    n_updates            | 6070        |
+|    policy_gradient_loss | -0.0181     |
+|    std                  | 0.301       |
+|    value_loss           | 0.315       |
+-----------------------------------------
+[E2] ~0.7h remaining (14816 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.77        |
+|    ep_rew_mean          | 1.3         |
+| time/                   |             |
+|    eta_hours            | 0.698       |
+|    fps                  | 9           |
+|    iterations           | 557         |
+|    sec_per_step         | 0.17        |
+|    time_elapsed         | 30214       |
+|    total_timesteps      | 313856      |
+| train/                  |             |
+|    approx_kl            | 0.020864667 |
+|    clip_fraction        | 0.239       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.063       |
+|    explained_variance   | 0.755       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0949      |
+|    n_updates            | 6080        |
+|    policy_gradient_loss | -0.0236     |
+|    std                  | 0.3         |
+|    value_loss           | 0.316       |
+-----------------------------------------
+[E2] ~0.7h remaining (14304 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.77        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 0.687       |
+|    fps                  | 9           |
+|    iterations           | 558         |
+|    sec_per_step         | 0.173       |
+|    time_elapsed         | 30306       |
+|    total_timesteps      | 314368      |
+| train/                  |             |
+|    approx_kl            | 0.014594339 |
+|    clip_fraction        | 0.194       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0707      |
+|    explained_variance   | 0.779       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0981      |
+|    n_updates            | 6090        |
+|    policy_gradient_loss | -0.0199     |
+|    std                  | 0.299       |
+|    value_loss           | 0.279       |
+-----------------------------------------
+[E2] ~0.7h remaining (13792 steps left @ 0.17s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.69        |
+|    ep_rew_mean          | 1.27        |
+| time/                   |             |
+|    eta_hours            | 0.67        |
+|    fps                  | 9           |
+|    iterations           | 559         |
+|    sec_per_step         | 0.175       |
+|    time_elapsed         | 30398       |
+|    total_timesteps      | 314880      |
+| train/                  |             |
+|    approx_kl            | 0.027025914 |
+|    clip_fraction        | 0.234       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0786      |
+|    explained_variance   | 0.773       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.118       |
+|    n_updates            | 6100        |
+|    policy_gradient_loss | -0.0214     |
+|    std                  | 0.299       |
+|    value_loss           | 0.311       |
+-----------------------------------------
+[E2] ~0.7h remaining (13280 steps left @ 0.18s/step)
+----------------------------------------
+| rollout/                |            |
+|    ep_len_mean          | 5.81       |
+|    ep_rew_mean          | 1.28       |
+| time/                   |            |
+|    eta_hours            | 0.664      |
+|    fps                  | 9          |
+|    iterations           | 560        |
+|    sec_per_step         | 0.18       |
+|    time_elapsed         | 30496      |
+|    total_timesteps      | 315392     |
+| train/                  |            |
+|    approx_kl            | 0.01330368 |
+|    clip_fraction        | 0.171      |
+|    clip_range           | 0.2        |
+|    entropy_loss         | 0.083      |
+|    explained_variance   | 0.795      |
+|    learning_rate        | 0.0001     |
+|    loss                 | 0.152      |
+|    n_updates            | 6110       |
+|    policy_gradient_loss | -0.0138    |
+|    std                  | 0.299      |
+|    value_loss           | 0.265      |
+----------------------------------------
+[E2] ~0.6h remaining (12768 steps left @ 0.18s/step)
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 5.86        |
+|    ep_rew_mean          | 1.32        |
+| time/                   |             |
+|    eta_hours            | 0.639       |
+|    fps                  | 9           |
+|    iterations           | 561         |
+|    sec_per_step         | 0.18        |
+|    time_elapsed         | 30589       |
+|    total_timesteps      | 315904      |
+| train/                  |             |
+|    approx_kl            | 0.014663531 |
+|    clip_fraction        | 0.217       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | 0.0917      |
+|    explained_variance   | 0.839       |
+|    learning_rate        | 0.0001      |
+|    loss                 | 0.0712      |
+|    n_updates            | 6120        |
+|    policy_gradient_loss | -0.023      |
+|    std                  | 0.298       |
+|    value_loss           | 0.211       |
+-----------------------------------------
+[MF] stage full done in 510.8 min
+[MF global-best] candidate from full/stage_end_full_probe screened at 4.00% but confirmed at 4.96% >= current best 4.31%
+[MF] global budget reached — ending curriculum early
+
+[MF] Curriculum done in 9.00 h. Final full-sim MAPE=4.00%
+Policy → runs/e2/mf_runB_cached3_cached_full3_full_gpu/policy.zip
+Global best → runs/e2/mf_runB_cached3_cached_full3_full_gpu/global_best/best_policy.zip

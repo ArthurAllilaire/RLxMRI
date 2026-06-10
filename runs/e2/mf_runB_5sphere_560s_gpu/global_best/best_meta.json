@@ -1,16 +1,16 @@
 {
   "stage": "full",
   "source": "stage_eval_full",
-  "step": 258673,
-  "wall_s": 1781059073.2956636,
-  "mape_pct": 4.306057195926036,
-  "p90_pct": 6.259366305467358,
+  "step": 188673,
+  "wall_s": 1781081505.8821607,
+  "mape_pct": 3.4478987963627103,
+  "p90_pct": 6.030079764581201,
   "success_rate": 0.75,
-  "mean_time_s": 225.76510095596313,
-  "screen_mape_pct": 2.8614081283939665,
-  "screen_p90_pct": 3.6830306540548983,
-  "screen_success_rate": 1.0,
-  "screen_mean_time_s": 232.58067870140076,
+  "mean_time_s": 539.33340438207,
+  "screen_mape_pct": 3.7235073494100477,
+  "screen_p90_pct": 5.296021506664842,
+  "screen_success_rate": 0.85,
+  "screen_mean_time_s": 549.1722770174345,
   "seed_offset": 510000,
   "n_eval_episodes": 12,
   "target_env_kwargs": {
@@ -21,7 +21,7 @@
     "water_voxel_size_mm": null,
     "use_gpu": true,
     "max_blocks": 20,
-    "time_budget_s": 240.0,
+    "time_budget_s": 560.0,
     "subset_size": 5,
     "forced_sphere_indices": [
       1,
@@ -42,7 +42,7 @@
     "analytic_noise_sigma": 0.04,
     "simplified_action": false,
     "fix_te": true,
-    "learn_alpha": true,
+    "learn_alpha": false,
     "log_ti_action": true,
     "terminal_bonus": 0.0,
     "mape_alpha": 1.0,
@@ -54,7 +54,7 @@
     "include_water": true,
     "water_model": "bloch"
   },
-  "eval_log_path": "runs/e2/mf_runB_cached3_cached_full3_full_gpu/stage4_full/eval_history.json",
+  "eval_log_path": "runs/e2/mf_runB_5sphere_560s_gpu/stage4_full/eval_history.json",
   "source_seed_offset": 500000,
-  "source_n_eval_episodes": 8
+  "source_n_eval_episodes": 20
 }
