@@ -20,10 +20,8 @@ E2 trains a PPO agent with the KomaMRI Bloch solver *in the loop*: every action
 (a choice of TI/TE/TR/α) triggers a full multi-shot simulation and 2-D
 reconstruction before the fitter returns an updated T1 estimate and the reward.
 The per-step cost scales as `Npe · TR · n_spins`. At the 1 mm / 64×32 evaluation
-configuration Run A measured **~1.0 s/step on CPU**, so a 300k-step full-Bloch
-run is **roughly 3.6 days** before evaluation/probe overheads. Earlier E2 timing
-probes were closer to 4 s/step, which is where the old "about 8 days for 200k
-steps" estimate came from. Either way, a conventional single-fidelity curriculum
+configuration Run A measured **~4.0 s/step on CPU**, so a 200k-step full-Bloch
+run is **roughly 8 days** before evaluation/probe overheads. A conventional single-fidelity curriculum
 — training everything on the full simulator — is too expensive for the project
 compute budget.
 
@@ -615,22 +613,108 @@ which was looser than the environment for some long-TI blocks. The result was a
 near-budget CR schedule that looked feasible to the optimiser but was silently
 lengthened by the evaluator and could lose its final block.
 
-This explains the pulled five-sphere oracle run in
-`runs/e2/baseline_5sphere_runB`: it reports `n_unique_subsets_solved = 24`, so
-the oracle is now using the per-episode true T1 values correctly, but its
-`mean_ep_len = 3.75` shows that some nominal four-block schedules were truncated.
-Static inspection of `cr_oracle_schedules.json` found **11/24** oracle schedules
-that were nominally under 240 s but over budget after applying the E2 TR lift
-(worst excess ≈ 2.7 s). Therefore the pulled oracle number (`MAPE = 12.93%`,
-p90 25.13%, success<5% 29.2%) should **not** be cited as the final CR-oracle
-baseline. Rerun it after the CR optimiser and environment share the same TR
-bound.
+The first pulled five-sphere oracle run exposed the mismatch. It reported
+`n_unique_subsets_solved = 24`, so the oracle was already using each episode's
+true sampled T1 values correctly, but `mean_ep_len = 3.75` showed that some
+nominal four-block schedules were truncated. Static inspection found **11/24**
+oracle schedules that were nominally under 240 s but over budget after applying
+the E2 TR lift (worst excess ≈ 2.7 s). That stale oracle number was
+`MAPE = 12.93%`, p90 `25.13%`, success<5% `29.2%`.
+
+After the timing-bound fix, the rerun in `runs/e2/baseline_5sphere_runB` is
+mechanically valid:
+
+| Check | Rerun value |
+|---|---:|
+| `n_unique_subsets_solved` | 24 / 24 |
+| `n_blocks` selected | 4 for all 24 schedules |
+| `mean_ep_len` | 4.0 blocks |
+| `mean_scan_time_s` | 239.22 s |
+| Nominal schedule time | min 238.86 / mean 239.42 / max 239.85 s |
+| Env-adjusted schedule time | identical to nominal |
+| Over-budget after E2 timing adjustment | 0 / 24 |
+| Saved timing constraints | `tr_lo_floor=0.5`, `te_s=0.02`, `tr_headroom=0.9` |
+
+The oracle metric improved but remains poor:
+
+| Run | MAPE | p90 MAPE | Success<5% | Mean blocks |
+|---|---:|---:|---:|---:|
+| stale oracle before TR-bound fix | 12.93 % | 25.13 % | 29.2 % | 3.75 |
+| rerun after TR-bound fix | **11.51 %** | **19.41 %** | 29.2 % | 4.00 |
+
+Per-active-sphere MAPE on the valid rerun:
+
+| Active label | Mean MAPE | p90 MAPE | n |
+|---:|---:|---:|---:|
+| 1 | 11.99 % | 31.45 % | 24 |
+| 3 | 7.47 % | 13.05 % | 24 |
+| 6 | 12.58 % | 30.99 % | 24 |
+| 8 | 10.67 % | 12.16 % | 24 |
+| 14 | 14.85 % | 49.27 % | 24 |
+
+The conclusion is important: the rerun validates the mechanics, but **not** the
+CR oracle as a strong empirical comparator. The local analytic CR objective is a
+weak surrogate for the actual noisy full-Bloch + reconstruction + ROI + magnitude
+fitter objective. It chooses only four blocks, and its schedules still under-cover
+long T1s. Across the 24 oracle schedules, `max(TI)` was only min/mean/max
+`0.521 / 0.732 / 0.878 s`; for T1 ≈ 1.8 s, the inversion null is around 1.25 s.
+The hardest oracle schedule had true T1s `[1.305, 1.869, 1.549, 0.232, 1.517]`
+but TIs `[0.010, 0.878, 0.171, 0.184]`, which is visibly information-starved for
+the long-T1 end. The strongest non-adaptive comparator for this task is therefore
+still the robust `log_grid_trmatched`-style schedule, not this CR oracle.
 
 The lower TR floor does matter but does not dominate every CR schedule. In the
-pulled artifacts, `cr_optimal` had 0/4 TRs exactly at 0.5 s,
-`cr_optimal_alpha` had 0/6, and the oracle schedules had 6/96. The old
-`TI + 0.05` lower bound was more active (19/96 oracle TRs), which is why the
-feasibility mismatch mainly hurt the oracle rerun.
+pre-fix artifacts, `cr_optimal` had 0/4 TRs exactly at 0.5 s,
+`cr_optimal_alpha` had 0/6, and the stale oracle schedules had 6/96. In the valid
+rerun, 0/96 oracle TRs were exactly at the 0.5 s floor, but 12/96 were exactly at
+the active minimum `max(0.5, (TI + 0.020)/0.90)`. The old `TI + 0.05` lower bound
+was more active (19/96 stale oracle TRs), which is why the feasibility mismatch
+mainly hurt the first oracle run.
+
+Artifact note: `run_oracle.log` says the summary path is
+`baseline_summary.json`, but the committed artifact is
+`baseline_summary_oracle.json`; use the JSON file currently present in the run
+directory as the source of truth, and clean the filename mismatch before adding
+automation around these runs.
+
+**Five-sphere scan-time budget sweep.** Two GPU baseline sweeps from the VM test
+whether the five-sphere task is scan-time limited once the robust fixed schedule
+has enough shots. Both use the same forced labels (`1,3,6,8,14`), `Npe=32`,
+`Nfe=64`, `noise=50`, fixed TE, fixed α=90°, log-TI action mapping, ROI=1,
+in-plane pose jitter, and 24 held-out seeds (`500000..500023`). Artifacts:
+`runs/e2/baseline_5sphere_420s_gpu/baseline_summary.json` and
+`runs/e2/baseline_5sphere_560s_gpu/baseline_summary.json`.
+
+| Budget | Schedule | MAPE | 95% CI | p90 | Success<5% | Mean time / blocks |
+|---:|---|---:|---:|---:|---:|---:|
+| 420 s | `log_grid_trmatched` | **5.63 %** | [4.98, 6.32] | 7.88 % | 37.5 % | 326.6 s / 7.0 |
+| 420 s | `cr_optimal` | 7.19 % | [6.17, 8.31] | 11.08 % | 20.8 % | 418.5 s / 10.0 |
+| 420 s | `cr_optimal_alpha` | 7.24 % | [6.27, 8.24] | 10.75 % | 20.8 % | 418.4 s / 10.0 |
+| 420 s | `cr_oracle` | 7.11 % | — | 8.62 % | 25.0 % | 418.8 s / 5.5 |
+| 560 s | `log_grid_trmatched` | **5.71 %** | [5.04, 6.41] | 7.49 % | 33.3 % | 542.8 s / 10.0 |
+| 560 s | `cr_optimal` | 7.34 % | [6.51, 8.20] | 10.17 % | 12.5 % | 557.5 s / 10.0 |
+| 560 s | `cr_oracle` | 7.05 % | — | 8.24 % | 20.8 % | 558.8 s / 6.8 |
+
+The result is decisive: **the best fixed five-sphere comparator is not scan-time
+limited in the 240--560 s range.** `log_grid_trmatched` stays essentially flat
+(`5.60%` at 240 s in the earlier run, `5.63%` at 420 s, `5.71%` at 560 s), so
+adding more shots does not reduce its empirical error. The remaining error is
+more likely set by noise, reconstruction/ROI statistics, magnitude fitting, and
+model mismatch than by insufficient block count. CR improves sharply relative to
+the 240 s oracle failure because the larger budget gives it 6--10 blocks, but it
+then saturates around 7% and remains worse than the fixed log schedule. The
+`cr_optimal` and `ernst_fixed` schedules are identical at 420 s, and
+`cr_optimal_alpha` again chooses only 90° flip angles, reinforcing the decision
+to fix α for the RL ablations.
+
+Implication for the overnight RL runs: a 420/560 s confidence-channel run is a
+useful *ceiling probe* for the current IR-SE action family, but it should not be
+sold as a cleaner main comparison than 240 s. If RL beats the 420/560 s fixed
+log schedule, that is strong evidence of useful adaptivity. If it only beats CR,
+the honest conclusion is that RL beats the analytic CR surrogate but not the
+robust empirical fixed schedule. If it plateaus near 5--6%, the current action
+family is probably saturated and the next publishable step is more DOF: variable
+`Npe`, explicit stop/Pareto, or sequence-family / joint T1-T2 control.
 
 **Action repair vs rejection.** E2 currently repairs infeasible timing actions
 rather than rejecting them: if the agent asks for a TR too short to contain
@@ -674,10 +758,10 @@ plots are misleading and the report should discuss executed timings instead.
    TR). **Do not cite the old speedup.** With the fix the fixed schedules score
    4.70–5.80% (§6.6) — and currently *beat* the agent, so the quantified-benefit
    claim must come from the 5-sphere task or from the multi-fidelity speedup
-   mechanism, not from "14-pool RL beats fixed". Separately, the first
-   five-sphere CR-oracle rerun exposed a CR/environment TR-feasibility mismatch
-   (§6.7); rerun the oracle after the bound fix before quoting a five-sphere
-   CR-oracle number.
+   mechanism, not from "14-pool RL beats fixed". Separately, the five-sphere
+   CR-oracle rerun is now mechanically valid after the TR-bound fix, but still
+   scores 11.51% MAPE (§6.7), showing that the analytic CR objective is not a
+   strong empirical surrogate under the full noisy E2 evaluator.
 2. **Simulator version drift changed the policy number.** Run A was analysed on
    2026-06-01 as 10.16% MAPE; the same saved policy re-evaluated after the
    2026-06-08/09 digital-twin changes is 11.68% [10.42, 13.03]. This is expected:
@@ -712,13 +796,10 @@ plots are misleading and the report should discuss executed timings instead.
 - [x] **Fix the fixed-grid baseline** — done (TR/budget + action-conversion bugs;
       now `log_grid_trmatched` = 5.80% [5.24–6.40], `cr_optimal_alpha` = 4.70%
       [4.42–5.00], §6.6). Fixed schedules beat the current 14-pool policy.
-- [ ] **Rerun the five-sphere CR oracle after the TR-bound fix.** The pulled
-      oracle artifacts solve one schedule per true T1 vector (`n_unique=24`), but
-      11/24 schedules were truncated because the CR optimiser used the old
-      `TI + 0.05` feasibility rule while E2 evaluates with
-      `max(0.5, (TI + TE)/0.90)`. Use `--cr-only --cr-oracle` and replace the
-      stale oracle summary before citing the five-sphere fixed-schedule lower
-      bound.
+- [x] **Rerun the five-sphere CR oracle after the TR-bound fix.** Done:
+      `n_unique=24`, all schedules execute 4 blocks, zero schedules overrun after
+      E2 timing adjustment. Result is 11.51% MAPE / 19.41% p90, which is a valid
+      diagnostic of the current CR surrogate but not a strong fixed baseline.
 - [ ] **Re-evaluate the C2 claim on a task where adaptivity pays.** Fixed beats the
       agent on the 14-sphere pool (§6.6); the quantified-benefit must come from the
       5-sphere task below (one shared TI per block can't exploit a 14-sphere fleet).
@@ -746,10 +827,9 @@ plots are misleading and the report should discuss executed timings instead.
       but sample their T1 values continuously across the phantom T1 range each
       episode. This makes the task easier than arbitrary 14-pool mapping but
       harder to memorise than a fixed five-value phantom.
-- [ ] **Confidence vs no-confidence ablation** on the 5 spheres — does passing the
-      fitter uncertainty into the observation improve accuracy? Natural follow-up:
-      *which* confidence estimate (and where does it come from — needs the fitter
-      σ source documented).
+- [ ] **Confidence vs no-confidence ablation** on the 5 spheres — planned below.
+      This is an RL-only observation ablation: fixed baselines ignore observations
+      and should stay unchanged.
 - [ ] **ROI ablation.** During the Gibbs-ringing investigation we switched to
       ROI = 1 (vs 0); this was never ablated. Cheap candidate run.
 - [ ] **Re-balance budget:** more `cached3`; either drop `full3` or match its water
@@ -818,6 +898,279 @@ because steps are not comparable across fidelities (`analytic` ≈0.03 s/step,
 `cached3` ≈0.34 s/step, `full` ≈1.0 s/step). The switch rule already measures
 target progress per wallclock; hard min-steps should only prevent obviously noisy
 one-probe switches.
+
+### Confidence-channel ablation (`include_sigma`)
+
+**Question.** Does giving the policy the fitter's own uncertainty estimate make
+the five-sphere adaptive task easier? The current observation always contains the
+per-sphere running T1 estimates. With `--include-sigma`, it additionally appends
+one value per active sphere:
+
+```
+log10(σ_T1 / T1_est), clamped to [-3, 0]
+```
+
+where `0` is the "no estimate / fully uncertain" sentinel at episode start. The
+source is `fit_t1_generalized_ir(...).T1_sigma`, stored in `env.T1_sigma` after
+each block. For the planned runs the σ method is the default
+`--sigma-method bootstrap`; the fitted noise floor is the absolute image/signal
+noise after the existing `1/sin(α)` magnitude-correction. This means the channel
+is not an oracle: it is a confidence estimate from the same data and same fitter
+the policy already uses.
+
+**Important caveat.** With only a few measurements, this is not a well-calibrated
+statistical uncertainty. The T1 fitter estimates `(T1, A)`, so before two blocks
+there is no valid fit and the σ channel is the sentinel. The code explicitly
+guards the residual variance estimate: `fit_t1_generalized_ir` can fit from two
+samples, but `_sigma_eff` only uses `best_sse/(n-2)` when `n > 4`; for `n <= 4`
+it falls back to the supplied absolute noise floor. Thus the usual four-block
+episode does not provide a data-calibrated residual σ. The channel can still
+carry useful geometry information through the local/profile fit shape, but it is
+best framed as a **fitter-confidence proxy** or **ill-conditioning signal**, not
+a trustworthy posterior standard deviation. It can only influence decisions
+after the first valid fit: in a four-block episode, mainly blocks 3 and 4. If the
+policy usually executes more than four short-TR blocks, the channel has more room
+to matter and the residual part of the uncertainty estimate becomes meaningful.
+
+**Design.** Run two otherwise identical five-sphere multi-fidelity trainings:
+
+| Arm | Observation | CLI difference |
+|---|---|---|
+| no-confidence control | running T1 estimates + budget | no `--include-sigma` |
+| confidence treatment | running T1 estimates + σ channel + budget | add `--include-sigma` |
+
+Keep the same `--train-seed`, `--eval-seed`, forced sphere labels, T1 sampler,
+pose jitter, ROI, reward, fidelity ladder, and global-best settings. Because the
+observation dimensionality changes, this should be an independent paired run, not
+a warm-start from the no-confidence policy. Fix α at 90° for this ablation:
+current evidence shows the α-aware CR schedule also chooses 90° everywhere, so
+learning α adds a search dimension without testing the confidence-channel
+question.
+
+**Baselines.** The fixed baselines do **not** change. `log_grid_trmatched`,
+`cr_optimal`, `cr_optimal_alpha`, `ernst_fixed`, and `cr_oracle` ignore the
+policy observation entirely; adding an uncertainty channel only changes what the
+RL policy can condition on. Therefore compare both RL arms against the same
+five-sphere baseline table (`runs/e2/baseline_5sphere_runB`). Rerun baselines
+only if the environment dynamics change, not merely because the observation
+vector changes.
+
+**Decision criterion.** Evaluate each arm's `<run>/global_best/best_policy.zip`
+on 24 held-out full-Bloch episodes using `eval_e2.py --from-run <run>`. Report
+MAPE, p90, success<5%, mean block count, action-repair rate, and adaptivity
+diagnostics. A useful confidence channel should reduce p90/error on episodes
+where one or two spheres remain poorly determined after the probe blocks, not
+merely improve the mean by luck. If both arms execute only ~4 blocks, treat a null
+result cautiously: the channel may simply arrive too late to change much.
+
+For the 420 s and 560 s runs, rerun fixed baselines at the same scan-time budget
+before interpreting RL. The longer budget gives both the policy and the fixed
+schedules more samples, so the 240 s baseline table is not the number to beat.
+Each training eval uses 20 episodes to reduce the chance that an 8-episode noisy
+estimate drives `global_best` by luck. The commands below do **not** pass the
+optional final-stage early-stop flags; let the overnight runs spend their full
+wall budget and use `global_best` for the reporting checkpoint.
+
+GPU no-confidence control:
+
+```bash
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+  --out runs/e2/mf_runB_5sphere_nosigma_gpu \
+  --multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+  --reward-mode delta_log_mape --mape-alpha 1.0 \
+  --fix-te --log-ti-action \
+  --n-envs 1 --field T15 --time-budget 240 --max-blocks 20 \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --train-seed 0 --eval-seed 500000 \
+  --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+  --mf-min-steps 4096,8192,8192,8192,0 \
+  --mf-max-steps 20000,160000,160000,80000,300000 \
+  --n-steps 512 --batch-size 64 \
+  --eval-interval 10000 --eval-episodes 20 \
+  --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+  --mf-global-best-episodes 12 \
+  --mf-use-lookahead --mf-lookahead-rollouts 1 \
+  --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+  2>&1 | tee runs/e2/mf_runB_5sphere_nosigma_gpu/run.log
+```
+
+GPU confidence treatment:
+
+```bash
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+  --out runs/e2/mf_runB_5sphere_sigma_gpu \
+  --multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+  --reward-mode delta_log_mape --mape-alpha 1.0 \
+  --fix-te --log-ti-action --include-sigma \
+  --n-envs 1 --field T15 --time-budget 240 --max-blocks 20 \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --train-seed 0 --eval-seed 500000 \
+  --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+  --mf-min-steps 4096,8192,8192,8192,0 \
+  --mf-max-steps 20000,160000,160000,80000,300000 \
+  --n-steps 512 --batch-size 64 \
+  --eval-interval 10000 --eval-episodes 20 \
+  --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+  --mf-global-best-episodes 12 \
+  --mf-use-lookahead --mf-lookahead-rollouts 1 \
+  --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+  2>&1 | tee runs/e2/mf_runB_5sphere_sigma_gpu/run.log
+```
+
+GPU 420 s fixed baselines:
+
+```bash
+mkdir -p runs/e2/baseline_5sphere_420s_gpu
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/baseline_e2.py \
+  --episodes 24 --field T15 --nfe 64 --npe 32 \
+  --time-budget 420 --max-blocks 20 \
+  --noise 50 --fix-te --log-ti-action \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --cr-optimal --cr-optimize-alpha --ernst-baseline --cr-oracle \
+  --out runs/e2/baseline_5sphere_420s_gpu \
+  2>&1 | tee runs/e2/baseline_5sphere_420s_gpu/run.log
+```
+
+GPU 420 s no-confidence control:
+
+```bash
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+  --out runs/e2/mf_runB_5sphere_nosigma_420s_gpu \
+  --multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+  --reward-mode delta_log_mape --mape-alpha 1.0 \
+  --fix-te --log-ti-action \
+  --n-envs 1 --field T15 --time-budget 420 --max-blocks 20 \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --train-seed 0 --eval-seed 500000 \
+  --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+  --mf-min-steps 4096,8192,8192,8192,0 \
+  --mf-max-steps 20000,160000,160000,80000,300000 \
+  --n-steps 512 --batch-size 64 \
+  --eval-interval 10000 --eval-episodes 20 \
+  --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+  --mf-global-best-episodes 12 \
+  --mf-use-lookahead --mf-lookahead-rollouts 1 \
+  --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+  2>&1 | tee runs/e2/mf_runB_5sphere_nosigma_420s_gpu/run.log
+```
+
+GPU 420 s confidence treatment:
+
+```bash
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+  --out runs/e2/mf_runB_5sphere_sigma_420s_gpu \
+  --multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+  --reward-mode delta_log_mape --mape-alpha 1.0 \
+  --fix-te --log-ti-action --include-sigma \
+  --n-envs 1 --field T15 --time-budget 420 --max-blocks 20 \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --train-seed 0 --eval-seed 500000 \
+  --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+  --mf-min-steps 4096,8192,8192,8192,0 \
+  --mf-max-steps 20000,160000,160000,80000,300000 \
+  --n-steps 512 --batch-size 64 \
+  --eval-interval 10000 --eval-episodes 20 \
+  --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+  --mf-global-best-episodes 12 \
+  --mf-use-lookahead --mf-lookahead-rollouts 1 \
+  --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+  2>&1 | tee runs/e2/mf_runB_5sphere_sigma_420s_gpu/run.log
+```
+
+GPU 560 s no-confidence control:
+
+```bash
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+  --out runs/e2/mf_runB_5sphere_560s_gpu \
+  --multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+  --reward-mode delta_log_mape --mape-alpha 1.0 \
+  --fix-te --log-ti-action \
+  --n-envs 1 --field T15 --time-budget 560 --max-blocks 20 \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --train-seed 0 --eval-seed 500000 \
+  --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+  --mf-min-steps 4096,8192,8192,8192,0 \
+  --mf-max-steps 20000,160000,160000,80000,300000 \
+  --n-steps 512 --batch-size 64 \
+  --eval-interval 10000 --eval-episodes 20 \
+  --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+  --mf-global-best-episodes 12 \
+  --mf-use-lookahead --mf-lookahead-rollouts 1 \
+  --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+  2>&1 | tee runs/e2/mf_runB_5sphere_560s_gpu/run.log
+```
+
+GPU 560 s confidence treatment:
+
+```bash
+PYTHON_JULIAPKG_PROJECT="$PWD/python/julia_runtime_gpu" \
+PYTHON_JULIAPKG_OFFLINE=yes PYTHON_JULIACALL_HANDLE_SIGNALS=yes \
+PYTHON_JULIACALL_THREADS=3 JULIA_NUM_THREADS=3 \
+PYTHONUNBUFFERED=1 python -u python/train_e2_mf.py \
+  --out runs/e2/mf_runB_5sphere_sigma_560s_gpu \
+  --multi-fidelity --mf-plan analytic,cached3,cached,full3,full \
+  --reward-mode delta_log_mape --mape-alpha 1.0 \
+  --fix-te --log-ti-action --include-sigma \
+  --n-envs 1 --field T15 --time-budget 560 --max-blocks 20 \
+  --subset-size 5 --forced-sphere-indices 1,3,6,8,14 \
+  --t1-sampler linear_uniform_range \
+  --pose-mode inplane_jitter --translation-sigma-mm 2.0 \
+  --rotation-sigma-rad 0.05 --roi-radius 1 \
+  --use-gpu \
+  --train-seed 0 --eval-seed 500000 \
+  --mf-budget-hours 9 --mf-full-reserve-frac 0.20 \
+  --mf-min-steps 4096,8192,8192,8192,0 \
+  --mf-max-steps 20000,160000,160000,80000,300000 \
+  --n-steps 512 --batch-size 64 \
+  --eval-interval 10000 --eval-episodes 20 \
+  --mf-decision-rollouts 4 --mf-probe-episodes-full 4 \
+  --mf-global-best-episodes 12 \
+  --mf-use-lookahead --mf-lookahead-rollouts 1 \
+  --mf-lookahead-margin 1.15 --mf-slope-collapse-frac 0.25 \
+  2>&1 | tee runs/e2/mf_runB_5sphere_sigma_560s_gpu/run.log
+```
 
 Candidate 9 h command:
 
@@ -952,6 +1305,14 @@ been measured.
    IRSE block, conventional spin echo, multi-spin-echo/CPMG train, and possibly a
    spoiled-GRE-like readout. This tests a more publishable adaptivity claim:
    choose *which contrast mechanism* to deploy based on current uncertainty.
+   The current fitters do not support an arbitrary mixture of signal models:
+   `fit_t1_generalized_ir` assumes one generalized IR spin-echo family, while
+   `fit_t1_t2_generalized_ir` adds TE-dependent mono-exponential T2 decay under
+   that same family. Simple SE / IR-SE samples with varying TE can be made to fit
+   this model, but realistic CPMG/TSE echo trains with imperfect refocusing need
+   an EPG or Bloch/dictionary forward model, and spoiled GRE needs its own
+   steady-state GRE equation. A mixed-family task therefore needs a heterogeneous
+   per-sample forward model before the fitter can be trusted.
 3. **Joint T1/T2 or T1/T2-family estimation.** Add multi-spin-echo reads where
    echo spacing, echo train length, and TE allocation are controllable. Adaptivity
    should matter more when the agent must decide whether the next acquisition
@@ -960,7 +1321,14 @@ been measured.
    time/SNR/resolution by choosing `Npe` or a small set of PE budgets per block.
    This is attractive because it introduces a genuine resource-allocation choice,
    but it needs careful normalisation: changing `Npe` changes scan time, noise,
-   image quality, and the F1+ transient model.
+   image quality, and the finite-Npe transient model. Conceptually this is closer
+   to the current fitter than mixed sequence families because the IR forward model
+   already has an `Npe` argument. The implementation currently passes one scalar
+   `Npe` for all samples, so a variable-`Npe` policy would need per-sample `Npe`
+   support in the fitter and observation logs. The learning signal is otherwise
+   natural: each block costs approximately `Npe * TR`, so the policy must learn
+   whether extra phase encodes are worth the lost opportunity for another
+   contrast measurement.
 5. **Accuracy-time Pareto objective.** Add a scan-time penalty or stop action and
    report a Pareto curve instead of one fixed 240 s point. A fixed log-grid may be
    hard to beat at exactly 240 s, but an adaptive policy may reach "good enough"
