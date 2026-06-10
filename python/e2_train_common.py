@@ -63,17 +63,18 @@ def build_model(vec_env: VecNormalize, *, n_steps: int, batch_size: int,
     size. sb3_contrib is imported lazily so non-recurrent runs don't need it.
     """
     shared = dict(
-        n_steps       = n_steps,    # longer rollouts → better advantage estimates
-        batch_size    = batch_size,
-        learning_rate = 1e-4,       # smaller steps → tame clip_fraction (was 0.5 at 3e-4)
-        gamma         = 0.99,
-        gae_lambda    = 0.95,
-        ent_coef      = 0.005,      # let policy concentrate sooner
-        max_grad_norm = 0.5,
-        policy_kwargs = dict(net_arch=[256, 256]),
-        device        = "cpu",      # MLP/LSTM policy is faster on CPU; GPU is for KomaMRI sim
-        verbose       = 1,
-        tensorboard_log = tensorboard_log,
+        n_steps=n_steps,    # longer rollouts → better advantage estimates
+        batch_size=batch_size,
+        # smaller steps → tame clip_fraction (was 0.5 at 3e-4)
+        learning_rate=1e-4,
+        gamma=0.99,
+        gae_lambda=0.95,
+        ent_coef=0.005,      # let policy concentrate sooner
+        max_grad_norm=0.5,
+        policy_kwargs=dict(net_arch=[256, 256]),
+        device="cpu",      # MLP/LSTM policy is faster on CPU; GPU is for KomaMRI sim
+        verbose=1,
+        tensorboard_log=tensorboard_log,
     )
     if recurrent:
         from sb3_contrib import RecurrentPPO
@@ -90,7 +91,7 @@ def load_policy(policy_path, *, recurrent: bool = False):
     if recurrent:
         from sb3_contrib import RecurrentPPO
         return RecurrentPPO.load(str(policy_path))
-    return PPO.load(str(policy_path))
+    return PPO.load(str(policy_path), device="cpu")
 
 
 # ── evaluation ──────────────────────────────────────────────────────────────
@@ -115,7 +116,8 @@ def rollout_eval(model, eval_env: QalibreMDE2Env, n_episodes: int,
         state = None
         episode_start = np.ones((1,), dtype=bool)
         while not done:
-            obs_in = vec_norm.normalize_obs(obs) if vec_norm is not None else obs
+            obs_in = vec_norm.normalize_obs(
+                obs) if vec_norm is not None else obs
             action, state = model.predict(obs_in, state=state,
                                           episode_start=episode_start,
                                           deterministic=True)
@@ -145,8 +147,8 @@ class E2CheckpointCallback(BaseCallback):
                  verbose: int = 0):
         super().__init__(verbose)
         self.save_freq = save_freq
-        self.out_dir   = out_dir
-        self.vec_env   = vec_env
+        self.out_dir = out_dir
+        self.vec_env = vec_env
 
     def _on_step(self) -> bool:
         if self.num_timesteps % self.save_freq == 0:
@@ -172,22 +174,22 @@ class E2EvalCallback(BaseCallback):
                  global_best_source: str = "eval_callback",
                  verbose: int = 1):
         super().__init__(verbose)
-        self.eval_env         = eval_env
-        self.every_n_steps    = every_n_steps
-        self.n_eval_episodes  = n_eval_episodes
-        self.seed_offset      = seed_offset
-        self.log_path         = log_path
-        self.best_dir         = best_dir
-        self.env_kwargs       = env_kwargs or {}
-        self.global_best      = global_best
+        self.eval_env = eval_env
+        self.every_n_steps = every_n_steps
+        self.n_eval_episodes = n_eval_episodes
+        self.seed_offset = seed_offset
+        self.log_path = log_path
+        self.best_dir = best_dir
+        self.env_kwargs = env_kwargs or {}
+        self.global_best = global_best
         self.global_best_stage = global_best_stage
         self.global_best_source = global_best_source
-        self._last_eval       = 0
-        self._t0             = time.time()
-        self.history          = (json.loads(log_path.read_text())
-                                 if log_path.exists() else [])
-        self.best_mape        = min((h["mape_pct"] for h in self.history),
-                                    default=float("inf"))
+        self._last_eval = 0
+        self._t0 = time.time()
+        self.history = (json.loads(log_path.read_text())
+                        if log_path.exists() else [])
+        self.best_mape = min((h["mape_pct"] for h in self.history),
+                             default=float("inf"))
 
     def _on_step(self) -> bool:
         if self.num_timesteps - self._last_eval < self.every_n_steps:
@@ -269,23 +271,23 @@ class ProgressETACallback(BaseCallback):
                  verbose: int = 1):
         super().__init__(verbose)
         self.total_timesteps = total_timesteps
-        self.ema_alpha       = ema_alpha
-        self._last_t         = None
-        self._last_steps     = None
-        self._ema_spp        = None   # EMA seconds-per-timestep
+        self.ema_alpha = ema_alpha
+        self._last_t = None
+        self._last_steps = None
+        self._ema_spp = None   # EMA seconds-per-timestep
 
     def _on_training_start(self) -> None:
-        self._last_t     = time.time()
+        self._last_t = time.time()
         self._last_steps = self.num_timesteps
 
     def _on_step(self) -> bool:
         return True
 
     def _on_rollout_end(self) -> None:
-        now   = time.time()
+        now = time.time()
         steps = self.num_timesteps
         d_steps = steps - (self._last_steps or steps)
-        d_time  = now - (self._last_t or now)
+        d_time = now - (self._last_t or now)
         self._last_t, self._last_steps = now, steps
         if d_steps <= 0 or d_time <= 0:
             return
