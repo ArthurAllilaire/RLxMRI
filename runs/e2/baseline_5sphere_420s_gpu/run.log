@@ -1,0 +1,112 @@
+[baseline_e2] CR timing constraints from E2 env: TR_lo_floor=0.500s, TE=0.020s, TR_headroom=0.90
+[baseline_e2] Skipping 'clinical_irse': TR=5s with Npe=32 and budget=420.0s fits only 2 block(s).
+
+[baseline_e2] Solving CR-optimal schedule (expected random-subset fleet=14 spheres, budget=420.0s) …
+  best n_blocks = 10, L = 15.0167
+  TIs (sorted)  = [0.0285, 0.0298, 0.0311, 0.033, 0.0346, 0.1349, 0.1453, 0.1619, 0.4941, 0.6847]
+  TRs (sorted)  = [0.5079, 0.5667, 0.5739, 0.6186, 0.6587, 0.6609, 0.9301, 1.0999, 3.2762, 4.185]
+
+[baseline_e2] Building Ernst-fixed-α baseline (fleet-median T1 = 0.233s) on the CR-opt timing …
+
+[baseline_e2] Solving α-aware CR-optimal schedule (joint TI,TR,α; budget=420.0s) …
+  best n_blocks = 10, L = 15.0313
+  α (deg, sorted) = [90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0, 90.0]
+
+[baseline_e2] Evaluating 'log_grid' on 24 eps (seeds 500000…500023)
+  MAPE       = 10.20%  (95% CI 8.92–11.63%, SEM ±0.70%)
+  p90 MAPE   = 14.97%
+  Success<5% = 0.0%
+  Mean time  = 384.0s (4.0 blocks)
+  Per-active slot MAPE [%] (long-T1 → short-T1 within active episode):
+    active slot  0:    11.7%
+    active slot  1:    10.8%
+    active slot  2:     9.4%
+    active slot  3:     9.8%
+    active slot  4:     9.3%
+  Per-pool-sphere MAPE [%] (original 1-based T1_ARRAY index):
+    pool  1:    11.7%  (n=24)
+    pool  3:    10.8%  (n=24)
+    pool  6:     9.4%  (n=24)
+    pool  8:     9.8%  (n=24)
+    pool 14:     9.3%  (n=24)
+
+[baseline_e2] Evaluating 'log_grid_trmatched' on 24 eps (seeds 500000…500023)
+  MAPE       = 5.63%  (95% CI 4.98–6.32%, SEM ±0.35%)
+  p90 MAPE   = 7.88%
+  Success<5% = 37.5%
+  Mean time  = 326.6s (7.0 blocks)
+  Per-active slot MAPE [%] (long-T1 → short-T1 within active episode):
+    active slot  0:     6.5%
+    active slot  1:     5.9%
+    active slot  2:     5.2%
+    active slot  3:     4.3%
+    active slot  4:     6.2%
+  Per-pool-sphere MAPE [%] (original 1-based T1_ARRAY index):
+    pool  1:     6.5%  (n=24)
+    pool  3:     5.9%  (n=24)
+    pool  6:     5.2%  (n=24)
+    pool  8:     4.3%  (n=24)
+    pool 14:     6.2%  (n=24)
+
+[baseline_e2] Evaluating 'cr_optimal' on 24 eps (seeds 500000…500023)
+  MAPE       = 7.19%  (95% CI 6.17–8.31%, SEM ±0.57%)
+  p90 MAPE   = 11.08%
+  Success<5% = 20.8%
+  Mean time  = 418.5s (10.0 blocks)
+  Per-active slot MAPE [%] (long-T1 → short-T1 within active episode):
+    active slot  0:     6.1%
+    active slot  1:     9.1%
+    active slot  2:     5.9%
+    active slot  3:    10.1%
+    active slot  4:     4.7%
+  Per-pool-sphere MAPE [%] (original 1-based T1_ARRAY index):
+    pool  1:     6.1%  (n=24)
+    pool  3:     9.1%  (n=24)
+    pool  6:     5.9%  (n=24)
+    pool  8:    10.1%  (n=24)
+    pool 14:     4.7%  (n=24)
+
+[baseline_e2] Evaluating 'ernst_fixed' on 24 eps (seeds 500000…500023)
+  MAPE       = 7.19%  (95% CI 6.17–8.31%, SEM ±0.57%)
+  p90 MAPE   = 11.08%
+  Success<5% = 20.8%
+  Mean time  = 418.5s (10.0 blocks)
+  Per-active slot MAPE [%] (long-T1 → short-T1 within active episode):
+    active slot  0:     6.1%
+    active slot  1:     9.1%
+    active slot  2:     5.9%
+    active slot  3:    10.1%
+    active slot  4:     4.7%
+  Per-pool-sphere MAPE [%] (original 1-based T1_ARRAY index):
+    pool  1:     6.1%  (n=24)
+    pool  3:     9.1%  (n=24)
+    pool  6:     5.9%  (n=24)
+    pool  8:    10.1%  (n=24)
+    pool 14:     4.7%  (n=24)
+
+[baseline_e2] Evaluating 'cr_optimal_alpha' on 24 eps (seeds 500000…500023)
+  MAPE       = 7.24%  (95% CI 6.27–8.24%, SEM ±0.52%)
+  p90 MAPE   = 10.75%
+  Success<5% = 20.8%
+  Mean time  = 418.4s (10.0 blocks)
+  Per-active slot MAPE [%] (long-T1 → short-T1 within active episode):
+    active slot  0:     5.5%
+    active slot  1:     8.6%
+    active slot  2:     6.1%
+    active slot  3:    10.3%
+    active slot  4:     5.7%
+  Per-pool-sphere MAPE [%] (original 1-based T1_ARRAY index):
+    pool  1:     5.5%  (n=24)
+    pool  3:     8.6%  (n=24)
+    pool  6:     6.1%  (n=24)
+    pool  8:    10.3%  (n=24)
+    pool 14:     5.7%  (n=24)
+
+[baseline_e2] Evaluating oracle CR-optimal on 24 sampled subsets
+  MAPE       = 7.11%
+  p90 MAPE   = 8.62%
+  Success<5% = 25.0%
+  Mean time  = 418.8s (5.5 blocks)
+  Unique oracle schedules solved = 24
+
+[baseline_e2] Summary → runs/e2/baseline_5sphere_420s_gpu/baseline_summary.json
