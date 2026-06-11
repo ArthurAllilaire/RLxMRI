@@ -154,8 +154,7 @@ spatial information missing from the raw MR signal.
 The \(G_z\) gradient performs slice selection. During the RF pulse,
 \(G_z\) maps \(z\)-position to Larmor frequency, so a narrow-band RF
 pulse excites only the spins whose frequencies lie within the RF
-bandwidth. This selects a thin slice of the object, as shown in
-Figure~\ref{fig:slice-selection}.
+bandwidth. This selects a thin slice of the object.
 
 The in-plane coordinates are then encoded using \(G_y\) and \(G_x\). A
 short \(G_y\) pulse before readout provides phase encoding: it gives
@@ -165,12 +164,12 @@ successive samples trace spatial frequency along \(k_x\). Repeating the
 sequence with different \(G_y\) amplitudes steps through \(k_y\), so each
 repetition fills a different row of k-space.
 
-\begin{figure}
-    \centering
-    \includegraphics[width=0.5\linewidth]{imgs/slice_selection.jpg}
-    \caption{Slice selection using a narrow-band RF pulse applied during a gradient. Only spins whose shifted Larmor frequencies lie within the RF bandwidth are excited. Figure from \cite{RobPio:99}.}
-    \label{fig:slice-selection}
-\end{figure}
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{imgs/slice_selection.jpg}
+%     \caption{Slice selection using a narrow-band RF pulse applied during a gradient. Only spins whose shifted Larmor frequencies lie within the RF bandwidth are excited. Figure from \cite{RobPio:99}.}
+%     \label{fig:slice-selection}
+% \end{figure}
 
 For a gradient waveform \(\mathbf{G}(t)\), the sampled k-space location
 is determined by the accumulated gradient moment:
@@ -269,14 +268,32 @@ used directly by the phantom library's Hamming reconstruction option.
 
 \subsection{Pulse Sequences}
 
-A pulse sequence is a description of a series of RF pulses and MR-signal acquisitions. These are "handcrafted by MR experts, who combined strong intuitions and an understanding of spin physics with mathematical solutions of the Bloch equations"\cite{DLINMRI:24}. They try to maximise signal-to-noise ratio (SNR) and image contrast while reducing scan times. To do this, they optimise parameters such as the echo time (TE) and repetition time (TR).
+A pulse sequence is the timed series of RF pulses, gradients, and signal
+acquisitions that produces an image. Its timing parameters set the
+image contrast and govern the trade-off between signal-to-noise ratio (SNR)
+and scan time. The two most important are the repetition time (TR), the
+interval between successive excitations, which controls $T_1$ weighting and
+largely sets the total scan time, and the echo time (TE), the delay from
+excitation to readout, which controls $T_2$ weighting. Choosing these values
+is traditionally a manual craft: sequences are "handcrafted by MR experts, who
+combined strong intuitions and an understanding of spin physics with
+mathematical solutions of the Bloch equations"\cite{DLINMRI:24}. It is exactly
+this hand-tuning of acquisition timings that the learned, adaptive approach of
+this project seeks to automate.
 
-For example, the time between two RF pulses is called the repetition time.
-
-\subsection{MRI Simulators \& Pulseq}
-Pulseq is a standardised, open-source framework for defining MRI pulse sequences. Pulseq is hardware-agnostic (compatible with all MR-Linacs).\cite{Pulseq:17}. Pulseq can also be used with many MRI simulators, including both KomaMRI and MRZero. 
-
-KomaMRI is a high-performance Julia-based MRI simulator which enables scalable, multi-threaded computation to speed up simulations. \cite{komaMRI:23} MRZero is a "PyTorch-based framework for easy MRI sequence optimisation and development of self-learning sequence development strategies". \cite{MRISeqSupLearning:21}
+\subsection{MRI Simulators}
+Bloch-equation simulation is a mature area. KomaMRI, the Julia-based simulator
+used in this project, is a high-performance, multi-threaded solver that sits
+alongside the established JEMRIS~\cite{stoecker_jemris_2010} and
+MRiLab~\cite{liu_mrilab_2017}, with the differentiable PyTorch framework
+MRzero a further alternative~\cite{MRISeqSupLearning:21}. Its publication
+benchmarked KomaMRI against both, reporting mean absolute signal differences
+below 0.1\% versus JEMRIS with faster runtimes and better usability
+scores~\cite{komaMRI:23}. Crucially, these are cross-simulator agreement checks
+on short reference sequences, not validations of a quantitative pipeline. At
+the long sequence times this project requires, KomaMRI produced systematically
+inaccurate signals, biasing the fitted tissue parameters;
+Chapter~\ref{ch:validating-komamri} diagnoses and fixes the cause.
 
 \subsection{Magnetic Resonance Fingerprinting (MRF)}
 
@@ -288,32 +305,102 @@ Conventional MRI predominantly produces qualitative, ``weighted'' images where p
 % [28] Bernstein MA, King KF, Zhou XJ. Handbook of MRI pulse sequences. Elsevier; 2004.
 % or this: MRI: CONNECTING THE DOTS https://iopscience.iop.org/book/mono/978-0-7503-1284-4
 
+\section{Digital twins and phantoms for quantitative MRI}
+\label{sec:bg-twins-phantoms}
+
+Because the target of qMRI is a fitted physical parameter, an image can look
+plausible while the fitted $T_1$ values are biased. Validating a qMRI method
+therefore requires reference objects with known parameter values. Physical
+phantoms fill this role: recent qMRI phantom reviews treat them as traceable
+reference systems for repeatability studies, protocol comparison, and
+cross-scanner validation, not merely as image-quality test
+objects~\cite{keenan_phantoms_2024}. The most established example is the
+ISMRM/NIST system phantom, designed as a common scanner-characterisation
+baseline with SI-traceable reference materials spanning clinically relevant
+$T_1$, $T_2$, and proton-density ranges, monitored long-term by a national
+metrology institute~\cite{russek_system_phantom_characterization_2020}.
+Chapter~\ref{ch:mri-system-phantom} builds a digital twin of exactly this
+device.
+
+Digital twins extend the reference idea from hardware to executable models. A
+2026 systematic review of digital twinning in MRI defines a twin as a dynamic
+virtual replica linked to its real-world counterpart through data,
+simulation, and analytics, and maps 51 studies from
+2020--2025~\cite{greggio_digital_twinning_mri_2026}. Two of its findings
+locate this project. First, the MRI-twin literature concentrates on
+diagnosis, treatment planning, and monitoring (63\% of studies); hardware,
+protocol, and infrastructure applications --- the category this project
+contributes to --- account for 20\% and are identified as underdeveloped.
+Second, the review names barriers that this report confronts directly:
+heterogeneity of MRI data across vendors, sequences, and field strengths; the
+computational cost of physics simulation; and validation. This project
+addresses them in a bounded setting --- a standardised phantom model, a
+simulator validated by parameter recovery, and a multi-fidelity training loop
+that attacks simulation cost. The term ``digital twin'' is used in a
+correspondingly bounded sense throughout: the twin represents a calibration
+phantom for simulation, validation, and policy training, not a patient or a
+scanner connected to live clinical data.
+
+Table~\ref{tab:bg-related-gaps} summarises how the approaches reviewed in
+this chapter relate to the adaptive-qMRI problem and what each leaves
+unresolved.
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{0.96}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.4cm}
+>{\raggedright\arraybackslash}X
+>{\raggedright\arraybackslash}X}
+\toprule
+Related approach & Strength & Remaining gap for this project \\
+\midrule
+Physical qMRI phantoms~\cite{keenan_phantoms_2024,russek_system_phantom_characterization_2020} &
+Known $T_1$/$T_2$/PD values; repeatable scanner and protocol validation &
+A hardware object cannot generate randomised simulation episodes or cheap RL rollouts \\
+\addlinespace
+MRI digital twins~\cite{greggio_digital_twinning_mri_2026} &
+Executable virtual replicas for prediction and optimisation &
+Existing work targets diagnosis/treatment planning; protocol-level twins are underdeveloped \\
+\addlinespace
+MRI simulators~\cite{komaMRI:23,stoecker_jemris_2010,liu_mrilab_2017} &
+Bloch-equation forward models; sequence testing before scanner execution &
+Benchmarked on short reference sequences, not end-to-end qMRI recovery under long adaptive acquisitions \\
+\addlinespace
+Offline sequence optimisation~\cite{MRISeqSupLearning:21,Jordan_MRF_AUTO:21} &
+Learns or optimises non-trivial acquisition schedules &
+Schedule is fixed before the scan; no conditioning on the current fit \\
+\addlinespace
+Adaptive MR and RL scanner control~\cite{adaptive_mri:23,Walk_RL_CONTROL_MRI:19,zhu2018autoseq,pineda_active_mri_rl_2020} &
+Closed-loop acquisition demonstrably helps &
+Prior tasks differ: Bayesian T2/MRS adaptation, shape classification, 1-D physics, or k-space sampling --- not fitted $T_1$ mapping on a calibrated phantom \\
+\bottomrule
+\end{tabularx}
+\caption{Related approaches, their strengths, and the gap each leaves for
+closed-loop qMRI sequence design. The project combines the rows: an
+executable phantom twin (Chapter~\ref{ch:mri-system-phantom}) drives a
+validated simulator (Chapter~\ref{ch:validating-komamri}), and an RL agent is
+trained and evaluated on the quantitative recovery objective
+(Chapter~\ref{ch:adaptive-rl}).}
+\label{tab:bg-related-gaps}
+\end{table}
+
 \section{Magnetic Resonance Linear Accelerator (MR-LINAC)}
 
-The MR-LINAC represents a paradigm shift in radiation oncology, moving beyond conventional IGRT, which provides only a pre-treatment 'snapshot' of the patient’s anatomy. Instead, it enables a continuous feedback loop between real-time imaging and dose delivery, allowing for dynamic adjustment during the treatment itself, known as Adaptive Radiotherapy (ART).
-
-\subsection{Clinical Benefits of ART}
-By capturing high-contrast images while the patient is on the treatment table, clinicians can account for "inter-fraction" changes (variations between daily sessions) and "intra-fraction" motion (movement during the session, such as breathing or bowel movements).
-
-This real-time visualisation allows for a significant reduction in the Planning Target Volume (PTV). Traditionally, large margins are added to the Clinical Target Volume (CTV) to compensate for uncertainties in organ position. Using MRgRT, these margins can be tightened. In prostate cancer, PTV margins have been reduced to 2mm, significantly reducing the volume of radiated healthy tissue. Further, better soft tissue contrast is essential to accurately delineate the tumour and contour Organs at Risk (OaR) in complex regions like the liver and pancreas.
-
-This allows for "hypofractionation" (delivering a more potent dose over fewer sessions) without increasing the toxicity profile for the patient. This significantly decreases treatment side effects. \cite{ocanto_mr-linac:2024}
-
-\subsection{Current Limitations and Implementation Challenges}
-Despite its potential, the global adoption of MR-LINAC technology remains in its early stages. As of 2024, four primary operational configurations exist, typically utilising magnetic field strengths of either 0.35T (e.g., ViewRay MRIdian) or 1.5T (e.g., Elekta Unity) \cite{ocanto_mr-linac:2024}. The transition to MRgRT introduces several operational bottlenecks:
-
-\begin{itemize}
-    \item \textbf{Complexity and Workflow:} The requirement for ``on-table'' plan adaptation demands a high level of expertise and significant upskilling for radiation therapists, physicists, and oncologists.
-    
-    \item \textbf{Delineation Uncertainty:} While tumours frequently shrink during treatment, it is currently unclear if adapting to these smaller volumes is always safe, as the original tumour bed may still contain microscopic disease \cite{mrlinac_in_practice:23}.
-    
-    \item \textbf{Time Constraints:} Re-tuning treatment plans while the patient is immobilised requires rapid image acquisition and contouring to prevent motion artifacts and patient discomfort.
-\end{itemize}
-
-\subsection{The Role of AI and Quantitative MRI}
-To address the clinical bottleneck of manual contouring, AI-based automated segmentation has emerged as a vital tool. Tools such as the Philips RTdrive Core have demonstrated clinical robustness in prostate cancer patients, significantly reducing the workload for clinicians by automatically outlining the target and OaRs. \cite{phillip_mri_seg:2020}.
-
-Furthermore, the future of MRgRT lies in moving beyond simple anatomical contrast. The integration of quantitative MRI (qMRI), such as measuring tissue cell density through Diffusion-Weighted Imaging, allows for biological targeting. By applying Deep Learning and Reinforcement Learning (RL) to these multi-parametric datasets, the MR-LINAC could eventually provide an end-to-end automated system that optimises dose delivery based on the functional response of the tumour in real-time \cite{mrlinac_in_practice:23}.
+The MR-LINAC couples real-time MR imaging with dose delivery, replacing the
+pre-treatment 'snapshot' of conventional IGRT with a continuous feedback loop
+that supports Adaptive Radiotherapy (ART). Imaging the patient on the table
+lets clinicians correct for inter-fraction change and intra-fraction motion,
+tightening the margins added around the target (in prostate cancer, planning
+margins of ${\approx}2$\,mm) and so sparing healthy tissue\cite{ocanto_mr-linac:2024}.
+Its clinical value is, however, throttled by two bottlenecks this project's
+context touches: the extra acquisition time needed for high-quality imaging,
+and the manual effort of on-table re-planning\cite{mrlinac_in_practice:23}.
+AI-based auto-segmentation already addresses the contouring
+load\cite{phillip_mri_seg:2020}, and the longer-term direction is to move
+beyond anatomical contrast toward quantitative, biologically-targeted
+acquisition --- the setting this project studies.
 
 % mrilab - numberical mri simulator: https://leoliuf.github.io/MRiLab/
 % paper: https://pmc.ncbi.nlm.nih.gov/articles/PMC5322984
@@ -356,6 +443,16 @@ By recasting pulse sequence development as a ``game of perfect information,'' re
 The above work focuses on the design of novel, but ultimately static pulse sequences. Instead, Adaptive MR is a promising new research direction. Here, a probability distribution of the tissue parameter of interest (e.g. $T_2$) is continuously updated with each new reading. The next pulse sequence is chosen based on the estimate of $T_2$. This has been shown to accelerate acquisition time by a factor of 2.5. This is a general paradigm shift in pulse sequence design that motivates and validates further exploration of adaptive MR.\cite{adaptive_mri:23}
 
 Adaptive MR also has the potential to be combined with RL to autonomously control in real-time MRI hardware. Walker-Samuel demonstrated this by using a Deep Deterministic Policy Gradient (DDPG) algorithm to control an MRI simulation environment where the acquisition process had been turned into a reward-based game. The RL agent was tasked with identifying phantom shapes while being penalised for increased acquisition time. This forces the system to optimise the trade-off between Signal-to-Noise Ratio (SNR) and image acquisition time. Notably, the agent autonomously learned to perform "active sensing," acquiring only four to six outer lines of $k$-space and dynamically adjusting $T_E$, $T_R$, and flip angles to act as an edge detector. With a reported shape-classification accuracy of 99.8\%, this research suggests that RL-controlled scanners could move beyond human-readable imaging to perform high-speed, task-specific "autonomous sensing". However, this was purely simulation-based and a very simple task, whether this method can be applied to more complex situations is unproven.
+
+A separate active-acquisition literature applies RL to k-space sampling:
+Pineda et al.\ train a policy that selects which k-space lines to acquire
+next so that an undersampled reconstruction improves
+fastest~\cite{pineda_active_mri_rl_2020}. This work also treats MRI
+acquisition as a sequential decision problem, but it controls a different
+object: sampling locations under a reconstruction-quality objective. It does
+not choose relaxation-preparation timings such as TI and TR, and it does not
+optimise fitted quantitative parameter accuracy --- the control problem and
+objective of this project.
 
 \subsection{Reinforcement Learning and PPO for Adaptive Acquisition}
 Reinforcement learning (RL) studies problems where an agent improves its
@@ -408,170 +505,19 @@ training data are not a fixed dataset. They are samples produced by repeatedly
 running the current policy, simulating the resulting sequence, reconstructing
 the image, fitting the tissue parameters, and computing the reward.
 
-\subsubsection{Policy gradients}
-Policy-gradient methods optimise $J(\theta)$ directly.\cite{sutton_policy_gradient_1999,williams_reinforce_1992} The probability of a
-trajectory under a policy is
-
-\begin{equation}
-p_\theta(\tau)
-= \rho_0(s_0)
-  \prod_{t=0}^{T-1}
-  P(s_{t+1}\mid s_t,a_t)\pi_\theta(a_t\mid s_t).
-\end{equation}
-
-The simulator dynamics $P$ do not depend on the policy parameters. Applying the
-log-derivative trick gives the basic policy-gradient expression:
-
-\begin{equation}
-\nabla_\theta J(\theta)
-=
-\mathbb{E}_{\tau \sim \pi_\theta}
-\left[
-    \sum_{t=0}^{T-1}
-    \nabla_\theta \log \pi_\theta(a_t\mid s_t) G_t
-\right].
-\end{equation}
-
-In practice this expectation is approximated using sampled rollouts:
-
-\begin{equation}
-\hat{g}
-=
-\frac{1}{N}
-\sum_{i=1}^{N}
-\sum_{t=0}^{T_i-1}
-\nabla_\theta \log \pi_\theta(a_{i,t}\mid s_{i,t})
-\hat{A}_{i,t}.
-\end{equation}
-
-This is the central sample-based approximation of policy-gradient RL: the
-expectation over all trajectories is estimated from a finite batch collected
-from the simulator, making actions with better-than-expected outcomes more
-likely and worse-than-expected actions less likely. Crucially, it does not
-require differentiating the simulator. The gradient flows only through the
-policy's log-probability $\log \pi_\theta(a_t \mid s_t)$, which is
-differentiable because the policy is a neural network, so KomaMRI can stay a
-black-box physics simulator used only to sample transitions and rewards. The
-weighting term is written as an advantage estimate $\hat{A}_t$ rather than the
-raw return $G_t$, which lowers variance by measuring whether an action beat
-what the policy already expected in that state.
-
-\subsubsection{Value and advantage functions}
-The value function of a policy is the expected future return from a state:
-
-\begin{equation}
-V^\pi(s) = \mathbb{E}_{\tau \sim \pi}[G_t \mid s_t=s].
-\end{equation}
-
-The action-value function is the expected return after taking a particular
-action and then continuing with the policy:
-
-\begin{equation}
-Q^\pi(s,a) =
-\mathbb{E}_{\tau \sim \pi}[G_t \mid s_t=s, a_t=a].
-\end{equation}
-
-Equivalently, it can be written in one-step form as the expected immediate
-reward plus the value of the next state:
-
-\begin{equation}
-Q^\pi(s_t,a_t)
-=
-\mathbb{E}\left[
-r_t + \gamma V^\pi(s_{t+1})
-\mid s_t, a_t
-\right].
-\end{equation}
-
-The advantage function compares these two quantities:
-
-\begin{equation}
-A^\pi(s,a) = Q^\pi(s,a) - V^\pi(s).
-\end{equation}
-
-An action with positive advantage performed better than the policy's average
-action at that state; an action with negative advantage performed worse. This
-is the quantity used to decide which sampled actions should become more or less
-probable.
-
-In deep RL we usually do not know $V^\pi$, $Q^\pi$, or $A^\pi$ exactly. PPO
-therefore learns two approximations at the same time:
-
-\begin{itemize}
-    \item an actor, $\pi_\theta(a\mid s)$, which chooses acquisition actions;
-    \item a critic, $V_\phi(s)$, which predicts the expected return from the current state.
-\end{itemize}
-
-The critic provides a baseline for the policy-gradient update. A simple
-one-step temporal-difference residual is formed from an actual sampled
-transition. At time $t$, the actor samples an action
-$a_t \sim \pi_\theta(\cdot \mid s_t)$; the simulator applies this acquisition
-action and returns the immediate reward $r_t$ and the next state $s_{t+1}$.
-The residual is then
-
-\begin{equation}
-\delta_t =
-r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t).
-\end{equation}
-
-Thus $V_\phi(s_t)$ is the critic's prediction before taking the action, while
-$r_t + \gamma V_\phi(s_{t+1})$ is the one-step target after seeing the
-simulator's response to the sampled action.
-
-Generalised Advantage Estimation (GAE) combines these residuals over multiple
-future steps:\cite{schulman_gae_2016}
-
-\begin{equation}
-\hat{A}_t =
-\sum_{l=0}^{T-t-1} (\gamma \lambda)^l \delta_{t+l},
-\end{equation}
-
-where $\lambda$ controls the bias-variance trade-off. In words, the value
-network learns what return is expected from a state, and the advantage estimate
-measures whether the sampled action improved on that expectation. For this
-project, that means the critic learns to predict future improvement in the
-quantitative MRI objective, while the actor learns which sequence parameters
-tend to produce those improvements.
-
-GAE thus interpolates between two estimates of the same advantage
-$A^\pi(s_t,a_t)$, computed from rollouts whose rewards are already known: the
-full Monte Carlo return ($\lambda\to1$) is unbiased but high-variance because
-it leans on one noisy trajectory, while the one-step residual ($\lambda\to0$)
-leans on the learned critic, cutting variance at the cost of bias when the
-critic is inaccurate.
-
 \subsubsection{Proximal policy optimisation}
-Vanilla policy-gradient updates can be unstable because a single gradient step
-can move the policy too far. If the new policy differs greatly from the policy
-that generated the rollout batch, the sample estimate may no longer describe
-the behaviour of the updated policy. Trust Region Policy Optimisation (TRPO)
-addresses this by constraining the KL divergence between the old and new
-policies, but it requires a more complex second-order optimisation procedure.\cite{schulman_trpo_2015}
-
-The underlying update is an update to the neural-network weights $\theta$.
-Even if the parameter change looks small in weight space, it can cause a much
-larger change in the induced probability distribution over actions,
-$\pi_\theta(\cdot \mid s)$. Since PPO is on-policy, the rollout batch was
-collected using the old policy. If the update makes the new policy assign very
-different action probabilities, the batch becomes stale: it reflects what was
-useful under the old action distribution, not necessarily what is useful under
-the new one. Large updates can therefore overreact to lucky sampled actions or
-collapse exploration.
-
-Proximal Policy Optimisation (PPO) keeps the same basic idea -- improve the
-policy while preventing large destructive updates -- but uses a simpler clipped
-objective.\cite{schulman_ppo_2017} For samples collected with the old policy $\pi_{\theta_{\mathrm{old}}}$,
-define the likelihood ratio
-
-\begin{equation}
-r_t(\theta) =
-\frac{\pi_\theta(a_t\mid s_t)}
-     {\pi_{\theta_{\mathrm{old}}}(a_t\mid s_t)}.
-\end{equation}
-
-If $r_t(\theta) > 1$, the new policy assigns higher probability to the sampled
-action than the old policy did. If $r_t(\theta) < 1$, it assigns lower
-probability. PPO maximises
+This project optimises the policy with Proximal Policy Optimisation
+(PPO)~\cite{schulman_ppo_2017}, an on-policy policy-gradient method. Policy
+gradients estimate $\nabla_\theta J(\theta)$ from sampled rollouts, weighting
+each sampled action by an advantage estimate $\hat{A}_t$ that measures whether
+it beat the return the policy already expected; the advantages are computed by
+Generalised Advantage Estimation~\cite{schulman_gae_2016} from a learned critic
+$V_\phi(s)$. Crucially, this gradient flows only through the differentiable
+policy $\log\pi_\theta(a_t\mid s_t)$ and not through the environment, so KomaMRI
+can stay a black-box physics simulator used only to sample transitions and
+rewards. A plain policy-gradient step can move the policy too far and
+invalidate the on-policy batch; PPO prevents this with a clipped surrogate
+objective,
 
 \begin{equation}
 L^{\mathrm{CLIP}}(\theta)
@@ -585,41 +531,18 @@ L^{\mathrm{CLIP}}(\theta)
     \left(r_t(\theta), 1-\epsilon, 1+\epsilon\right)
     \hat{A}_t
 \right)
-\right].
+\right],
+\qquad
+r_t(\theta) =
+\frac{\pi_\theta(a_t\mid s_t)}
+     {\pi_{\theta_{\mathrm{old}}}(a_t\mid s_t)},
 \end{equation}
 
-For positive-advantage actions, the objective encourages increasing their
-probability, but only up to the clipping threshold. For negative-advantage
-actions, it encourages decreasing their probability, again only up to the
-threshold. The clipping term therefore removes the incentive for the policy to
-move far away from the sampled policy in a single update.
-
-The full optimisation also trains the value function and usually includes an
-entropy bonus to preserve exploration:
-
-\begin{equation}
-L(\theta,\phi)
-=
--L^{\mathrm{CLIP}}(\theta)
-+ c_v \mathbb{E}_t
-  \left[
-      \left(V_\phi(s_t)-\hat{G}_t\right)^2
-  \right]
-- c_H \mathbb{E}_t
-  \left[
-      \mathcal{H}(\pi_\theta(\cdot\mid s_t))
-  \right].
-\end{equation}
-
-Here $c_v$ and $c_H$ weight the critic loss and entropy bonus. The practical
-loop is to collect rollouts with the current policy, estimate returns and
-advantages, update the actor and critic for a few minibatch epochs, then
-discard the rollouts and collect fresh ones. This makes PPO \emph{on-policy}:
-unlike off-policy methods such as DQN or SAC, which keep a \emph{replay buffer}
-of past transitions and reuse them many times, PPO trains only on data from the
-current policy and throws it away after each update. That costs sample
-efficiency but avoids the instability of learning from a stale action
-distribution, and it removes the replay buffer's memory overhead.
+where the ratio $r_t(\theta)$ compares the new and old action probabilities and
+$\epsilon$ bounds how far one update may move them. The full objective adds a
+critic loss and an entropy bonus. The policy-gradient derivation, the
+value/advantage definitions, GAE, and the complete objective are given in
+Appendix~\ref{app:rl-background}.
 
 PPO suits adaptive qMRI for three reasons: it handles continuous action spaces
 (the sequence timings), it explores stochastically while the clipped objective
@@ -659,10 +582,32 @@ backpropagation through time). Chapter~\ref{ch:adaptive-rl} evaluates such a
 policy as an ablation against the compact feed-forward observation, testing
 whether explicit memory of the acquisition history improves adaptive timing.
 
-\subsection{Clinical Implications}
+\section{Summary}
+\label{sec:bg-summary}
 
-This research landscape is the early phases of a transition from human-engineered MRI protocols to a paradigm of "autonomous radiology." While the MR-LINAC offers unparalleled soft-tissue visualisation, its clinical utility is currently throttled by the latency of traditional imaging and manual contouring. The integration of Bayesian reinforcement learning \cite{ocanto_mr-linac:2024}, end-to-end supervised learning \cite{MRISeqSupLearning:21}, and task-specific autonomous control \cite{Walk_RL_CONTROL_MRI:19} could provide a technical pathway to overcome these limitations. By treating the MR-LINAC not as a static imaging tool, but as a dynamic, AI-controlled sensor, it becomes possible to collapse the "imaging-planning-delivery" cycle into a single, synchronised event. This evolution toward an automated, closed-loop system will likely be the catalyst that allows MR-guided radiotherapy to achieve its full potential, providing real-time, biologically adaptive treatments that respond to tumour dynamics.
-%—a capability that could significantly alleviate the temporal bottlenecks currently hindering real-time MR-LINAC adaptive workflows. 
+The MRI physics above (relaxation, spatial encoding, pulse sequences)
+underpins the simulator and fitter of
+Chapters~\ref{ch:mri-system-phantom}--\ref{ch:validating-komamri}, while the
+deep-learning and reinforcement-learning sections position the adaptive
+contribution of Chapter~\ref{ch:adaptive-rl}. The related work also exposes
+the gaps this project targets, summarised in
+Table~\ref{tab:bg-related-gaps}. Existing adaptive-MRI and automated
+sequence-design work is either \emph{offline} --- the schedule is fixed
+before the scan, as in magnetic resonance fingerprinting and
+MRzero~\cite{MRISeqSupLearning:21} --- or, where it is closed-loop, is
+validated on tasks other than calibrated quantitative mapping, such as
+AUTOSEQ's 1-D physics simulation~\cite{zhu2018autoseq}, Walker-Samuel's
+shape classification~\cite{Walk_RL_CONTROL_MRI:19}, or k-space sampling for
+reconstruction quality~\cite{pineda_active_mri_rl_2020}. On the
+infrastructure side, qMRI phantoms provide traceable ground truth but no
+training episodes~\cite{keenan_phantoms_2024}, MRI digital twins remain
+concentrated on diagnosis rather than protocol
+development~\cite{greggio_digital_twinning_mri_2026}, and simulator
+benchmarks stop short of end-to-end quantitative recovery
+tests~\cite{komaMRI:23}. No prior work pairs an observation-conditioned RL
+policy with a validated digital-twin simulator and a fitted-$T_1$ objective,
+nor confronts the simulation-cost wall a Bloch solver in the training loop
+creates; these two gaps motivate C1--C3 and the achievements that follow.
 
 %"The pulse sequence design task was traditionally handcrafted by MR experts, who combined strong intuitions and an understanding of spin physics with mathematical solutions of the Bloch equations. While a remarkable number of contrast mechanisms and imaging schedules have been developed since the invention of MRI, the reliance on solvable differential equations severely limits our ability to reach a globally optimised schedule and reduce the scan time."\cite{DLINMRI:24}
 

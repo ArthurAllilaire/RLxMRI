@@ -423,3 +423,211 @@ for a one-off bank build cost of 153 s.
     \label{fig:app-water-relerr}
 \end{figure}
 \end{spacing}
+
+\section{Reinforcement Learning Background}
+\label{app:rl-background}
+
+This section gives the policy-gradient, value-function, and PPO derivations
+summarised in the reinforcement-learning discussion of Chapter~\ref{ch2}.
+The notation follows the main text: a policy $\pi_\theta(a\mid s)$, return
+$G_t=\sum_{k\geq0}\gamma^k r_{t+k}$, and objective
+$J(\theta)=\mathbb{E}_{\tau\sim\pi_\theta}[G_0]$.
+
+\subsection{Policy gradients}
+Policy-gradient methods optimise $J(\theta)$
+directly.\cite{sutton_policy_gradient_1999,williams_reinforce_1992} The
+probability of a trajectory under a policy is
+
+\begin{equation}
+p_\theta(\tau)
+= \rho_0(s_0)
+  \prod_{t=0}^{T-1}
+  P(s_{t+1}\mid s_t,a_t)\pi_\theta(a_t\mid s_t).
+\end{equation}
+
+The simulator dynamics $P$ do not depend on the policy parameters. Applying the
+log-derivative trick gives the basic policy-gradient expression:
+
+\begin{equation}
+\nabla_\theta J(\theta)
+=
+\mathbb{E}_{\tau \sim \pi_\theta}
+\left[
+    \sum_{t=0}^{T-1}
+    \nabla_\theta \log \pi_\theta(a_t\mid s_t) G_t
+\right].
+\end{equation}
+
+In practice this expectation is approximated using sampled rollouts:
+
+\begin{equation}
+\hat{g}
+=
+\frac{1}{N}
+\sum_{i=1}^{N}
+\sum_{t=0}^{T_i-1}
+\nabla_\theta \log \pi_\theta(a_{i,t}\mid s_{i,t})
+\hat{A}_{i,t}.
+\end{equation}
+
+This is the central sample-based approximation of policy-gradient RL: the
+expectation over all trajectories is estimated from a finite batch collected
+from the simulator, making actions with better-than-expected outcomes more
+likely and worse-than-expected actions less likely. Crucially, it does not
+require differentiating the simulator. The gradient flows only through the
+policy's log-probability $\log \pi_\theta(a_t \mid s_t)$, which is
+differentiable because the policy is a neural network, so KomaMRI can stay a
+black-box physics simulator used only to sample transitions and rewards. The
+weighting term is written as an advantage estimate $\hat{A}_t$ rather than the
+raw return $G_t$, which lowers variance by measuring whether an action beat
+what the policy already expected in that state.
+
+\subsection{Value and advantage functions}
+The value function of a policy is the expected future return from a state:
+
+\begin{equation}
+V^\pi(s) = \mathbb{E}_{\tau \sim \pi}[G_t \mid s_t=s].
+\end{equation}
+
+The action-value function is the expected return after taking a particular
+action and then continuing with the policy:
+
+\begin{equation}
+Q^\pi(s,a) =
+\mathbb{E}_{\tau \sim \pi}[G_t \mid s_t=s, a_t=a].
+\end{equation}
+
+Equivalently, it can be written in one-step form as the expected immediate
+reward plus the value of the next state:
+
+\begin{equation}
+Q^\pi(s_t,a_t)
+=
+\mathbb{E}\left[
+r_t + \gamma V^\pi(s_{t+1})
+\mid s_t, a_t
+\right].
+\end{equation}
+
+The advantage function compares these two quantities:
+
+\begin{equation}
+A^\pi(s,a) = Q^\pi(s,a) - V^\pi(s).
+\end{equation}
+
+An action with positive advantage performed better than the policy's average
+action at that state; an action with negative advantage performed worse. This
+is the quantity used to decide which sampled actions should become more or less
+probable.
+
+In deep RL we usually do not know $V^\pi$, $Q^\pi$, or $A^\pi$ exactly. PPO
+therefore learns two approximations at the same time: an actor,
+$\pi_\theta(a\mid s)$, which chooses acquisition actions, and a critic,
+$V_\phi(s)$, which predicts the expected return from the current state. The
+critic provides a baseline for the policy-gradient update. A simple one-step
+temporal-difference residual is formed from an actual sampled transition: the
+actor samples $a_t \sim \pi_\theta(\cdot \mid s_t)$, and the simulator returns
+the immediate reward $r_t$ and the next state $s_{t+1}$, giving
+
+\begin{equation}
+\delta_t =
+r_t + \gamma V_\phi(s_{t+1}) - V_\phi(s_t).
+\end{equation}
+
+Here $V_\phi(s_t)$ is the critic's prediction before taking the action, while
+$r_t + \gamma V_\phi(s_{t+1})$ is the one-step target after seeing the
+simulator's response. Generalised Advantage Estimation (GAE) combines these
+residuals over multiple future steps:\cite{schulman_gae_2016}
+
+\begin{equation}
+\hat{A}_t =
+\sum_{l=0}^{T-t-1} (\gamma \lambda)^l \delta_{t+l},
+\end{equation}
+
+where $\lambda$ controls the bias-variance trade-off. GAE interpolates between
+two estimates of the same advantage $A^\pi(s_t,a_t)$: the full Monte Carlo
+return ($\lambda\to1$) is unbiased but high-variance because it leans on one
+noisy trajectory, while the one-step residual ($\lambda\to0$) leans on the
+learned critic, cutting variance at the cost of bias when the critic is
+inaccurate.
+
+\subsection{From TRPO to the PPO objective}
+Vanilla policy-gradient updates can be unstable because a single gradient step
+can move the policy too far. If the new policy differs greatly from the policy
+that generated the rollout batch, the sample estimate may no longer describe
+the behaviour of the updated policy. Trust Region Policy Optimisation (TRPO)
+addresses this by constraining the KL divergence between the old and new
+policies, but it requires a more complex second-order optimisation
+procedure.\cite{schulman_trpo_2015}
+
+The underlying update is an update to the neural-network weights $\theta$. Even
+if the parameter change looks small in weight space, it can cause a much larger
+change in the induced probability distribution over actions,
+$\pi_\theta(\cdot \mid s)$. Since PPO is on-policy, the rollout batch was
+collected using the old policy. If the update makes the new policy assign very
+different action probabilities, the batch becomes stale: it reflects what was
+useful under the old action distribution, not necessarily what is useful under
+the new one. Large updates can therefore overreact to lucky sampled actions or
+collapse exploration.
+
+Proximal Policy Optimisation (PPO) keeps the same basic idea -- improve the
+policy while preventing large destructive updates -- but uses a simpler clipped
+objective.\cite{schulman_ppo_2017} For samples collected with the old policy
+$\pi_{\theta_{\mathrm{old}}}$, define the likelihood ratio
+
+\begin{equation}
+r_t(\theta) =
+\frac{\pi_\theta(a_t\mid s_t)}
+     {\pi_{\theta_{\mathrm{old}}}(a_t\mid s_t)}.
+\end{equation}
+
+If $r_t(\theta) > 1$, the new policy assigns higher probability to the sampled
+action than the old policy did; if $r_t(\theta) < 1$, it assigns lower
+probability. PPO maximises
+
+\begin{equation}
+L^{\mathrm{CLIP}}(\theta)
+=
+\mathbb{E}_t
+\left[
+\min
+\left(
+    r_t(\theta)\hat{A}_t,
+    \operatorname{clip}
+    \left(r_t(\theta), 1-\epsilon, 1+\epsilon\right)
+    \hat{A}_t
+\right)
+\right].
+\end{equation}
+
+For positive-advantage actions, the objective encourages increasing their
+probability, but only up to the clipping threshold. For negative-advantage
+actions, it encourages decreasing their probability, again only up to the
+threshold. The clipping term therefore removes the incentive for the policy to
+move far away from the sampled policy in a single update. The full optimisation
+also trains the value function and usually includes an entropy bonus to
+preserve exploration:
+
+\begin{equation}
+L(\theta,\phi)
+=
+-L^{\mathrm{CLIP}}(\theta)
++ c_v \mathbb{E}_t
+  \left[
+      \left(V_\phi(s_t)-\hat{G}_t\right)^2
+  \right]
+- c_H \mathbb{E}_t
+  \left[
+      \mathcal{H}(\pi_\theta(\cdot\mid s_t))
+  \right].
+\end{equation}
+
+Here $c_v$ and $c_H$ weight the critic loss and entropy bonus. The practical
+loop is to collect rollouts with the current policy, estimate returns and
+advantages, update the actor and critic for a few minibatch epochs, then
+discard the rollouts and collect fresh ones. This makes PPO \emph{on-policy}:
+unlike off-policy methods such as DQN or SAC, which keep a \emph{replay buffer}
+of past transitions and reuse them many times, PPO trains only on data from the
+current policy and throws it away after each update. That costs sample
+efficiency but avoids the instability of learning from a stale action
+distribution, and it removes the replay buffer's memory overhead.

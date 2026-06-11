@@ -15,21 +15,21 @@
 
 \section{Introduction}
 
-In 2021, there were 395,000 cases of cancer in the UK, with 1 in 2 people in the UK being diagnosed with cancer in their lifetime. \cite{world_cancer_research_fund} Radiotherapy (RT) is a crucial component of cancer treatment; indeed, it is required for more than 50\% of cancer patients. \cite{rt_cancer_prevalance:15} 
-
-Image-guided radiation therapy (IGRT) is used to increase the precision of treatment and ensure accurate dose delivery. Conventionally, images are taken using a high-resolution X-ray technique called Cone Beam Computed Tomography. This is still the most common technique. \cite{liu_clinical_app_mrlinac:2023} 
+In 2021, there were 395,000 cases of cancer in the UK, with 1 in 2 people in the UK being diagnosed with cancer in their lifetime. \cite{world_cancer_research_fund} Radiotherapy (RT) is a crucial component of cancer treatment; indeed, it is required for more than 50\% of cancer patients. \cite{rt_cancer_prevalance:15} Image-guided radiation therapy (IGRT) is used to increase the precision of treatment and ensure accurate dose delivery. Conventionally, images are taken using a high-resolution X-ray technique called Cone Beam Computed Tomography. This is still the most common technique. \cite{liu_clinical_app_mrlinac:2023} 
 
 However, poor image quality (caused by excessive scattering of X-ray photons) and ionising radiation are key drawbacks. Instead, Magnetic Resonance Imaging (MRI) can be used to improve soft tissue contrast (vital for liver or pancreatic cancer) and increase the accuracy of tumor target delineation. MR-guided radiation therapy (MRgRT) has been shown to significantly improve patient prognosis. \cite{liu_clinical_app_mrlinac:2023}
 
 MRI and a linear accelerator (the source of radiation) have been coupled into a hybrid Magnetic Resonance Accelerator (MR-Linac), the latest innovation in IGRT. The MR-Linac allows on-table adaptation of treatment plans, to respond to tumour movements and progression. However, one of the clinical bottlenecks is the extra time required for image acquisition. \cite{mrlinac_in_practice:23} The high-resolution images needed for accurate delineation require extended scan time. This also increases the risk of motion artifacts (inaccuracies due to patient movement).
 
-There has been significant research into accelerating image acquisition, focusing mainly on using Deep Learning (computational neural network approaches) for image reconstruction (translating the raw MR signal into an image). Leading to significant improvements to image robustness, artifact reduction and image quality when using undersampled data.
+There has been significant research into accelerating image acquisition, focusing mainly on using Deep Learning (computational neural network approaches) for image reconstruction (translating the raw MR signal into an image), leading to significant improvements to image robustness, artifact reduction and image quality when using undersampled data. \cite{DLINMRI:24} DL and Reinforcement Learning (agent-based approaches) have also been used to develop novel pulse sequences, traditionally designed by MR experts, showing promise in speeding up acquisition while maintaining image quality.\cite{zhu2018autoseq,MRISeqSupLearning:21}
 
-There is now a growing interest in using DL and Reinforcement Learning (agent-based approaches) to develop novel pulse sequences, which are currently designed by MR experts. Novel pulse sequences have shown promise in speeding up image acquisition while maintaining image quality. \cite{DLINMRI:24}
+There is now growing interest in adaptive MR, a personalised approach in which "incoming subject data is used to update and fine-tune the pulse sequence parameters in real time"\cite{adaptive_mri:23}, rather than fixing all measurement parameters in advance. To date this has been realised with a Bayesian framework, which maintains a running estimate of the target tissue parameter and uses it to choose the next acquisition, accelerating quantitative measurement by up to 2.5$\times$ over static protocols.\cite{adaptive_mri:23}
+
+This project brings reinforcement learning to that adaptive setting for quantitative MRI. Rather than using a static sequence, an agent observes the current fitted tissue-parameter estimates and chooses the next acquisition. Unlike the Bayesian framework above, the policy is learned end-to-end rather than derived from a model. Training such a policy directly on scanner hardware would be impractical, so the project first builds and validates the simulation infrastructure: a digital twin of the phantom, a strict end-to-end test of the Bloch simulator, and a multi-fidelity training environment, before evaluating the adaptive policy itself.
 
 \section{Research challenges and achievements}
 
-This project studies whether reinforcement learning can be used to design adaptive quantitative MRI (qMRI) sequences. Rather than only reconstructing an image from a fixed acquisition, the aim is to let an agent choose the next acquisition based on what has already been measured. This makes the problem attractive, but also exposes three practical challenges.
+Realising this learned, adaptive approach exposes three practical challenges.
 
 \textbf{C1: simulator validation for qMRI.} The RL agent learns entirely from simulated MRI data, so the simulator must be numerically trustworthy before any learned policy can be evaluated. A visually plausible image is not sufficient: for qMRI, the pipeline must recover the correct quantitative tissue parameters, such as \(T_1\) and \(T_2\), from a known phantom.
 
@@ -37,10 +37,42 @@ This project studies whether reinforcement learning can be used to design adapti
 
 \textbf{C3: adaptive sequence design from tissue-parameter estimates.} The final objective is not simply to run a fixed protocol faster, but to choose acquisitions based on the current estimate of the tissue parameters. The agent should use the signals observed so far to decide which inversion times, echo times, or flip angles are most informative next.
 
-The report is organised around three corresponding achievements.
+The report is organised around three corresponding achievements, one per technical chapter.
 
-\textbf{A1: a validated digital twin and simulator pipeline.} The project built \texttt{MRISystemPhantom.jl}, a configurable digital twin of the QalibreMD MRI system phantom, and used it to validate the KomaMRI simulation, reconstruction, and fitting pipeline. This validation found two floating-point bugs in KomaMRI's long-sequence timing code, which were reduced to minimal reproducers and submitted upstream.
+\textbf{A1: a digital twin of the calibration phantom
+(Chapter~\ref{ch:mri-system-phantom}).} The project built
+\texttt{MRISystemPhantom.jl}, a configurable open-source digital twin of the
+QalibreMD Model 130 MRI system phantom that returns standard KomaMRI objects.
+It also supplies the ground-truth tissue parameters and fitting pipeline needed
+to recover quantitative maps, together with the per-episode randomisation the
+RL loop requires. This is the foundation for C1: a known phantom
+against which quantitative maps can be checked.
 
-\textbf{A2: a compute-aware, multi-fidelity RL environment.} The project developed a Python/Julia Gymnasium environment that connects reinforcement learning agents to KomaMRI while managing the cost of simulation. The key design is to separate fast training configurations from higher-fidelity evaluation, so that policies can be trained within the available compute budget and then checked under more realistic simulation settings.
+\textbf{A2: a validated Bloch-simulation pipeline
+(Chapter~\ref{ch:validating-komamri}).} Validating the simulator by parameter recovery rather than qualitative imaging
+exposed two floating-point time-discretisation bugs in KomaMRI, visible only at
+the long cumulative sequence times RL training produces. Reducing each to a
+minimal reproducer, tracing its mechanism, and fixing it upstream took the
+no-noise validation from 39.4\% to 0.48\% mean error, completing C1 and
+contributing back to a widely used simulator.
 
-\textbf{A3: adaptive qMRI sequence design.} The project implements adaptive sequence-design experiments in which the agent selects acquisition parameters using the current tissue-parameter estimates. This links the validated simulator and multi-fidelity training loop to the central research question: whether learned adaptive protocols can outperform fixed conventional qMRI sequences.
+\textbf{A3: adaptive qMRI sequence design via multi-fidelity RL
+(Chapter~\ref{ch:adaptive-rl}).} The project built a Python/Julia Gymnasium
+environment in which a reinforcement-learning agent chooses acquisition
+timings from the current tissue-parameter estimates. A multi-fidelity
+training curriculum makes the expensive Bloch-in-the-loop problem tractable
+(addressing C2). On a five-sphere active pool the best learned policy reaches
+2.93\% mean fitted-$T_1$ error, beating the matched fixed schedule by roughly
+three percentage points with 95.8\% of episodes under 5\% (addressing C3); the
+adaptive advantage holds over this narrowed $T_1$ range, while the full
+fourteen-sphere ladder remains too wide for the policy.
+
+The core novelty is, to our knowledge, the first reinforcement-learning agent
+for adaptive quantitative MRI: a policy that conditions each acquisition on the
+current fitted tissue parameters and is trained and evaluated directly on
+fitted-$T_1$ error. Prior adaptive qMRI derives its acquisition rule from a
+Bayesian model, and prior RL in MRI targets non-quantitative objectives such as
+shape classification or k-space sampling. Two further contributions support it:
+a reusable executable twin of a calibrated phantom, and the
+validation-by-parameter-recovery that surfaced and fixed two upstream KomaMRI
+bugs. Chapter~\ref{ch2} positions each against the corresponding prior work.

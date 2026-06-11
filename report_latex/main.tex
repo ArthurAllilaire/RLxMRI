@@ -83,7 +83,7 @@
 % \setboolean{edge_labels}{true} % default for MSc
 
 %The preferred spacing for FYP/MSc reports is doublespacing. This is because it is easier for markers to annotate the document while marking. Some students requested the implementation of the singlespacing option. This can be activated below by changing from true to false, but discuss this with your supervisor first.
-\setboolean{double_spacing}{true} %Default is true. If you want to change this, ask your supervisor if they are OK with singlespacing.
+\setboolean{double_spacing}{false} %Default is true. If you want to change this, ask your supervisor if they are OK with singlespacing.
 
 %%%%%%%%%%% PART B %%%%%%%%%%% 
 % ONLY FOR MENG/BENG. MSC IGNORE THIS
@@ -110,7 +110,7 @@
 \usepackage{capt-of}
 \usepackage{placeins}
 \usepackage{wrapfig}
-\usetikzlibrary{positioning,arrows.meta,fit}
+\usetikzlibrary{positioning,arrows.meta,fit,calc,backgrounds}
 \providecommand{\tightlist}{%
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 %...
@@ -120,6 +120,11 @@
 \DeclareMathOperator{\diag}{diag}
 \DeclareMathOperator{\vect}{vec}
 %...
+
+% Tighten chapter-heading whitespace to push body text up (overrides class).
+\titleformat{\chapter}[display]
+  {\normalfont\fontsize{55}{57}\raggedleft\bfseries\color{ImperialBlue}}{\ \thechapter}{-30pt}{\Huge\raggedleft\color{ImperialBlue}}
+\titlespacing*{\chapter}{0pt}{0pt}{8pt}
 
 
 \begin{document}
@@ -145,11 +150,18 @@
 %\input{LastChapter.tex}
 
 % You can change the title of the conclusions by changing the text between { }
-% \conclusions{Conclusions and future directions} % Do not remove - required
+\conclusions{Summary} % Do not remove - required
 % EDIT THE CONTENT OF THE FILE
 % Conclusions.tex
 % You can find it under the folder 
 % "chapters" on the left column
+
+\cleardoublepage % Do not change - required
+\RemoveLabels % Do not change - required
+\thesisspacing % Do not change - required
+\printbibliography[title={Bibliography},heading=bibintoc] % Do not change - required
+
+\input{Declarations.tex}
 
 % APPENDICES ARE OPTIONAL
 % COMMENT OUT BOTH LINES BELOW TO REMOVE THEM
@@ -157,11 +169,5 @@
 \appendix
 \input{AppendixA.tex}
 %\input{AppendixB.tex} % Example second appendix (need to create the file in "chapters")
-
-
-\cleardoublepage % Do not change - required
-\RemoveLabels % Do not change - required
-\thesisspacing % Do not change - required
-\printbibliography[title={Bibliography},heading=bibintoc] % Do not change - required
 
 \end{document}

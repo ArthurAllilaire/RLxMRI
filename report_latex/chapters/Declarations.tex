@@ -1,0 +1,32 @@
+\cleardoublepage\phantomsection
+\addcontentsline{toc}{chapter}{Declarations}\mtcaddchapter
+\chapter*{Declarations}
+\addtocounter{counter}{-1}
+
+\section*{Use of Generative AI}
+
+Generative AI tools were used during this project as assistive tools. The tools used were OpenAI ChatGPT/Codex (OpenAI, \url{https://openai.com/}) and Claude Opus/Sonnet (Anthropic, \url{https://www.anthropic.com/claude}).
+
+For the codebase, generative AI was used for code navigation, implementation suggestions, code generation, debugging suggestions, refactoring support, and test or diagnostic-script drafting. For the report, generative AI was used for planning, drafting support, proofreading, wording suggestions, structural feedback, and LaTeX editing.
+
+Generative AI outputs were not accepted as authoritative sources of fact. All technical claims, citations, experimental results, figures, report wording, and committed source code were reviewed, checked, and edited by the author before submission. The author remains responsible for the correctness, originality, and academic integrity of the submitted work.
+
+% Author check before submission: update this statement if any other generative
+% AI tools, versions, publishers, URLs, or uses need to be declared under the
+% Department or Library guidance.
+
+\section*{Ethical Considerations}
+
+This project used simulated MRI acquisitions, digital phantoms, and physical-phantom-oriented sequence-design methods. It did not involve human participants, patient images, identifiable personal data, protected health information, or animal subjects. The ethics review with the project supervisor therefore identified no requirement for formal human-subject ethical approval for the work reported here.
+
+The main ethical risks considered were clinical safety, hardware safety, and the risk of over-claiming from simulation-only results. These were mitigated by treating the reinforcement-learning policy as a research prototype rather than a deployable clinical controller; constraining sequence parameters to physically plausible ranges; validating against known phantom ground-truth relaxation values; and reporting limitations, failure modes, and simulator-fidelity assumptions explicitly. No learned policy was deployed on an MR-Linac or clinical scanner during this project. If future work tests such policies on scanner hardware, it would require local MR safety approval, vendor and site constraints, and supervision by qualified MR staff, with explicit limits on RF power, SAR, gradient switching, and related hardware-safety parameters.
+
+\section*{Sustainability}
+
+The project was conducted with attention to computational efficiency. Training and evaluation were staged from low-cost diagnostic experiments to more expensive simulator runs, so that faults in reward design, action spaces, and Julia--Python integration could be identified before long training jobs were launched. The implementation reuses simulator state where possible, uses reduced-resolution training configurations for reinforcement learning, caches repeated calculations where appropriate, and reserves higher-fidelity simulation for validation and final figures.
+
+This reduced unnecessary compute time and energy use while preserving the evidence needed for the report. Training and larger experiments used Imperial-provided GPU resources hosted in a data centre, believed to be located in Poland, while experiments were only repeated when they addressed a concrete validation question, such as noise robustness, baseline comparison, or simulator-fidelity transfer. During report and code-assistance workflows, prompts were kept targeted and iterative context was managed to reduce unnecessary generative-AI token usage.
+
+\section*{Availability of Data and Materials}
+
+The source code, experiment scripts, LaTeX report source, generated figures, raw outputs, trained policies, and training artefacts used for this project are held in the public development repositories \texttt{RLxMRI} and \texttt{MRISystemPhantom.jl}. The reinforcement-learning and report repository is available as a \href{https://github.com/ArthurAllilaire/RLxMRI}{public GitHub repository}. The digital-phantom Julia package is available as a \href{https://github.com/ArthurAllilaire/MRISystemPhantom.jl}{public GitHub repository}, with \href{https://arthurallilaire.github.io/MRISystemPhantom.jl/}{package documentation}. The principal materials are included in those repositories: report source files are in \texttt{report\_latex/}, simulation and reinforcement-learning code is in \texttt{julia/} and \texttt{python/}, and selected outputs are in \texttt{runs/} and \texttt{report\_plots/}.
