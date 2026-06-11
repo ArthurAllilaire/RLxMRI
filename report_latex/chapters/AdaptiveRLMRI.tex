@@ -31,6 +31,22 @@ what has already been measured, not only on a fixed protocol chosen before the
 scan. The main technical contribution is therefore a multi-fidelity RL training
 loop, plus a controlled evaluation of when adaptivity actually helps.
 
+The two parts most worth the reader's attention are the
+\emph{bias-aware promotion rule} of the multi-fidelity curriculum
+(Section~\ref{sec:e2-mf-switch}) and the \emph{memory-mechanism result}
+(Section~\ref{sec:e2-ablations}). The promotion rule is what makes cheap
+simulation safe to learn from: a biased rung can lower its own score by
+exploiting its bias, so promotion is gated on held-out full-simulator
+validation rather than the cheap simulator's own number --- the same
+self-validation trap that sank the earlier single-voxel experiment. The
+memory result is the chapter's strongest finding: what the policy
+\emph{remembers} about its own acquisitions matters as much as whether it
+adapts, and an order-invariant histogram of executed inversion times
+outperforms both a learned recurrent memory and the fitter's own uncertainty
+estimate. The hardest part throughout is that the cheap simulator is never
+trustworthy on its own terms, so every design decision had to be anchored to
+the expensive simulator it was trying to avoid.
+
 The conclusion is deliberately nuanced. On the full 14-sphere $T_1$ plate, the
 agent learned a non-collapsed adaptive policy, but strong fixed schedules still
 beat it. On a smaller five-sphere continuous-$T_1$ task, where the episode
@@ -45,14 +61,19 @@ overstated as a solution to the full 14-sphere mapping problem.
 \section{Position relative to adaptive MRI work}
 \label{sec:e2-related-position}
 
-This chapter sits between three related literatures: adaptive model-based MRI,
-automated sequence design, and reinforcement-learning control of MRI scanners.
-It is not the first work to adapt an MR acquisition, nor the first work to use
-machine learning for sequence design. The narrower contribution is a
+This chapter sits between four related literatures: adaptive model-based MRI,
+automated sequence design, reinforcement-learning control of MRI scanners,
+and active k-space acquisition. The contribution relative to all four is a
 simulation-in-the-loop RL environment for qMRI in which the agent controls a
 spatially encoded 2-D acquisition of a calibrated phantom, receives fitted
 tissue-parameter estimates during the scan, and is evaluated against fixed qMRI
-protocols.
+protocols. Table~\ref{tab:e2-related-position} reads each prior work the same
+way: the middle column states what it established, and the right column states
+how this chapter's setting differs. The thread down that column is that each
+prior work has one of \{hardware validation, RL control, closed-loop
+adaptation, qMRI estimation\} but none combines all four on a spatially encoded,
+calibrated phantom --- which is the niche this chapter occupies, at the cost of
+being simulator-only.
 
 \begin{table}[!htbp]
 \centering
@@ -104,6 +125,14 @@ Directly relevant to quantitative imaging and multi-parameter contrast, but the
 schedule is fixed before acquisition. The missing ingredient, which this chapter
 tests in a narrower T1 setting, is observation-conditioned adaptation during the
 scan. \\
+\addlinespace
+Active k-space RL~\cite{pineda_active_mri_rl_2020} &
+RL selection of which k-space lines to acquire next, improving undersampled
+reconstruction on retrospective datasets &
+Sequential acquisition control, but over a different object: it chooses
+sampling masks under a reconstruction-quality objective, whereas this chapter
+chooses relaxation-preparation timings (TI, TR) under a fitted-$T_1$
+objective with fixed Cartesian sampling. \\
 \bottomrule
 \end{tabularx}
 \caption{Position of this chapter relative to the main adaptive and automated
@@ -126,6 +155,48 @@ evidence that RL can learn a useful closed-loop qMRI timing strategy in a more
 realistic evaluation pipeline, not proof that it is already ready for scanner
 use.
 
+The closest single comparator is the adaptive model-based scheme of Beracha
+et al.~\cite{adaptive_mri:23}. They maintain an explicit Bayesian posterior
+$p(T_1,\mathrm{PD})$ over a tissue-parameter grid, update it after every
+excitation, and choose the next contrast timing by a precomputed Cram\'er--Rao
+lookup: the posterior mean indexes the CRLB-optimal sampling pattern for that
+value, and the next acquisition is the one that moves the realised sampling
+toward it. Their multi-echo $T_2$ scheme is validated in simulation, phantom
+and seven healthy volunteers and accelerates acquisition $1.7$--$3.3\times$;
+the inversion-recovery $T_1$ variant that is the direct analogue of this chapter
+is simulation-only, reporting $1.3$--$2.0\times$ better precision (equivalently a
+$1.7$--$4\times$ acceleration). Their external validation is therefore stronger
+than this simulator-only chapter's.
+
+Crucially, that scheme estimates a \emph{single} spectroscopy voxel: one tissue,
+one scalar design variable (the echo or inversion time) per step, and an
+analytic optimal-sampling lookup for that one estimated value. It does not
+directly generalise to the setting of this chapter, where a single 2-D
+acquisition images a whole \emph{fleet} of spheres at once and one
+$(\mathrm{TI},\mathrm{TR})$ block must serve them all. With tissues of differing
+$T_1$ measured simultaneously, no single timing is optimal for every sphere, so
+the per-voxel single-value lookup no longer applies; extending the Bayesian
+scheme to a fleet would require per-sphere posteriors aggregated into one shared
+action, which is exactly the baseline sketched in this chapter's future work
+(Section~\ref{sec:e2-future}). Spatial encoding compounds this: each timing now
+acts through a full reconstruction rather than on a directly observed scalar,
+which is what removes the analytic lookup and motivates a learned policy here.
+
+A second difference concerns the repetition time. Beracha et al.\ do not
+optimise TR for information: in their inversion-recovery model the recovery
+delay is slaved to the estimate, $\Delta = 5(\langle T_1\rangle + 3\,\mathrm{SD})$,
+and the reported $T_1$ acceleration comes largely from \emph{shortening} that
+delay as the posterior sharpens --- that is, from relaxing the static scheme's
+obligation to assume the longest plausible $T_1$ for full recovery, rather than
+from more informative inversion-time placement. The Cram\'er--Rao baseline used
+here instead treats TR as a free design variable jointly optimised with TI under
+an explicit scan-time budget, using a transient signal model that does not
+assume full recovery (Chapter~\ref{ch:mri-system-phantom}); the solved schedule
+accordingly pairs short, partially-recovered blocks at short TI with longer-TR
+probes at long TI. It is therefore a stronger static comparator than a
+full-recovery schedule would be, because it already captures the budget
+efficiency Beracha et al.\ obtain only by adapting $\Delta$.
+
 \section{Environment formulation}
 \label{sec:e2-env}
 
@@ -137,6 +208,166 @@ fidelity, and fixed echo time $\mathrm{TE}=20$ ms. The scan-time budget is
 240 s for the main experiments in this chapter. Since one phase-encode line is
 acquired per shot, each block costs approximately
 $N_\mathrm{pe}\cdot \mathrm{TR}$ seconds.
+Figure~\ref{fig:e2-env-loop} shows the resulting agent--environment cycle;
+the remainder of this section details each stage.
+
+\begin{figure}[!htbp]
+\centering
+\vspace{1.5mm}
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  font=\footnotesize,
+  proc/.style={draw, rounded corners=2pt, align=center, inner xsep=3pt,
+    inner ysep=3pt, minimum height=10mm, text width=21mm, fill=black!3},
+  state/.style={draw, rounded corners=2pt, align=center, inner xsep=3pt,
+    inner ysep=3pt, minimum height=9mm, text width=20mm, fill=ImperialBlue!12},
+  io/.style={draw, rounded corners=2pt, align=center, inner xsep=3pt,
+    inner ysep=3pt, minimum height=9mm, text width=21mm, fill=ImperialBlue!5},
+  endb/.style={draw, dotted, line width=0.6pt, rounded corners=2pt, align=center,
+    inner xsep=3pt, inner ysep=3pt, minimum height=8mm, text width=19mm},
+  agent/.style={draw, rounded corners=2pt, align=center, fill=ImperialBlue!18,
+    text width=22mm, minimum height=38mm},
+  reset/.style={draw, rounded corners=2pt, align=center, fill=ImperialBlue!7,
+    text width=84mm, minimum height=8mm},
+  upd/.style={draw, rounded corners=2pt, align=center, fill=ImperialBlue!5,
+    text width=22mm, minimum height=9mm},
+  arr/.style={-{Latex[length=1.7mm]}, line width=0.45pt},
+  lbl/.style={font=\scriptsize, inner sep=1.5pt, fill=white, fill opacity=0.9,
+    text opacity=1},
+]
+\node[agent] (ppo) at (0,1.0) {PPO\\[1pt] actor $+$ critic};
+\node[upd] (update) at (0,-3.15) {PPO update\\ \scriptsize clipped obj.\,$+$\,GAE};
+
+\node[proc] (map)   at (5.1,2.9)  {map $+$ repair};
+\node[proc] (guard) at (9.1,2.9)  {budget guard\\ \scriptsize fits in remaining\\ $N_\mathrm{pe}\!\cdot\!\mathrm{TR}$?};
+\node[proc] (fwd)   at (12.3,2.9) {forward model};
+
+\node[io] (rew) at (5.1,1.2)  {reward\\ \scriptsize $\log\mathrm{MAPE}_{t-1}\!-\!\log\mathrm{MAPE}_t$};
+\node[io] (obs) at (5.1,-0.5) {observation\\ \scriptsize $\log_{10}T_1^{\mathrm{est}}$, budget};
+
+\node[state] (sig) at (12.3,0.4) {$T_1$ signal};
+\node[proc]  (fit) at (9.1,0.4)  {fit $T_1$};
+
+\node[reset] (reset) at (6.2,5.3)
+  {episode reset (\texttt{MRISystemPhantom}):
+   \texttt{RandomPhantomConfig} $\to$ \texttt{sample\_phantom\_config}};
+\node[endb] (end) at (13.25,5.3) {end episode\\ \scriptsize (no sim)};
+
+\begin{scope}[on background layer]
+\node[draw, rounded corners=3pt, fill=ImperialBlue!3, inner sep=8pt,
+      fit=(map)(guard)(fwd)(sig)(fit)(rew)(obs)] (envbox) {};
+\node[lbl, anchor=north west, fill=none] at (envbox.north west) {\textbf{Environment (one step)}};
+\end{scope}
+
+\coordinate (actionout) at ($(ppo.east)+(0,1.45)$);
+\draw[arr] (actionout) -- (map.west|-actionout)
+  node[lbl, pos=0.28, above] {action};
+\draw[arr] (map) -- (guard) node[lbl, midway, above] {\scriptsize$(\mathrm{TI},\mathrm{TE},\mathrm{TR},\alpha)$};
+\draw[arr] (guard) -- (fwd) node[lbl, midway, above] {fits};
+
+\draw[arr] (guard.north) -- ++(0,0.65) -| (end.south)
+  node[lbl, pos=0.12, right] {overruns};
+\draw[arr] (end.west) -- (reset.east)
+  node[lbl, midway, align=center, yshift=6.5mm] {new episode,\\ store trajectory};
+
+\coordinate (phantomout) at ($(reset.south east)+(-0.55,0)$);
+\draw[arr] (phantomout) -- ++(0,-0.34) -| (fwd.north)
+  node[lbl, pos=0.88, right, yshift=-2mm] {phantom};
+\coordinate (t1bus) at ($(envbox.west)+(-0.62,0)$);
+\coordinate (t1drop) at ($(rew.north)+(0,0.26)$);
+\draw[arr] (reset.south-|t1bus) --
+  node[lbl, pos=0.42, left] {true $T_1$}
+  (t1bus|-t1drop) -- (t1drop) -- (rew.north);
+
+\draw[arr] (fwd.south) -- (sig.north) node[lbl, midway, right] {append};
+\draw[arr] (sig) -- (fit) node[lbl, midway, above] {signal list};
+\coordinate (fork) at (6.8,0.4);
+\draw (fit.west) -- (fork);
+\draw[arr] (fork) -- (rew.east);
+\draw[arr] (fork) -- (obs.east);
+
+\draw[arr] (rew.west) -- (ppo.east|-rew);
+\draw[arr] (obs.west) -- (ppo.east|-obs);
+
+\draw[arr] ($(ppo.south)+(-0.45,0)$) -- ($(update.north)+(-0.45,0)$)
+  node[lbl, midway, left] {rollout $\times N$};
+\draw[arr] ($(update.north)+(0.45,0)$) -- ($(ppo.south)+(0.45,0)$)
+  node[lbl, midway, right] {update weights};
+\end{tikzpicture}
+}
+\caption{One environment step (the inner RL loop), and the per-episode reset
+that precedes it. Each episode begins by drawing a fresh phantom from the
+\texttt{MRISystemPhantom} library's \texttt{RandomPhantomConfig} sampler,
+which returns both the KomaMRI phantom the forward model simulates and the
+hidden ground truth $T_1$ used only by the reward. Within the episode the PPO
+actor emits a normalised action; the wrapper maps it to physical timings and
+repairs infeasible requests; a budget guard ends the episode without
+simulating if the block would overrun the scan-time budget; otherwise the
+forward model (cheap analytic surrogate or full KomaMRI
+simulate--reconstruct--ROI) produces per-sphere signals, the $T_1$ fit is
+updated over the accumulated history, and the change in log-MAPE is returned
+as reward with the next observation. After $N$ such on-policy environment
+steps, PPO updates the actor--critic weights using the clipped objective and
+generalised advantage estimates before collecting the next rollout.}
+\label{fig:e2-env-loop}
+\end{figure}
+
+\iffalse
+\begin{figure}[!htbp]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+  node distance=7mm and 8mm,
+  box/.style={draw, rounded corners=2pt, align=center, font=\footnotesize,
+    inner xsep=4pt, inner ysep=4pt, minimum height=11mm, text width=25mm},
+  agentbox/.style={box, fill=ImperialBlue!8},
+  envbox/.style={box, fill=black!3},
+  endbox/.style={box, fill=ImperialBlue!4, text width=18mm, minimum height=9mm},
+  resetbox/.style={box, fill=ImperialBlue!10, text width=33mm},
+  arr/.style={-{Latex[length=1.7mm]}, line width=0.4pt},
+  lbl/.style={font=\scriptsize, inner sep=1.5pt}
+]
+% top row L->R
+\node[agentbox] (actor) {PPO actor\\ $u\in[-1,1]^4$};
+\node[envbox, right=of actor] (map) {map to timings\\ TI (log), TE, TR, $\alpha$};
+\node[envbox, right=of map] (repair) {repair action\\ $\mathrm{TR}\!\ge\!\frac{\mathrm{TI}+\mathrm{TE}}{0.9}$,\\ $\mathrm{TE}\!\le\!0.3\,\mathrm{TR}$};
+\node[envbox, right=of repair] (guard) {budget guard\\ fits in remaining\\ $N_\mathrm{pe}\!\cdot\!\mathrm{TR}$?};
+% bottom row R->L
+\node[envbox, below=12mm of guard] (fwd) {forward model\\ \emph{analytic} or Koma sim\\ on episode phantom\\ $\to$ recon $\to$ ROI mean};
+\node[envbox, left=of fwd] (fit) {refit $T_1$\\ \texttt{fit\_t1\_}\\\texttt{generalized\_ir}\\ over history};
+\node[envbox, left=of fit] (reward) {reward\\ $\log\mathrm{MAPE}_{t-1}$\\ $-\log\mathrm{MAPE}_t$\\ vs hidden $T_1$};
+\node[envbox, left=of reward] (obs) {observation\\ $\log_{10}T_1^{\mathrm{est}}$,\\ time/block frac};
+\node[endbox, above=6mm of guard] (end) {end episode\\ (no sim)};
+\node[resetbox, above=6mm of actor] (reset) {episode reset (\texttt{MRISystemPhantom})\\ \texttt{RandomPhantomConfig} $\to$\\ \texttt{sample\_phantom\_config}\\ $\Rightarrow$ phantom $+$ hidden $T_1$};
+
+\draw[arr] (actor) -- (map);
+\draw[arr] (map) -- (repair);
+\draw[arr] (repair) -- (guard);
+\draw[arr] (guard) -- (fwd) node[lbl, midway, right] {fits};
+\draw[arr] (guard) -- (end) node[lbl, midway, right] {overruns};
+\draw[arr] (fwd) -- (fit);
+\draw[arr] (fit) -- (reward);
+\draw[arr] (reward) -- (obs);
+\draw[arr] (obs) |- (actor.west) ;
+\draw[arr] (reset) -- (actor);
+\draw[arr, dashed] (end) -- node[lbl, above] {new episode} (reset);
+\end{tikzpicture}
+}
+\caption{One environment step (the inner RL loop), and the per-episode reset
+that precedes it. Each episode begins by drawing a fresh phantom from the
+\texttt{MRISystemPhantom} library's \texttt{RandomPhantomConfig} sampler,
+which returns both the KomaMRI phantom the forward model simulates and the
+hidden ground-truth $T_1$ used only by the reward. Within the episode the PPO
+actor emits a normalised action; the wrapper maps it to physical timings and
+repairs infeasible requests; a budget guard ends the episode without
+simulating if the block would overrun the scan-time budget; otherwise the
+forward model (cheap analytic surrogate or full KomaMRI
+simulate--reconstruct--ROI) produces per-sphere signals, the $T_1$ fit is
+updated over the accumulated history, and the change in log-MAPE is returned
+as reward with the next observation.}
+\label{fig:e2-env-loop}
+\end{figure}
+\fi
 
 \paragraph{Noise model.} Independent complex Gaussian noise with absolute
 standard deviation $\sigma=50$ is added to every k-space sample. The value is
@@ -241,6 +472,69 @@ because an initial single-voxel experiment (not reported here) collapsed to a
 nearly fixed policy when a large terminal bonus made it sufficient to finish the
 episode rather than optimise the measurement sequence.
 
+The form was chosen after a reward-screening study on the fast analytic E2
+environment, before committing compute to Bloch-in-the-loop training
+(Table~\ref{tab:e2-reward-screen}). The first candidate, a direct per-step
+$-\mathrm{MAPE}_t$ penalty, looked natural but was misaligned: because the
+reward is summed over blocks, it penalised taking additional informative
+measurements and could rank a near-do-nothing policy above a lower-final-error
+schedule. Under a short PPO screen it collapsed to a zero-block policy
+(final MAPE $1.00$), as did its log variant $-\log\mathrm{MAPE}_t$. A purely
+terminal-MAPE reward removed the misalignment but was too sparse, giving a
+weaker learned policy ($0.896$). Progress rewards were the best compromise:
+both $\Delta\mathrm{MAPE}$ and $\Delta\log\mathrm{MAPE}$ ranked the
+lowest-error scripted schedule correctly in the cheap probe, and the short
+PPO screen gave the lowest learned-policy MAPE for $\Delta\log\mathrm{MAPE}$
+($0.830$ versus $0.839$ for $\Delta\mathrm{MAPE}$). Worst-sphere pressure was
+also tested through an aggregation
+$\alpha\,\mathrm{mean}+(1-\alpha)\max$ over per-sphere errors, motivated by
+the risk that a few poorly constrained $T_1$ estimates are hidden by the
+mean; in practice $\alpha<1$ worsened the screen (e.g.\ $0.942$ at
+$\alpha=0.5$), most likely because the identity of the worst sphere is noisy
+early in an episode when the fits are still underconstrained. The reported
+runs therefore use the mean $\Delta\log\mathrm{MAPE}$ form above.
+
+% Reward-screen notes, not all reported:
+% Source: python/screen_rewards.py. Outputs: runs/e2/reward_screen/results.csv
+% and runs/e2/reward_screen/pareto.png.
+% Analytic E2 env, 14-sphere T1.5 plate, 30k PPO screen.
+% Tried neg_mape, neg_log_mape, delta_mape, delta_log_mape, terminal_only.
+% Also tried mape_alpha: alpha*mean + (1-alpha)*max to push worst-sphere error.
+% Probe finding: neg_mape and neg_log_mape misaligned because summed per-step
+% penalties reward fewer measurements; delta_mape, delta_log_mape and terminal
+% rewards ranked the lowest-final-MAPE scripted policy correctly.
+% PPO rows: delta_log_mape alpha=1 final MAPE 0.830; delta_mape alpha=1 0.839;
+% terminal_only alpha=1 0.896; delta_mape alpha=0.5 0.866;
+% delta_log_mape alpha=0.5 0.942; neg_mape/neg_log_mape collapsed to 1.000.
+% Interpretation: progress reward was necessary; log-progress was the best
+% smoke-test choice; max-MAPE weighting probably injected early-episode variance
+% because the worst sphere changes while fits are underconstrained.
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{6pt}
+\renewcommand{\arraystretch}{0.95}
+\begin{tabular}{llr}
+\toprule
+Reward & Aggregation & 30k PPO final MAPE \\
+\midrule
+$\Delta\log\mathrm{MAPE}$ & mean & \textbf{0.830} \\
+$\Delta\mathrm{MAPE}$ & mean & 0.839 \\
+terminal only & mean & 0.896 \\
+$\Delta\mathrm{MAPE}$ & $0.5\,\mathrm{mean}+0.5\max$ & 0.866 \\
+$\Delta\log\mathrm{MAPE}$ & $0.5\,\mathrm{mean}+0.5\max$ & 0.942 \\
+$-\mathrm{MAPE}$ / $-\log\mathrm{MAPE}$ & mean & 1.000 (no blocks) \\
+\bottomrule
+\end{tabular}
+\caption{Reward-screening study on the analytic E2 environment (14-sphere
+T1 plate, 30k-step PPO screen). Progress rewards were necessary --- the
+summed per-step penalties collapsed to a zero-measurement policy --- and
+mean $\Delta\log\mathrm{MAPE}$ gave the best learned policy. Worst-sphere
+weighting ($\alpha<1$) did not help in the cheap screen.}
+\label{tab:e2-reward-screen}
+\end{table}
+
 Training uses PPO~\cite{schulman_ppo_2017}. PPO was chosen because it is a
 robust on-policy baseline and can be used with continuous actions without
 needing a replay buffer. This matters for the Python--Julia simulator loop:
@@ -251,6 +545,63 @@ the fitter, the reward, or the policy update itself.
 
 \section{Multi-fidelity curriculum}
 \label{sec:e2-mf-method}
+
+The environment step of Figure~\ref{fig:e2-env-loop} is too expensive to run
+naively at target fidelity, so the agent is trained up a ladder of
+forward-model fidelities, cheap-but-biased to slow-but-true, warm-starting
+each stage from the last. The subsections below justify the ladder
+(Section~\ref{sec:e2-mf-ladder}), the cached-water rungs
+(Section~\ref{sec:e2-water-cache}), and the promotion rule that decides when
+to move up it (Section~\ref{sec:e2-mf-switch}).
+
+\iffalse % figure commented out (controller diagram not polished enough for submission)
+\begin{figure}[!htbp]
+\centering
+\resizebox{0.94\linewidth}{!}{%
+\begin{tikzpicture}[
+  node distance=6mm and 9mm,
+  box/.style={draw, rounded corners=2pt, align=center, font=\footnotesize,
+    inner xsep=4pt, inner ysep=4pt, minimum height=10mm, text width=30mm},
+  stagebox/.style={box, fill=black!3},
+  probebox/.style={box, fill=ImperialBlue!7},
+  bestbox/.style={box, fill=ImperialBlue!4, text width=34mm},
+  ladderbox/.style={box, fill=ImperialBlue!10, text width=34mm},
+  arr/.style={-{Latex[length=1.7mm]}, line width=0.4pt},
+  lbl/.style={font=\scriptsize, inner sep=2pt, align=center}
+]
+\node[ladderbox] (ladder) {fidelity ladder\\ \texttt{analytic}$\to$\texttt{cached3}$\to$\\ \texttt{cached}$\to$\texttt{full3}$\to$\texttt{full}};
+\node[stagebox, right=14mm of ladder] (warm) {warm-start stage\\ copy weights, carry obs\\ stats, reset reward norm};
+\node[stagebox, right=of warm] (train) {train PPO\\ rollouts at current\\ fidelity};
+\node[probebox, below=9mm of train] (probe) {every 4 rollouts:\\ probe current-fidelity\\ \emph{and} held-out full-Bloch};
+\node[probebox, left=of probe] (switch) {switch rule\\ plateau / rank breakdown /\\ bias / budget reserve};
+\node[stagebox, left=of switch, text width=26mm] (look) {lookahead\\ clone $+$ 1 rollout\\ at next rung};
+\node[bestbox, below=9mm of probe] (best) {global-best checkpoint\\ (screen on full probe,\\ confirm on 12 episodes)};
+\node[bestbox, right=12mm of best, fill=ImperialBlue!12] (out) {reported policy\\ global best at\\ \texttt{full} fidelity};
+
+\draw[arr] (ladder) -- (warm);
+\draw[arr] (warm) -- (train);
+\draw[arr] (train) -- (probe);
+\draw[arr] (probe) -- (switch);
+\draw[arr] (switch) -- (look);
+\draw[arr] (look.north) |- (warm.west) node[lbl, pos=0.75, above] {promote};
+\draw[arr] (switch.north) -- ++(0,6mm) -| (train.north) node[lbl, pos=0.25, above] {stay};
+\draw[arr] (probe) -- (best);
+\draw[arr] (best) -- (out);
+\end{tikzpicture}
+}
+\caption{Overall logic of the multi-fidelity RL training. One PPO policy is
+warm-started up the fidelity ladder. While a stage trains, it is probed every
+four rollouts on both the current (cheap) fidelity and a held-out full-Bloch
+environment; the switch rule promotes to the next rung when the cheap rung is
+exhausted or stops tracking the full simulator, optionally confirmed by a
+one-rollout lookahead clone at the next rung. Crucially, promotion and
+checkpoint selection are driven by the \emph{full-simulator} probe, never the
+cheap rung's own score, so a biased rung cannot certify its own policy. The
+global-best checkpoint (screened on the probe, confirmed on twelve episodes)
+at the final \texttt{full} fidelity is the reported policy.}
+\label{fig:e2-mf-controller}
+\end{figure}
+\fi
 
 \subsection{The cost wall and the fidelity ladder}
 \label{sec:e2-mf-ladder}
@@ -586,6 +937,19 @@ The agent was adaptive, but the fixed schedules were better on the full
 \label{tab:run-a-current-comparison}
 \end{table}
 
+The Cramér--Rao schedules are solved as described in
+Section~\ref{sec:crlb-baselines}, by multi-start coordinate descent (1000
+log-uniform starts, refine the best 10, block grid $\{4,6,8,10,14,18\}$, seed 0)
+on the 14-sphere nominal $T_1$ fleet under the scan-time budget. To check the
+non-convex solve is not stuck in a poor local minimum, the schedule was
+re-solved across seeds 0--3: the objective spread is 2.2\% (15.17--15.51) and
+every seed recovers the same qualitative structure (a tight cluster of short
+TIs ${\approx}0.03$~s, a mid cluster ${\approx}0.15$~s, and one or two long
+probes ${\approx}0.4$ and ${\approx}0.7$~s), so the reported schedule is not a
+local-minimum artefact. This 2.2\% spread is far smaller than the gap to the
+fixed grid, so the Run B underperformance of the Cramér--Rao schedule
+(Section~\ref{sec:e2-run-b}) is fleet mismatch, not under-optimisation.
+
 The learned policy was nevertheless not the degenerate fixed-policy failure
 mode. Diagnostics over
 24 episodes gave TI intra-episode log standard deviation 0.281, inter-episode
@@ -712,7 +1076,17 @@ on the selection-stream seed, and 4.62\% versus 6.86\% on the strict held-out
 seed, with non-overlapping confidence intervals in both cases. The Cramer--Rao
 schedule collapses on this task at 240 s (15.96\%, p90 29.29\%): solved over
 $(\mathrm{TI},\mathrm{TR})$ for a nominal fleet, it commits its budget to four
-long blocks and under-covers the episode's realised $T_1$ values. The RL
+long blocks and under-covers the episode's realised $T_1$ values. This is the
+static-optimal versus static-average distinction of
+Beracha et al.~\cite{adaptive_mri:23,optimal_sampling_crlb:96}: a Cram\'er--Rao
+schedule solved for a fixed nominal fleet is the static-\emph{optimal} design
+for those values and wins when the evaluation fleet matches it (Run A,
+Table~\ref{tab:run-a-current-comparison}), but under per-episode $T_1$ variation
+it is mis-targeted, while the robust log grid --- effectively a range-averaged
+design --- degrades more gracefully. The log grid does not beat an information
+bound; it beats a schedule that was optimal for the wrong values, and the
+adaptive policy in turn recovers the per-episode performance the static-optimal
+schedule cannot deliver without knowing $T_1$ in advance. The RL
 per-pool breakdown is also balanced: on the selection-stream evaluation, pools
 1, 3, 6, 8 and 14 scored 3.67\%, 3.38\%, 3.22\%, 2.81\% and 4.97\% MAPE
 respectively, so the result is not an average dominated by one easy pool. The
@@ -751,9 +1125,19 @@ fixed at $90^\circ$ and evaluated on the same strict seed-600000 held-out set:
 the global-best RL policy scores \textbf{4.16\%} MAPE ([3.41, 4.99], p90
 6.64\%) against \textbf{6.04\%} ([5.36, 6.70], p90 7.81\%) for the fixed
 \texttt{log\_grid\_trmatched} schedule evaluated by the baseline harness on
-the same seed. (A slightly different in-pipeline seven-point sanity grid
-scores 5.86\%; the ten-point baseline-harness schedule is the authoritative
-comparator, and the conclusion is unchanged under either.) The 560 s
+the same seed. The fixed grid's TR is set to $\approx 1.7$~s, approximately the
+learned policy's mean repetition time, so the baseline spends its budget in a
+comparable way; the number of TI points is then \emph{derived} from the budget
+as $\lfloor \mathrm{budget}/(N_\mathrm{pe}\,\mathrm{TR})\rfloor$ (ten points at
+560~s), not tuned, and a legacy seven-point in-pipeline grid at a different TR
+scores 5.86\%, so the comparison is insensitive to the exact count. One caveat
+follows from the match being only approximate: the reported policy's measured
+mean TR is $\approx 1.24$~s, shorter than the baseline's, so it fits more blocks
+in the same budget (${\approx}14$ versus $10$ at 560~s, ${\approx}6$ versus $4$
+at 240~s). The RL advantage therefore combines adaptive TI placement with a
+shorter-TR, higher-block-count operating point; a fixed grid matched to the
+policy's \emph{realised} mean TR would be needed to isolate the TI-placement
+gain from the block-count gain, and is left to future work. The 560 s
 comparison is not a pure scan-time ablation of the 240 s run, because the
 240 s run still learned $\alpha$. The fixed log grid is essentially flat from
 240 to 560 s (5.60\% $\to$ 5.71\% on the selection-stream sweep), so the RL
@@ -922,6 +1306,83 @@ multi-fidelity curriculum the last policy is routinely not the best policy;
 checkpoint selection on the target fidelity is part of the method, not an
 optional extra.
 
+\section{Quantitative positioning against published results}
+\label{sec:e2-quant-position}
+
+Table~\ref{tab:e2-related-position} positioned this chapter qualitatively;
+Table~\ref{tab:e2-quant-anchors} adds the headline numbers on each side.
+These are anchors, not a ranking: the tasks differ (model-based T2/MRS
+adaptation, offline sequence optimisation, shape classification, fitted
+$T_1$ mapping), so the numbers are not comparable across rows. What the
+table shows is that prior work has stronger hardware validation and, in
+some cases, larger demonstrated acceleration, while this chapter
+contributes a different experimental object: a closed-loop RL policy
+evaluated on fitted $T_1$ error against matched fixed schedules in a
+validated 2-D Bloch-simulation pipeline.
+
+\begin{table}[!htbp]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{0.96}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.0cm}
+>{\raggedright\arraybackslash}p{4.4cm}
+>{\raggedright\arraybackslash}p{2.6cm}
+>{\raggedright\arraybackslash}X}
+\toprule
+Work & Reported benefit & Metric & Comparability caveat \\
+\midrule
+Adaptive model-based MR~\cite{adaptive_mri:23} &
+1.7--3.3$\times$ simulated acceleration; 2.5$\times$ in healthy volunteers &
+T2/MRS acquisition time at matched precision &
+Real hardware, but Bayesian model-based selection on a different estimation
+task \\
+\addlinespace
+MRzero~\cite{MRISeqSupLearning:21} &
+Learned sequences executed on a clinical 3 T scanner, phantom and in vivo &
+Target-contrast fidelity, SAR, scan time &
+Offline supervised optimisation; no closed-loop adaptation \\
+\addlinespace
+Walker-Samuel~\cite{Walk_RL_CONTROL_MRI:19} &
+99.8\% shape-classification accuracy with 4--6 k-space lines &
+Classification accuracy vs scan time &
+RL scanner control, but a classification objective, not qMRI estimation \\
+\addlinespace
+This chapter, Run A (14 spheres, 240 s) &
+9.44--11.68\% vs 4.70\% for the fixed Cramer--Rao schedule &
+Held-out fitted $T_1$ MAPE &
+Negative result: robust fixed coverage wins on the full plate \\
+\addlinespace
+This chapter, Run B (5 spheres, 240 s) &
+4.62\% vs 6.86\% for the matched fixed log grid &
+Held-out fitted $T_1$ MAPE &
+Matched scan budget and estimator; simulator-only \\
+\addlinespace
+This chapter, TI-histogram memory (5 spheres, 560 s) &
+2.93\% vs 6.04\% for the best fixed schedule &
+Held-out fitted $T_1$ MAPE &
+Best controlled result; five-sphere task, one training seed per arm \\
+\bottomrule
+\end{tabularx}
+\caption{Quantitative anchors for this chapter and the nearest published
+work. Rows are not mutually comparable because the tasks and metrics
+differ; this project's own rows share one estimator, simulator, noise
+level, and evaluation protocol.}
+\label{tab:e2-quant-anchors}
+\end{table}
+
+These rows report error at a matched scan time, not acceleration at matched
+precision, so they are not directly comparable to the
+$1.7$--$3.3\times$ ($T_2$) and $1.7$--$4\times$ (simulated $T_1$) speedups of
+Beracha et al.~\cite{adaptive_mri:23}. Translated loosely through their
+precision-squared-to-time heuristic, the histogram policy's improvement from
+$6.04\%$ to $2.93\%$ MAPE (a ${\approx}2.06\times$ precision ratio) would
+correspond to a nominal ${\approx}4\times$ acceleration. This is only an
+analogy: MAPE bundles bias and finite-SNR effects that the
+standard-deviation-based bound excludes, and the fixed log grid is essentially
+flat with scan time (Section~\ref{sec:e2-run-b}), so an equal-precision crossing
+time --- and hence a clean acceleration factor --- is not well defined.
+
 \section{Limitations}
 \label{sec:e2-limitations}
 
@@ -1031,13 +1492,56 @@ uncertainty. This is closer to magnetic resonance fingerprinting, where sequence
 schedules are designed to make tissue trajectories
 distinguishable~\cite{mehta_mrf_review:2019,Jordan_MRF_AUTO:21}. It also
 requires a more general fitter or dictionary model, because the current fitter
-assumes one generalized IR spin-echo signal family.
+assumes one generalized IR spin-echo signal family. Extending the target to
+$T_2$ and $T_2^*$ also brings off-resonance into play: the twin already stores
+a per-spin $\Delta\omega$ channel and an augmentation knob for it
+(Chapter~\ref{ch:mri-system-phantom}), so a natural extension is a policy that
+must capture and fit off-resonance jointly with relaxation, rather than
+treating it as fixed nuisance.
+
+Two further extensions would close the gap to a realistic acquisition. First,
+the reported runs use the hard-pulse approximation --- RF treated as an
+instantaneous rotation. Replacing the hard excitation and refocusing pulses
+with shaped slice-selective pulses (for example a windowed-sinc profile) under
+a slice-select gradient would make the simulated acquisition match a real
+slice-selective sequence, at the cost of finer RF time-stepping; this is also
+the regime where the KomaMRI timing fixes of
+Chapter~\ref{ch:validating-komamri} matter most, because shaped pulses spread
+the RF area over many samples. Second, the experiments image a single thin
+axial slab; generalising to genuine 3-D slice selection --- exciting and
+encoding a stack of slices, or a slab with through-plane phase encoding ---
+would let the policy trade through-plane coverage against scan time, and would
+exercise the twin's anisotropic water grid and SO(3) pose sampler that are
+implemented but unused here.
 
 Finally, the objective could become a Pareto curve rather than one fixed scan
 time. In clinical use, a protocol that reaches 5\% MAPE in 120 s may be more
 valuable than one that reaches 3.5\% in 240 s. A stop action or explicit
 scan-time penalty would let the policy choose this trade-off, while fixed
 baselines can be compared across the same accuracy--time frontier.
+
+One baseline this chapter identifies but does not implement would sharpen the
+attribution of the gain: a per-sphere Bayesian posterior with greedy
+Cram\'er--Rao re-targeting, the natural bridge between the static CR baseline
+and the learned policy. Each sphere would carry its own grid posterior
+$p(T_1,\mathrm{PD})$, updated from its ROI signal after every block exactly as
+the fitter already evaluates it, and the next $(\mathrm{TI},\mathrm{TR})$ block
+would be chosen by re-minimising the fleet CRLB at the current posterior
+\emph{means} rather than a fixed nominal fleet. Because one block images all
+spheres at once, the per-sphere optima must be aggregated into a single
+action --- precisely the fleet-averaging the static objective already performs,
+but now over the sharpening estimates. Such a scheme would re-target the
+realised $T_1$ values like the RL policy, would be fully interpretable, and
+would supply the calibrated uncertainty and natural stopping criterion (halt
+when every sphere's posterior SD falls below a threshold) that the
+$\sigma$-channel of Section~\ref{sec:e2-ablations} failed to provide. It would
+also isolate \emph{why} reinforcement learning helps: greedy CRLB selection is
+myopic, optimising only the next block, whereas the PPO policy optimises the
+whole-episode return and demonstrably learns a non-myopic probe-then-refine
+strategy (Section~\ref{sec:e2-run-b}). Whether that planning advantage survives
+against a strong greedy-adaptive baseline --- and, paired with a TR matched to
+the policy's realised mean, whether the gain is TI placement or block count ---
+is the cleanest open question left by this chapter.
 
 \section{Summary}
 \label{sec:e2-summary}

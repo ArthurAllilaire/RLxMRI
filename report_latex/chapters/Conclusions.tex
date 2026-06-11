@@ -1,10 +1,165 @@
-% Write your conclusions here
-\label{Conclusions} % If you need a label for this chapter
+\label{Conclusions}
 
-% Example text
+This project asked whether reinforcement learning can design adaptive
+quantitative MRI sequences that estimate tissue relaxation more efficiently
+than fixed clinical protocols, and built the full simulation-in-the-loop
+pipeline needed to test that question honestly. This chapter draws the three
+technical chapters together: what was achieved against the challenges set out
+in Chapter~\ref{ch1}, the limitations that bound those achievements, and the
+work that would take the project further.
 
+\section{Achievements}
+\label{sec:concl-achievements}
 
+The three challenges (C1, simulator validation for qMRI; C2, computational
+efficiency under expensive simulation; C3, adaptive sequence design from
+tissue-parameter estimates) map onto three achievements, one per technical
+chapter.
 
-All good projects conclude with an objective evaluation of the project's successes and failures and suggestions for future work which can take the project further. It is important to understand that there is no such thing as a perfect project. 
+\textbf{A1 --- a digital twin of the calibration phantom
+(Chapter~\ref{ch:mri-system-phantom}).} \texttt{MRISystemPhantom.jl} is a
+configurable, open-source digital twin of the QalibreMD Model 130 system
+phantom that returns standard \texttt{KomaMRI.Phantom} objects, ships a
+tested forward pipeline (phantom construction, sequence generation,
+reconstruction, ROI extraction, and fitting), and exposes the randomisation
+hooks the RL loop needs. It is the ground-truth foundation for C1 and a
+reusable contribution in its own right: a digital twin of a widely deployed
+calibration device against which simulated qMRI methods can be checked
+before scanner deployment.
 
-Even the very best pieces of work have their limitations and you are expected to provide a proper critical appraisal of what you have done. Your assessors are bound to spot the limitations of your work and you are expected to be able to do the same.
+\textbf{A2 --- a validated Bloch-simulation pipeline
+(Chapter~\ref{ch:validating-komamri}).} Validating that pipeline against the
+phantom's known $T_1$ values --- the strict test that distinguishes qMRI from
+plausible imaging --- exposed two floating-point time-discretisation failures
+in KomaMRI that only appear at the long cumulative sequence times RL training
+demands. Both were reduced to minimal reproducers, traced to specific
+$\epsilon$-scale timing mechanisms, and fixed upstream; the no-noise
+14-sphere $T_1$ fit improved from 39.4\% to 0.48\% mean MAPE. Together with
+A1 this answers C1, and the fixes are a contribution back to the wider
+simulation community, not only to this project.
+
+\textbf{A3 --- adaptive qMRI sequence design via multi-fidelity RL
+(Chapter~\ref{ch:adaptive-rl}).} A full-Bloch step at the target
+configuration measured ${\approx}4$ s on CPU, making a single-fidelity run
+roughly nine days before evaluation. The multi-fidelity curriculum answers
+C2 by learning cheaply on an analytic surrogate and cached or coarsened
+water, then warm-starting up a fidelity ladder spanning a ${\sim}30\times$
+per-step cost range, with promotion gated on held-out \emph{full-simulator}
+validation so a biased rung cannot certify its own policy. On the adaptive
+question (C3), the learned closed-loop policy beat the matched fixed log-grid
+schedule at two scan budgets on strict held-out episodes (4.62\% versus
+6.86\% MAPE at 240 s; 4.16\% versus 6.04\% at 560 s), with non-overlapping
+confidence intervals. A memory ablation then produced the project's strongest
+result: giving the policy an order-invariant histogram of the inversion times
+it has already executed reached 2.93\% MAPE --- better than the memoryless
+control, a fitter-uncertainty channel, a recurrent policy, and every fixed
+schedule, on every active sphere. The value of the next acquisition depends
+on what has already been measured, and exposing that history explicitly
+matters.
+
+\section{Limitations}
+\label{sec:concl-limitations}
+
+\textbf{Digital twin (Chapter~\ref{ch:mri-system-phantom}).} The twin models
+the three contrast plates and fiducial grid but not the resolution insets or
+slice-profile wedges, and the sphere-ring geometry matches the manual
+photographs rather than a measured device. Two material entries are
+approximate: PD-plate relaxation values use bulk water, and the fiducial
+relaxation values are generic placeholders. Reference values are fixed at
+$20\,^{\circ}$C, with the manual's temperature corrections unimplemented.
+None of these affect the $T_1$- and $T_2$-plate experiments reported here,
+but all must be addressed before any simulation-to-real comparison involving
+the PD plate or fiducials. Coarsening the background water also perturbs the
+boundary geometry, a bias quantified rather than eliminated.
+
+\textbf{Simulator validation (Chapter~\ref{ch:validating-komamri}).} The
+validation covers the IR-SE sequence family and an idealised scanner: RF
+pulses are exact and field inhomogeneities and eddy currents are not modelled.
+Other sequence families would need the same timing and no-noise recovery
+checks before being trusted for quantitative claims, and the second timing
+fix (PR~\#789) remains open upstream, pinned in a project fork.
+
+\textbf{Adaptive RL (Chapter~\ref{ch:adaptive-rl}).} The positive result is a
+proof of concept on a deliberately simplified task, not solved full-phantom
+mapping: on the full 14-sphere plate the agent learned a genuine
+state-dependent policy but still lost to robust fixed coverage, because that
+task rewards global experimental design over per-episode adaptation. The
+evaluations rest on 24 episodes and one training seed per arm, so they do not
+bound sensitivity to initialisation or curriculum timing; the recurrent-policy
+negative is further confounded by its ${\approx}5\times$ per-step cost under a
+shared wall-clock budget. The action space is narrow (one IR-SE block, mostly
+TI and TR), the agent acts only on fitted estimates rather than images, and
+every result is simulator-only at a single 1\,mm slab --- the planned MR-Linac
+hardware validation was not reached.
+
+\section{Future work}
+\label{sec:concl-future}
+
+The most immediate extensions are concrete. For the twin
+(Chapter~\ref{ch:mri-system-phantom}), a boundary-aware water grid, verified
+PD/fiducial values, and temperature correction of the relaxation tables would
+remove the known biases and unlock the PD plate and any sim-to-real
+comparison; modelling the omitted resolution insets and slice-profile wedges
+would extend it to geometric-distortion and slice-profile experiments. The
+twin's architecture also already separates labelled material descriptors from
+voxelisation, so other calibration phantoms --- including the open-hardware
+designs of Section~\ref{sec:phantom-related-tools} --- could be supported by
+writing new descriptor builders while reusing the voxelisation, randomisation,
+reconstruction, and fitting pipeline, turning the single-phantom twin into a
+small framework for executable qMRI phantom twins. For the simulator
+validation (Chapter~\ref{ch:validating-komamri}), the parameter-recovery test
+should be repeated for the other shipped sequence families (spin echo,
+multi-echo, turbo spin echo, spoiled GRE) before any of them carries
+quantitative claims, the still-open PR~\#789 should be landed upstream, and
+the idealised-scanner assumption should be relaxed to include RF
+inhomogeneity, eddy currents, and $B_0$ imperfections. For the RL environment
+(Chapter~\ref{ch:adaptive-rl}), a step-matched recurrent-policy rerun would
+separate the memory mechanism from its compute cost, and a simpler
+\texttt{analytic}$\rightarrow$\texttt{cached}$\rightarrow$\texttt{full} ladder
+should be tested against the biased \texttt{full3} rung.
+
+The scientifically important direction is to widen the action space and move
+beyond the $T_1$ plate. Letting the agent choose the acquisition family
+(IR-SE, spin echo, multi-echo trains, spoiled GRE) and the relevant per-family
+parameters would test the more publishable claim that RL's advantage is in
+choosing \emph{which contrast mechanism} to deploy, and would extend naturally
+to joint $T_1/T_2/T_2^*$ and off-resonance estimation --- closer to magnetic
+resonance fingerprinting. Two realism steps accompany this: replacing the
+hard-pulse approximation with shaped slice-selective (windowed-sinc) pulses,
+and generalising the single thin slab to genuine 3-D slice selection, both of
+which the twin already supports but the experiments do not yet exercise.
+Replacing the single fixed scan budget with an accuracy--time Pareto objective,
+via a stop action or scan-time penalty, would reflect the real clinical
+trade-off, where reaching adequate accuracy sooner can matter more than a lower
+asymptotic error. Finally, executing a learned protocol on the MR-Linac would
+close the sim-to-real gap the project was ultimately motivated by, testing
+whether the learned timings survive real scanner constraints, reconstruction,
+and phantom data.
+
+\section{Concluding remarks}
+\label{sec:concl-closing}
+
+The project delivered a validated, reusable digital twin; surfaced and fixed
+real numerical bugs in a widely used simulator; and built a bias-aware
+multi-fidelity training loop that made simulation-in-the-loop qMRI RL
+tractable. Within that pipeline it showed, on a controlled task, that an
+adaptive policy with an explicit memory of its own acquisitions can beat
+strong fixed protocols. The honest boundary of the work is equally clear:
+adaptivity paid only where the task was constructed to require it, and every
+result remains simulated.
+
+The wider context is the one set out in Chapter~\ref{ch1}: MRI demand is
+growing faster than capacity, and adaptive acquisition attacks the scan-time
+bottleneck at the measurement-design level rather than after the data are
+collected. Within MRI digital-twin research, which remains concentrated on
+diagnosis and treatment planning, protocol- and infrastructure-level twins
+are the underdeveloped fraction, held back by simulation cost and
+validation~\cite{greggio_digital_twinning_mri_2026} --- precisely the two
+barriers the multi-fidelity ladder and the parameter-recovery validation
+address in this bounded calibration setting. The phantom twin, validated
+simulator, and training loop together form a testbed in which adaptive qMRI
+protocols can be developed and compared before any patient or scanner is
+involved. Turning this controlled demonstration into a robust,
+hardware-validated qMRI sequence designer is the natural continuation, and
+the infrastructure built here is intended to make that continuation
+straightforward.
