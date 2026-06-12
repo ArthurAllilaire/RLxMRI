@@ -17,6 +17,29 @@ Library}\label{ch:mri-system-phantom}}
 \setlength{\abovecaptionskip}{4pt}
 \setlength{\belowcaptionskip}{0pt}
 
+\section{Chapter aim}
+\label{sec:twin-aim}
+
+This chapter delivers A1 and lays the ground for C1: it builds
+\texttt{MRISystemPhantom.jl}, a digital twin of the QalibreMD Model 130
+calibration phantom that supplies the ground-truth tissue parameters,
+geometry, and randomisation the reinforcement-learning loop trains against.
+The hardest engineering problem is the background water, which is roughly
+80\% of the spins and therefore dominates simulation cost while contributing
+little to the per-sphere measurement the agent cares about; the chapter's
+main novelty over a fixed phantom model is an independent, coarsenable water
+grid (Section~\ref{background-water}) that later enables the multi-fidelity
+cost savings of Chapter~\ref{ch:adaptive-rl}. In the terminology of
+Section~\ref{sec:bg-twins-phantoms}, the result is a bounded
+calibration-object twin rather than a patient twin;
+Section~\ref{sec:phantom-related-tools} positions it against existing open
+phantom hardware and analysis tooling. The remaining sections cover
+the geometry and pose model (Sections~\ref{geometry}--\ref{augmentation}),
+the calibrated material tables (Section~\ref{material-tables}), the
+$T_1$ sequence and fitter the experiments use
+(Section~\ref{shipped-sequences-and-fitting-models}), and how the twin plugs
+into KomaMRI (Section~\ref{komamri-integration}).
+
 \hypertarget{the-physical-phantom}{%
 \section{The physical phantom}\label{the-physical-phantom}}
 
@@ -30,7 +53,14 @@ reference device for quantitative MRI system validation in clinical and
 research settings, and its design is described in the \emph{QalibreMD
 System Standard Model 130 User Manual}
 (\href{https://github.com/ArthurAllilaire/RLxMRI/blob/main/QalibreMD_NIST_ISMRM_System_Standard_Model_130_T1_T2_PD_User_Manual.pdf}{available
-here}).
+here}). It is the commercial implementation of the ISMRM/NIST
+system-phantom standardisation effort introduced in
+Section~\ref{sec:bg-twins-phantoms}: its contrast spheres carry
+SI-traceable reference values used for scanner characterisation and
+multi-site qMRI
+comparison~\cite{russek_system_phantom_characterization_2020,keenan_phantoms_2024},
+so the digital twin inherits a recognised calibration target rather than a
+bespoke test object.
 
 The phantom consists of a spherical water-filled housing (100 mm
 internal radius) containing four internal structures at fixed axial
@@ -111,6 +141,38 @@ reference values are provided for 1.5 T and 3 T. The user manual also
 distinguishes between legacy and modern serial-number classes; both sets
 of reference values are included in the library.
 
+\section{Related phantom tooling}
+\label{sec:phantom-related-tools}
+
+The qMRI community already publishes open artefacts around this phantom at
+two layers. At the hardware layer, NIST releases CAD/STL design files for an
+open-source MRI phantom, and the ISMRM/NIST system-phantom repository ships
+the device's hardware design files, making the physical reference object
+itself reproducible.\footnote{\url{https://github.com/usnistgov/open-source-mri-phantom};
+\url{https://github.com/MRIStandards/SystemPhantom}.} At the analysis layer,
+PhantomViewer provides a Python GUI with virtual-phantom descriptions for
+manual ROI analysis of acquired NIST phantom images~\cite{phantomviewer_repo},
+and MR-BIAS automates that workflow --- ROI detection plus
+Levenberg--Marquardt fits of inversion-recovery and variable-flip-angle
+$T_1$ models and multi-echo $T_2$ models --- reducing inter-observer
+variability and analysis time on acquired system-phantom
+images~\cite{korte_mrbias_2023}.
+
+Both layers stop at the physical scan: one makes the hardware reproducible,
+the other analyses images after acquisition. Neither generates simulated
+acquisitions, and the MR-BIAS fitting models could not be reused in the
+adaptive setting of Chapter~\ref{ch:adaptive-rl}, where the agent changes
+the timing block by block: the fitter must accept per-block TR and
+excitation angle and model the finite-$N_\mathrm{pe}$ transient across
+phase-encode shots
+(Section~\ref{shipped-sequences-and-fitting-models}), whereas MR-BIAS fits
+one fixed protocol per acquired image series.
+\texttt{MRISystemPhantom.jl} is the complementary simulator-side layer: it
+represents the phantom \emph{before} acquisition as a KomaMRI object with
+ground-truth material labels and randomisation hooks, and embeds the fitting
+model inside the simulation/RL loop so it can generate synthetic
+measurements and rewards for sequence-design experiments.
+
 \hypertarget{design-goals-and-architecture}{%
 \section{Design goals and
 architecture}\label{design-goals-and-architecture}}
@@ -118,11 +180,16 @@ architecture}\label{design-goals-and-architecture}}
 A digital twin of this phantom is needed for two reasons. First, it
 provides a ground-truth environment for RL training: the agent needs to
 query a simulator that returns physically meaningful signals and can
-report the true tissue parameters for reward computation. Second, it
+report the true tissue parameters for reward computation. The material
+tables (Section~\ref{material-tables}) and the geometry/sequence/fitter
+pipeline (Sections~\ref{geometry} and
+\ref{shipped-sequences-and-fitting-models}) address this point. Second, it
 must be \textbf{flexible}: the RL training loop needs to randomise pose,
 inject noise, and jitter reference values across episodes without
-modifying library code. Different experiments also require different
-phantom sections or resolution.
+modifying library code, and different experiments require different phantom
+sections or resolution. The configuration contract below and the
+augmentation/random-phantom machinery (Section~\ref{augmentation}) address
+this second point.
 
 The library is structured around a single contract: a
 \texttt{PhantomConfig} struct that carries the builder configuration.
@@ -471,6 +538,17 @@ current and legacy recipes. All reference values are currently fixed at
 \(20^{\circ}\text{C}\); the manual includes temperature-correction
 graphs, but these are not yet implemented.
 
+These tables are not merely nominal manufacturer constants. A 2025
+multi-centre study measured $T_1$ and $T_2$ in the ISMRM/NIST phantom on 13
+scanners across three vendors and seven sites, finding excellent correlation
+with the reference values and median inter-scanner coefficients of variation
+below 7\%~\cite{pasini_multicenter_nist_t1t2_2025}. This supports using the
+tables as a quantitative validation target. The same study tabulates 3 T
+reference values at six temperatures between 16 and
+\(26^{\circ}\text{C}\), which is why the library records its
+\(20^{\circ}\text{C}\) assumption explicitly: temperature correction is the
+known gap to close before any simulation-to-real comparison.
+
 \textbf{Accuracy caveats.} Two entries are approximate: PD-plate T1/T2
 values (\texttt{pd\_t1}, \texttt{pd\_t2}) use bulk water regardless of
 proton-density fraction (the manual does not tabulate per-sphere
@@ -604,104 +682,98 @@ and pose samplers operate on \texttt{SphereDescriptor}s and
 \hypertarget{shipped-sequences-and-fitting-models}{%
 \section{Shipped sequences and fitting models}\label{shipped-sequences-and-fitting-models}}
 
-The background chapter explains what the main MRI sequence families are.
-This section instead documents what \texttt{MRISystemPhantom.jl} ships,
-why those routines are needed by the experiments, and which assumptions
-they encode. All sequence builders return standard
-\texttt{KomaMRI.\allowbreak Sequence} objects, so they can be passed directly to
-\texttt{KomaMRI.\allowbreak simulate}. The fitting routines are pure Julia and
-are shared by the conventional baselines and RL environments, so reported
-gains are measured against the same estimators.
+All sequence builders return standard \texttt{KomaMRI.\allowbreak Sequence}
+objects, and the fitting routines are pure Julia shared by the conventional
+baselines and the RL environment, so reported gains are always measured
+against the same estimators. The library ships a broader family than this
+project exercises --- single-spin and 2-D builders for spin echo
+(\texttt{se}), CPMG/multi-echo (\texttt{mse}), turbo spin echo
+(\texttt{ir\_tse\_2d}) and spoiled gradient echo (\texttt{gre\_2d}), with
+matching \texttt{fit\_t2\_se} and joint \texttt{fit\_t1\_t2\_generalized\_ir}
+estimators for the T2 and PD plates --- but the experiments in this report
+use only the $T_1$ path, so this section describes that path and leaves the
+rest to the package documentation.
 
-\textbf{Single-spin sequence helpers}
-\begin{itemize}
-\tightlist
-\item
-  \texttt{ir\_sequence(TI)}: 180° inversion, delay, 90° excitation and
-  ADC. Used for simple T1 checks and the conventional T1 helper; after
-  full recovery the first ADC sample follows
-  \(\lvert1 - 2e^{-\mathrm{TI}/T_1}\rvert\).
-\item
-  \texttt{se\_sequence(TE)}: 90°--180° spin echo for the T2 baseline.
-  The echo magnitude follows \(S_0e^{-\mathrm{TE}/T_2}\).
-\item
-  \texttt{mse\_sequence(ESP,\ n\_echoes)}: CPMG / multi-echo spin echo.
-  One excitation is followed by a train of 180° pulses; echo \(k\)
-  occurs at \(k\,\mathrm{ESP}\), so a whole T2 decay is sampled in one
-  TR.
-\end{itemize}
+The $T_1$ acquisition is \texttt{ir\_se\_2d\_sequence(TI, TE, TR; ...)}: an
+inversion-recovery spin echo parameterised by excitation angle
+$\alpha_\mathrm{exc}$, \texttt{FOV}, \texttt{Nfe} and \texttt{Npe}, acquiring
+one k-space row per shot. The matching estimator is
+\texttt{fit\_t1\_generalized\_ir}, which accepts per-block inversion and
+excitation angles, optional \texttt{TRs}, and \texttt{Npe}: passing
+\texttt{Npe = nothing} selects the fully relaxed steady-state model, while an
+integer \texttt{Npe} selects the transient mean over the acquired
+phase-encode shots, accounting for the ramp from thermal equilibrium when
+TR is short. Both estimators are log-grid scans rather than gradient fits:
+\texttt{fit\_t1\_generalized\_ir} evaluates 300 log-spaced $T_1$ candidates
+over $[5\times10^{-3}, 5]$~s (the long-TR \texttt{fit\_t1\_ir} uses 400, the
+joint $T_1/T_2$ fit a $200\times120$ grid) and keeps the lowest-SSE candidate
+with a closed-form amplitude at each. The ${\approx}2.3\%$ spacing between
+candidates sets a ${\approx}{\pm}1.1\%$ quantisation floor on any fitted $T_1$,
+so the reported $T_1$ MAPEs cannot fall below ${\approx}1\%$ by construction ---
+this is the ``fitter grid floor'' referred to in
+Chapter~\ref{ch:adaptive-rl}. It and the conventional long-TR \texttt{fit\_t1\_ir} estimator
+share the longitudinal forward models
+(\texttt{steady\_state\_mz\_at\_excite},
+\texttt{transient\_mz\_at\_excite\_npe},
+\texttt{transient\_mz\_per\_shot}), which are reused unchanged by the cached
+background-water model (Chapter~\ref{ch:adaptive-rl}) and the Cramer--Rao
+baselines, so the same physics underlies the simulator, the fitter and the
+fixed comparators.
 
-\textbf{2D Cartesian sequence builders}
-\begin{itemize}
-\tightlist
-\item
-  \texttt{ir\_se\_2d\_sequence(TI,\ TE,\ TR;\ ...)}: main spatial T1
-  acquisition for E2. It is parameterised by
-  \(\alpha_{\mathrm{exc}}\), \texttt{FOV}, \texttt{Nfe} and
-  \texttt{Npe}; it acquires one k-space row per shot, so fits pass
-  \texttt{Npe} to account for the transient ramp from thermal
-  equilibrium.
-\item
-  \texttt{ir\_tse\_2d\_sequence(TI,\ esp,\ TR;\ ...)}: turbo spin-echo
-  variant with echo-train length \texttt{etl}. It is faster by
-  approximately \texttt{etl} and exposes T2 information when TE varies
-  across echoes.
-\item
-  \texttt{se\_2d\_sequence(TE,\ TR;\ ...)}: 2D spin echo without
-  inversion preparation, used for spatial T2 mapping by sweeping TE.
-\item
-  \texttt{gre\_2d\_sequence(TE,\ TR;\ ...)}: fast gradient-echo
-  reference with flip angle \(\alpha\). It has no 180° refocus, so it is
-  T2*-weighted; the implementation includes gradient spoiling only, not
-  full RF-spoiled FLASH phase cycling.
-\end{itemize}
+All image-producing sequences use the same reconstruction path,
+\texttt{raw\_to\_kspace} then \texttt{kspace\_to\_image}, with sphere-centre
+ROI extraction through \texttt{sphere\_descriptor\_pixels} sharing the
+DC-at-centre convention so no separate image-space mapping is hand-coded in
+the experiments. Appendix~\ref{app:fit-model-derivations} gives the fit
+derivations that matter for interpreting the estimators.
 
-\textbf{Analytical signal models}
-\begin{itemize}
-\tightlist
-\item
-  \texttt{generalized\_ir\_signal}: non-spatial IR signal for arbitrary
-  inversion angle. \(\pi\) gives inversion recovery and \(\pi/2\) gives
-  saturation recovery.
-\item
-  \texttt{mse\_signal}: analytical CPMG echo train,
-  \(e^{-k\,\mathrm{ESP}/T_2}\). Used as a fast T2 oracle in tests.
-\end{itemize}
+\subsection{The Cramér--Rao baselines}
+\label{sec:crlb-baselines}
 
-\textbf{Fitters and forward models}
-\begin{itemize}
-\tightlist
-\item
-  \texttt{fit\_t2\_se(TEs,\ mags)}: log-linear estimator for
-  \(\lvert S\rvert=S_0e^{-\mathrm{TE}/T_2}\).
-\item
-  \texttt{fit\_t1\_ir(TIs,\ mags)}: conventional long-TR magnitude IR
-  estimator, fitting \(\lvert A - Be^{-\mathrm{TI}/T_1}\rvert\).
-\item
-  \texttt{fit\_t1\_generalized\_ir}: main RL estimator. It accepts
-  per-block inversion angles, optional \texttt{TRs}, excitation angles
-  and \texttt{Npe}; \texttt{Npe = nothing} selects the steady-state
-  model and integer \texttt{Npe} selects the transient mean over the
-  acquired phase-encode shots.
-\item
-  \texttt{fit\_t1\_t2\_generalized\_ir}: joint T1/T2 grid fit for
-  IR-TSE-style data. T2 is identifiable only when TE varies, because a
-  constant TE factor can be absorbed into the fitted amplitude.
-\item
-  \texttt{steady\_state\_mz\_at\_excite},
-  \texttt{transient\_mz\_at\_excite\_npe} and
-  \texttt{transient\_mz\_per\_shot}: shared longitudinal forward models
-  used by the fitters, tests and CR-style baselines.
-\end{itemize}
+The fixed-schedule comparators used in Chapter~\ref{ch:adaptive-rl} are not
+hand-chosen: they are Cramér--Rao-optimal schedules, and because the bound
+recurs throughout that chapter it is worth stating what it is. The
+Cramér--Rao lower bound (CRLB) is a floor on the variance of \emph{any}
+unbiased estimator of a parameter, set by the measurement design and the noise
+alone. For Gaussian noise of variance $\sigma^2$, the information a measurement
+at inversion time $\mathrm{TI}_k$ carries about $T_1$ is the squared
+sensitivity of the signal to $T_1$, $\sigma^{-2}(\partial s_k/\partial T_1)^2$;
+summed over measurements this is the Fisher information $I$, and
+$\mathrm{Var}(\hat T_1)\ge I^{-1}$. With an unknown amplitude $A$ as well, $I$
+becomes the $2\times2$ Fisher matrix $\sigma^{-2}J^\top J$ ($J$ the Jacobian of
+the signal in $(T_1, A)$) and the $T_1$ bound is the $(T_1,T_1)$ entry of its
+inverse --- larger than the single-parameter value, because the information
+must be shared with the nuisance $A$, which is why an informative design needs
+at least two well-placed points. The sensitivity $\partial s_k/\partial T_1$
+vanishes at very short and very long TI and peaks near $\mathrm{TI}\approx T_1$,
+so the most informative inversion times sit on the steep part of the recovery;
+Jones et al.~\cite{optimal_sampling_crlb:96} show the exponential optimum is a
+few peaky points (one near zero, the rest near $1.28\,T$).
 
-All image-producing sequences use the same reconstruction path:
-\texttt{raw\_to\_kspace(raw,\ Npe,\ Nfe)} followed by
-\texttt{kspace\_to\_image(ksp)}. Sphere-centre ROI extraction uses the
-same coordinate convention through \texttt{sphere\_descriptor\_pixels},
-avoiding a separate hand-coded image-space mapping in the experiments.
-The heavier fit algebra is kept out of the main implementation chapter;
-Appendix~\ref{app:fit-model-derivations} summarises the derivations that
-matter for interpreting the estimators.
+Because the slope is evaluated at a specific $T_1$, the CRLB is optimal
+\emph{for an assumed value}. To design one schedule for a whole range,
+\texttt{cr\_optimize} minimises the mean relative variance
+$M^{-1}\sum_j \mathrm{Var}(\hat T_{1,j})/T_{1,j}^2$ over a fleet of
+representative $T_1$ values --- the normalisation makes the amplitude cancel and
+weights each $T_1$ fairly --- which is exactly the static-average objective of
+Beracha et al.~\cite{adaptive_mri:23}. This objective is non-convex in the block
+timings, so it is solved numerically: not by gradient descent or a TI grid, but
+by multi-start coordinate descent, scoring random log-uniform schedules and
+refining the best by coordinate moves on each $(\mathrm{TI},\mathrm{TR})$ under
+the scan-time budget, swept over the number of blocks. Both TI and TR are free
+and are evaluated on the same transient forward model as the fitter, so the
+solver can trade short, partially-recovered blocks against longer-TR probes
+(Chapter~\ref{ch:adaptive-rl} reports the resulting schedules and a
+seed-stability check).
+
+This bound is also the right lens on the fitter itself:
+\texttt{fit\_t1\_generalized\_ir} returns the maximum-likelihood point (the
+minimum-SSE grid candidate), which is the peak of the same Gaussian likelihood
+whose curvature is the Fisher information --- so the CRLB is the asymptotic
+width of the posterior the fitter implicitly maximises. An adaptive scheme that
+retained the whole posterior rather than its peak would obtain that width as a
+calibrated uncertainty for free (Chapter~\ref{ch:adaptive-rl}, future work); the
+point fitter must instead bootstrap it.
 
 \hypertarget{komamri-integration}{%
 \section{KomaMRI integration}\label{komamri-integration}}
@@ -732,85 +804,77 @@ explicit.
 \section{Library availability}\label{library-availability}}
 
 \texttt{MRISystemPhantom.jl} is developed as a standalone open-source
-Julia package, with source code hosted on
-\href{https://github.com/ArthurAllilaire/MRISystemPhantom.jl}{GitHub}
-and
+Julia package, with source on
+\href{https://github.com/ArthurAllilaire/MRISystemPhantom.jl}{GitHub} and
 \href{https://arthurallilaire.github.io/MRISystemPhantom.jl}{API
-documentation} hosted on GitHub Pages. The package
-includes a complete test suite (\textasciitilde373 tests) and
-documentation pages covering phantom construction, sequence design,
-parameter fitting, and SNR diagnostics.
+documentation} on GitHub Pages. It ships a complete test suite
+(\textasciitilde373 tests) and a set of runnable example scripts covering
+phantom construction, $T_1$ mapping, the conventional fixed-sequence
+baseline, NEMA MS-1 SNR calibration, and the water-coarsening/apodisation
+fidelity checks reported here. Packaging the work as a tested library rather
+than experiment-specific scripts is a deliberate contribution: it provides a
+reusable, reproducible digital twin of a widely deployed calibration device
+that returns standard \texttt{KomaMRI.Phantom} and \texttt{Sequence}
+objects, so other groups can check simulated qMRI methods against known
+$T_1/T_2$ reference values before scanner deployment.
 
-An independent, public library has several benefits:
+\section{Limitations and future work}
+\label{sec:twin-limitations}
 
-\begin{enumerate}
-\tightlist
-\item
-  It provides a complete, tested forward pipeline --- phantom
-  construction, sequence generation, simulation, reconstruction, ROI
-  extraction, and parameter fitting --- rather than a set of
-  experiment-specific scripts.
-\item
-  It makes the methodology reproducible and extensible for other groups
-  working on quantitative MRI system validation or simulation-based
-  sequence optimisation.
-\item
-  It provides a reusable digital twin of a widely deployed calibration
-  device, so simulated methods can be checked against known T1/T2
-  reference values before scanner deployment.
-\item
-  It integrates directly with the Julia/KomaMRI ecosystem by returning
-  standard \texttt{KomaMRI.Phantom} and \texttt{Sequence} objects.
-\item
-  Its example scripts provide runnable, educational references for
-  phantom construction, sequence design, parameter fitting, SNR
-  calibration, and the fidelity checks reported here.
-\end{enumerate}
+Beyond the accuracy caveats drawn together in the conclusion
+(Chapter~\ref{Conclusions}), the most consequential limitation is the shipped
+fitter. It is one-to-one with the sequence family it inverts: each estimator is
+a closed-form model for a single signal equation (generalized IR-SE), so every
+new acquisition family needs its own bespoke fit, which does not scale. The
+estimators are also discrete log-grid scans, so their accuracy is additionally
+capped by the grid spacing --- about $1\%$ at the 300 points used in training
+and ${\approx}0.5\%$ at 500
+(Section~\ref{shipped-sequences-and-fitting-models}). Replacing them with an
+EPG-based fitting library would both lift that resolution ceiling and break the
+one-to-one coupling, modelling the spin history of echo trains and partial
+spoiling across families; integrating a learned deep-learning reconstruction or
+an end-to-end fit is the further-out alternative, and needs research.
 
-\hypertarget{example-scripts}{%
-\subsection{Example scripts}\label{example-scripts}}
+Several extensions would broaden the twin's reach. Pulseq import/export would
+let it drive real scanners and consume the large community bank of
+vendor-neutral sequences, instead of the hand-built IR-SE and SE blocks it
+generates today, which would also give the RL agent a far larger sequence
+action space (Chapter~\ref{ch:adaptive-rl}). The voxelisation and
+spin-construction logic are currently coupled to KomaMRI; that coupling was
+productive here but limits portability, and the voxelisation validated in
+Chapter~\ref{ch:validating-komamri} should be exportable to other simulators ---
+for example to plug the phantom into MRzero --- reusing the spin logic rather
+than re-deriving it. The ROI extraction is sphere-centric; supporting arbitrary,
+non-spherical regions would generalise it to other phantom and anatomy
+geometries. The water-cache and coarsening fidelity were also validated
+narrowly: only on the $T_1$ plate, only for spherical sphere boundaries, with a
+Hamming apodisation window, and only for the single thin axial slab used here.
+Gibbs ringing depends on boundary shape, the Hamming window is only the most
+common of several apodisation kernels, and the cache has not been checked on the
+$T_2$/PD plates or for true 3-D acquisitions --- all of which must be confirmed
+before relying on it outside this setting.
 
-The package ships a set of runnable, self-contained demonstration
-scripts in \texttt{examples/}. Each exercises one slice of the public
-API and writes interactive Plotly HTML into \texttt{src/assets/}.
+Finally, the library could better support the RL use case it was built for. Its
+visualisation is currently static recovery-curve and image plots; richer tooling
+--- episode-averaged parameter choices, or videos of the evolving signal rather
+than snapshots --- would make adaptive-policy behaviour far easier to inspect.
+The longer-term goal is to remove the hand-written fitter entirely and learn end
+to end from the reconstructed signal; supporting that would mean a different
+Gymnasium contract, exposing raw images or k-space as the observation and
+deriving the reward from signal agreement rather than from a fitted estimate.
 
-% TODO: Insert a screenshot/photo of the new Plotly HTML phantom viewer here,
-% ideally showing the vertical slice or fidelity-phantom water grid comparison.
+\section{Summary}
+\label{sec:twin-summary}
 
-\begin{itemize}
-\tightlist
-\item
-  \texttt{plot\_phantom.jl}: renders the T1/T2/PD maps of the full
-  phantom, per-plate axial slices, the fiducial grid, a vertical slice
-  through all three contrast plates, and an augmented rotated/translated
-  phantom. The outputs are interactive Plotly HTML files.
-\item
-  \texttt{plot\_fidelity\_phantoms.jl}: visualises the phantom geometry 
-  (water-coarsening and caching) behind the multi-fidelity RL curriculum.
-  The outputs are interactive Plotly HTML files.
-\item
-  \texttt{t1\_mapping.jl}: runs a full IR-SE acquisition, reconstructs
-  the image, extracts per-sphere ROIs and fits T1.
-\item
-  \texttt{conventional\_baseline.jl}: runs the conventional
-  fixed-sequence baseline (IR/SE sweep plus fit for all 28 T1 \& T2
-  contrast spheres).
-\item
-  \texttt{snr\_calibration.jl}: performs the NEMA MS-1 dual-acquisition
-  SNR measurement.
-\item
-  \texttt{compare\_water\_coarseness.jl} and
-  \texttt{hamming\_apodisation.jl}: produce the fidelity-vs-cost and
-  apodisation figures (§2.3) along with the numbers quoted there.
-\item
-  \texttt{plot\_seqs.jl}: writes one interactive RF/gradient/ADC
-  waveform plot per sequence into
-  \texttt{src/\allowbreak assets/\allowbreak sequences/}.
-  Sequences included: IR-SE (with and without crusher \& TR-spoiler
-  variant), SE for T2 mapping, IR-TSE echo-train, and spoiled GRE.
-\end{itemize}
-
-Because the output is a standard
-\texttt{KomaMRI.Phantom}/\texttt{Sequence}, these scripts rely only on
-KomaMRI's own interactive plotting, with no bespoke visualisation code
-in the library.
+This chapter delivered A1: a configurable, serialisable digital twin of the
+QalibreMD Model 130 phantom built on a single \texttt{PhantomConfig} $\to$
+\texttt{build\_phantom} contract. The two design decisions that matter for
+the rest of the report are the independent, coarsenable background-water grid
+--- the lever that makes multi-fidelity training affordable in
+Chapter~\ref{ch:adaptive-rl} --- and the explicit, dependency-checked
+random-phantom samplers that let each RL episode draw a fresh, plausible
+phantom without touching library code. The known accuracy caveats
+(placeholder PD/fiducial values, fixed $20\,^{\circ}$C tables) do not affect
+the $T_1/T_2$ experiments but bound any future sim-to-real comparison. With
+the twin in place, Chapter~\ref{ch:validating-komamri} turns to whether the
+simulator that consumes it is numerically trustworthy.

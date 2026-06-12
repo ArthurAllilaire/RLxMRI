@@ -1,6 +1,25 @@
 \chapter[Validating KomaMRI]{Validating KomaMRI}
 \label{ch:validating-komamri}
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% IMPORTANT
+\begin{spacing}{1} %THESE FOUR
+\minitoc % LINES MUST APPEAR IN
+\end{spacing} % EVERY
+\thesisspacing % CHAPTER
+% COPY THEM IN ANY NEW CHAPTER
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\setlength{\textfloatsep}{9pt plus 2pt minus 2pt}
+\setlength{\floatsep}{7pt plus 2pt minus 2pt}
+\setlength{\intextsep}{7pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{3pt}
+\setlength{\belowcaptionskip}{0pt}
+
+
+\section{Chapter aim}
+\label{sec:komamri-chapter-aim}
 KomaMRI is the simulation environment that all RL agents in this project
 interact with, so simulator validation is a prerequisite for every result in
 this project. Although KomaMRI is a peer-reviewed, open-source, and actively
@@ -16,12 +35,65 @@ merged, and
 \href{https://github.com/JuliaHealth/KomaMRI.jl/pull/789}{PR \#789}, open at
 the time of writing.
 
-This work is part of A1, the validated digital twin and simulator pipeline, and
-directly addresses C1: simulator validation for qMRI. For A1, the key
-contribution is the validation of the simulation pipeline rather than the
-upstream reports alone. The two failures were reduced to minimal reproducers, traced to
-specific floating-point timing mechanisms, fixed upstream, and then verified by
-recovering the phantom's known $T_1$ values in the full qMRI pipeline.
+This chapter delivers A2, the validated Bloch-simulation pipeline, and
+together with the digital twin of Chapter~\ref{ch:mri-system-phantom} (A1) it
+answers C1: simulator validation for qMRI. The key contribution is the
+validation itself rather than the upstream reports alone. The two failures
+were reduced to minimal reproducers, traced to specific floating-point timing
+mechanisms, fixed upstream, and then verified by recovering the phantom's
+known $T_1$ values in the full qMRI pipeline. The hardest part was
+diagnostic, not coding: the symptom was a biased $T_1$ fit that looked exactly
+like an MRI-physics error (imperfect spoiling, residual transverse
+magnetisation), and the chapter shows how that false lead was ruled out
+before the true cause --- a relative-precision collapse of a fixed absolute
+$\epsilon$ time marker at large cumulative time --- was isolated. To our
+knowledge this floating-point failure mode has not been reported for an MRI
+simulator before.
+
+This validation is deliberately different from published simulator
+benchmarking. KomaMRI's own publication compared it against the established
+simulators JEMRIS and MRiLab, reporting mean absolute signal differences
+below 0.1\% versus
+JEMRIS~\cite{komaMRI:23,stoecker_jemris_2010,liu_mrilab_2017}, so
+cross-simulator agreement on short reference sequences is already
+established. What those benchmarks do not test is the level this project
+depends on: whether a long sequence assembled from many adaptive blocks
+still preserves quantitative $T_1$ recovery after simulation,
+reconstruction, ROI extraction, and fitting
+(Table~\ref{tab:komamri-validation-levels}). A timing error of one RF sample
+biases the fitted $T_1$ while the image remains visually plausible, which is
+exactly the failure class the experiments below exposed.
+
+\begin{center}
+\begingroup
+\small
+\setstretch{1}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.08}
+\begin{tabularx}{\linewidth}{%
+  >{\raggedright\arraybackslash}p{0.20\linewidth}
+  >{\raggedright\arraybackslash}p{0.26\linewidth}
+  >{\raggedright\arraybackslash}X
+  >{\raggedright\arraybackslash}X}
+\toprule
+Validation level & Example & What it checks & What it misses \\
+\midrule
+Cross-simulator benchmark & KomaMRI vs JEMRIS/MRiLab~\cite{komaMRI:23} &
+Bloch-solution agreement, speed, usability on reference sequences &
+Long-cumulative-time behaviour; project-specific pipelines \\
+Qualitative image check & Reconstructed phantom looks plausible &
+Geometry, rough contrast, reconstruction conventions &
+Systematic signal errors that bias $T_1$/$T_2$ fits \\
+This chapter & Noise-free IR-SE $T_1$ recovery on the digital T1 plate &
+End-to-end quantitative correctness at long cumulative sequence times &
+Hardware imperfections; other sequence families \\
+\bottomrule
+\end{tabularx}
+\captionof{table}{Levels of simulator validation. Published benchmarks cover
+the first row; qMRI requires the third.}
+\label{tab:komamri-validation-levels}
+\endgroup
+\end{center}
 
 \section{KomaMRI simulation model}
 \label{sec:komamri-simulation-model}
@@ -124,8 +196,14 @@ physical state at the start of each shot.
 Reconstruction explanations were also tested. Hamming-window filtering and ROI
 masking did not remove the error, making ordinary Gibbs ringing unlikely. A
 phase-sensitive reconstruction was also checked to ensure the magnitude image
-was not hiding a sign or phase convention error. These tests changed details of
-the images, but not the failure mode.
+was not hiding a sign or phase convention error. The in-house FFT
+reconstruction was further cross-checked against MRIReco.jl, a general Julia
+MRI reconstruction framework~\cite{knopp_mrireco_2021}: for the fully sampled
+Cartesian data used here the two agreed, ruling out the reconstruction
+conventions as the cause. (The in-house path is kept in the RL loop because
+MRIReco's encoding-operator construction added roughly 60\% overhead per
+reconstruction, paid at every environment step.) These tests changed details
+of the images, but not the failure mode.
 
 The decisive diagnostic was to inspect k-space directly. Rather than showing
 random fitting error, the measured k-space collapsed after a fixed amount of
@@ -333,13 +411,13 @@ streaking in Figure~\ref{fig:komamri-buggy-pixel-grid} is removed.}
 \label{fig:komamri-fixed-pixel-grid}
 \end{center}
 
-\begin{center}
-\includegraphics[width=0.62\linewidth]{imgs/komaMRI/fixed_t1_fit_vs_true.png}
-\captionof{figure}{Noise-free $T_1$ recovery after both fixes. Mean MAPE decreases from
-39.4\% to 0.48\%, and all spheres are within 1.21\% of their true value. This
-is the expected accuracy for the noise-free validation case.}
-\label{fig:komamri-fixed-t1-fit}
-\end{center}
+% \begin{center}
+% \includegraphics[width=0.62\linewidth]{imgs/komaMRI/fixed_t1_fit_vs_true.png}
+% \captionof{figure}{Noise-free $T_1$ recovery after both fixes. Mean MAPE decreases from
+% 39.4\% to 0.48\%, and all spheres are within 1.21\% of their true value. This
+% is the expected accuracy for the noise-free validation case.}
+% \label{fig:komamri-fixed-t1-fit}
+% \end{center}
 
 \begin{center}
 \includegraphics[width=0.68\linewidth]{imgs/komaMRI/fixed_recovery_curves_koma.png}
@@ -435,3 +513,42 @@ simulator shown in Figures~\ref{fig:komamri-buggy-t1-fit} to
 both sub-percent (0.43\% and 0.48\% mean MAPE respectively). Spoiling remains
 important for realistic sequence design, but it was not the cause of this
 validation failure.
+
+\section{Limitations and future work}
+\label{sec:komamri-limitations}
+
+The timing failure has implications beyond KomaMRI. The same mechanism ---
+Float64 spacing overrunning a fixed absolute $\epsilon$ at long cumulative time
+--- could silently degrade other Bloch simulators, most of which are checked
+only against plausible-looking images. KomaMRI's own published validation
+reports ${\approx}0.1\%$ agreement with established simulators such as
+JEMRIS~\cite{stoecker_jemris_2010}, but those benchmarks were run on short
+sequences; they should be re-checked at the long cumulative times stressed here,
+and a regression test for long-duration sequences with hard RF pulses should be
+added so the failure is caught before it silently degrades output.
+
+Broader validation is needed before the simulator is trusted for other qMRI
+pipelines. The no-noise recovery check should be repeated with shaped (sinc) RF
+pulses and slice selection, not only hard pulses --- the regime where the timing
+error becomes a smaller perturbation (Section~\ref{subsec:komamri-why-qmri}) but
+other approximations enter. This is a prerequisite for the action-space and
+slice-selective extensions proposed for the RL agent
+(Chapter~\ref{ch:adaptive-rl}): those would have to be validated here first.
+
+\section{Summary}
+\label{sec:komamri-summary}
+
+This chapter delivered A2 and, with the twin, completes the answer to C1. The
+qMRI validation that A1 makes possible --- demanding correct $T_1$ recovery
+from a known phantom rather than a plausible-looking image --- exposed two
+floating-point time-discretisation bugs in KomaMRI that only surface beyond
+${\sim}128$ s of cumulative sequence time, precisely the regime that
+RL-driven long acquisitions reach. Both were isolated to minimal reproducers,
+explained by the relative precision of Float64 overrunning a fixed absolute
+$\epsilon$ marker, fixed upstream, and verified end to end: the no-noise
+14-sphere fit improved from 39.4\% to 0.48\% mean MAPE. The lasting lessons
+are that quantitative validation catches systematic errors that qualitative
+image inspection hides, and that a plausible physical explanation (spoiling)
+must still be ruled out rather than assumed. The corrected simulator is the
+trusted foundation for the adaptive experiments of
+Chapter~\ref{ch:adaptive-rl}.

@@ -514,7 +514,11 @@ weighting ($\alpha<1$) did not help in the cheap screen.}
 \label{tab:e2-reward-screen}
 \end{table}
 
-Training uses PPO~\cite{schulman_ppo_2017}. PPO was chosen because it is a
+Training uses PPO~\cite{schulman_ppo_2017} with the Stable-Baselines3
+\texttt{MlpPolicy}: a small multilayer perceptron with two hidden layers of 256
+units (\texttt{tanh}) shared between the policy and value heads, trained at
+learning rate $10^{-4}$, $\gamma=0.99$, GAE-$\lambda=0.95$, entropy coefficient
+$0.005$, and 512-step rollouts. PPO was chosen because it is a
 robust on-policy baseline and can be used with continuous actions without
 needing a replay buffer. This matters for the Python--Julia simulator loop:
 each rollout step triggers simulator, reconstruction, fitting, and reward code
@@ -1162,10 +1166,19 @@ interval does not overlap any other row's.}
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.7\linewidth]{imgs/e2_rl/runB_memory_mape.png}
-\caption{Memory ablation on the strict held-out evaluation: mean MAPE with
-95\% CIs per memory mechanism; horizontal lines mark the fixed schedules on the
-same seed.}
+\begin{minipage}[c]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runB_memory_mape.png}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.49\linewidth}
+\centering
+\includegraphics[width=\linewidth]{imgs/e2_rl/runB_memory_t1bands.png}
+\end{minipage}
+\caption{Memory ablation on the strict held-out evaluation. Left: mean MAPE with
+95\% CIs per mechanism; horizontal lines mark the fixed schedules on the same
+seed. Right: mean MAPE binned by realised $T_1$ (the meaningful breakdown, since
+each sphere is an independent draw), showing the histogram arm is the most
+accurate in every band.}
 \label{fig:run-b-memory}
 \end{figure}
 
@@ -1174,7 +1187,11 @@ $\sigma$-channel $>$ LSTM, and only the first two beat the best fixed
 schedule. The histogram policy's 2.93\% mean MAPE is the best result in
 this project: 1.2 percentage points better than the memoryless control and
 3.1 points better than the fixed log grid, with 95.8\% of episodes under
-5\% error.
+5\% error. Binning the held-out errors by realised $T_1$
+(Figure~\ref{fig:run-b-memory}, right) shows the histogram arm is the most
+accurate in every band, from $2.6\%$ at short $T_1$ to $3.2\%$ at long $T_1$, so
+the gain holds across the clinical range rather than coming from one easy
+regime.
 
 The $\sigma$-channel gives no measurable benefit. Its global-best policy
 scores 5.25\% on the strict held-out seed, a point estimate worse than the
@@ -1355,6 +1372,10 @@ All results in this chapter are therefore simulator results. They test whether
 closed-loop sequence design can work inside the KomaMRI-based digital twin; they
 do not yet show that the learned timings transfer to scanner constraints,
 sequence programming details, reconstruction pipelines, or real phantom data.
+The policy is also trained at a single field strength (1.5\,T) and one
+calibrated noise level; since $T_1$ is field-dependent and SNR varies with coil
+and hardware, transfer across fields or SNR regimes would likely need retraining
+or domain randomisation over both.
 
 A related geometric simplification is the slice thickness. To keep the spin
 count tractable, the reported runs image a single 1 mm axial slab through the
@@ -1370,11 +1391,54 @@ simulation cost and partial-volume blurring, both of which the multi-fidelity
 machinery is designed to absorb, but a slice-selective study at clinical
 thickness remains future work.
 
+A further limitation is analytical: the achievable error floor is not pinned
+down, so it is unclear how much of the residual MAPE is the sequence design and
+how much is the estimator, the noise and the simulator itself. A noise-free
+calibration with a finer 500-point fitter grid reached ${\approx}0.48\%$ mean
+MAPE across the 14 spheres, already well below the ${\approx}1\%$ quantisation
+floor of the coarser 300-point grid the RL fitter uses
+(Chapter~\ref{ch:mri-system-phantom}); adopting the same 500-point grid in the
+RL fitter would remove that floor at negligible cost. That residual is largely insensitive to
+the forward model's perfect-spoiling assumption (modelling explicit crusher
+gradients only moves it from $0.48\%$ to $0.43\%$), so it most likely reflects
+Bloch time discretisation in the simulator rather than a fundamental estimator
+floor. Under
+realistic noise there is then limited headroom above this floor for any
+sequence-design method, and establishing it directly (a Cram\'er--Rao bound at
+the true $T_1$, or an oracle-grid fit) is missing here. Relatedly, the ablations
+cleanly attribute the gain to adaptivity and acquisition history, but a deeper
+mechanistic account of what the policy exploits, and why short and long $T_1$
+behave differently, would strengthen the claim.
+
+A scope limitation concerns localisation. The agent reads per-sphere ROI
+signals extracted at the spheres' \emph{known} pixel positions, so although pose
+is randomised each episode the policy is only made robust to that variation; it
+never has to find the spheres. The twin's pose sampler sets up genuinely
+unknown-pose operation, but joint localisation-and-mapping is not attempted
+here.
+
+The multi-fidelity speedup is also structural rather than general. The analytic
+surrogate and the cached- and coarsened-water rungs exist only because the
+background water is a separable, homogeneous component that can be cached and
+down-sampled (Section~\ref{sec:e2-water-cache}); a problem without such a cheap,
+faithful approximation would not gain the ${\sim}30\times$ ladder. The
+efficiency contribution is therefore a recipe that exploits problem structure,
+not a black-box accelerator.
+
+Because reward flows through one fitter, the policy is also co-adapted to that
+estimator and could exploit its quirks rather than the underlying physics ---
+the failure mode behind the degenerate E1 policy. The reported gain is thus
+partly specific to this fitter; a different estimator, such as the EPG or
+learned fit suggested in Chapter~\ref{ch:mri-system-phantom}, could shift the
+optimal policy.
+
 Finally, the action space is still narrow. The current policy tunes an
 IR-SE-style block, mostly through TI and TR. It cannot choose a different
 sequence family, change the phase-encode budget, or stop early to trade accuracy
-against scan time. The chapter should therefore be read as an adaptive T1 timing
-study, not as a general autonomous MRI protocol designer.
+against scan time, and it carries no hardware constraints --- SAR, gradient slew
+or $B_1^+$ limits --- that a deployable adaptive sequence would have to respect.
+The chapter should therefore be read as an adaptive T1 timing study, not as a
+general autonomous MRI protocol designer.
 
 \section{Future work}
 \label{sec:e2-future}
@@ -1441,11 +1505,33 @@ would let the policy trade through-plane coverage against scan time, and would
 exercise the twin's anisotropic water grid and SO(3) pose sampler that are
 implemented but unused here.
 
-Finally, the objective could become a Pareto curve rather than one fixed scan
+The objective could also become a Pareto curve rather than one fixed scan
 time. In clinical use, a protocol that reaches 5\% MAPE in 120 s may be more
 valuable than one that reaches 3.5\% in 240 s. A stop action or explicit
 scan-time penalty would let the policy choose this trade-off, while fixed
 baselines can be compared across the same accuracy--time frontier.
+
+A practical prerequisite for deployment is real-time feasibility. Each block's
+fit (a Levenberg--Marquardt or grid scan) and the policy's forward pass must
+complete within the inter-block interval for the loop to adapt \emph{online} on
+a scanner, rather than being replayed offline as it is here. The model itself is
+small: its forward pass measures ${\approx}0.3$~ms on CPU (sub-millisecond),
+against acquisitions that run for minutes, so policy inference is nowhere near
+the bottleneck.
+What has not been validated is the rest of the pipeline --- reconstruction and
+fitting between blocks --- running inside that timing budget end to end on real
+hardware.
+
+The broadest direction is clinical scoping. This chapter is deliberately general
+proof-of-concept work: it shows that closed-loop timing can reduce $T_1$ MAPE on
+a calibration phantom, but it has not been mapped to a specific clinical qMRI
+acquisition where that reduction would matter, nor optimised for one. The
+natural progression is to move from the calibration phantom to a digital twin of
+patient anatomy --- realistic tissue distributions, partial-volume boundaries
+and motion --- and test whether the MAPE reduction holds there, and ultimately
+whether it translates into better downstream outcomes such as sharper tissue
+characterisation or shorter clinical scans. Only at that point does the method
+stop being a proof of concept and become a candidate acquisition strategy.
 
 One baseline this chapter identifies but does not implement would sharpen the
 attribution of the gain: a per-sphere Bayesian posterior with greedy
