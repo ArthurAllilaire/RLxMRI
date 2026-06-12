@@ -83,19 +83,20 @@ def _clinical_irse(step: int) -> np.ndarray:
 _LOG_GRID_TR = 1.7  # s — TR used by the trmatched baseline
 
 
-def make_log_grid_trmatched(budget_s: float, npe: int):
-    """log_grid with TR matched to V5's average (1.7 s).
+def make_log_grid_trmatched(budget_s: float, npe: int, tr_s: float = _LOG_GRID_TR):
+    """log_grid with TR matched to the RL agent's average (default 1.7 s).
 
-    TR shortened from 4.0 s → 1.7 s to match the average TR the RL agent
-    uses. The number of TI grid points equals the number of blocks that fit
-    in the budget (floor(budget / (Npe * TR))), log-spaced over [0.05, 3.0] s.
-    This avoids the fixed-7 bug where a 560 s budget would repeat the first
-    3 TIs, or a 240 s budget would miss the upper TI range entirely.
+    The number of TI grid points equals the number of blocks that fit in the
+    budget (floor(budget / (Npe * TR))), log-spaced over [0.05, 3.0] s. This
+    avoids the fixed-7 bug where a 560 s budget would repeat the first 3 TIs,
+    or a 240 s budget would miss the upper TI range entirely. Pass ``tr_s`` to
+    match the policy's *realised* mean TR (e.g. 1.24 s), which equalises block
+    count and isolates the TI-placement gain from the block-count gain.
     """
-    n_steps = max(1, int(np.floor(budget_s / (npe * _LOG_GRID_TR))))
+    n_steps = max(1, int(np.floor(budget_s / (npe * tr_s))))
     tis = log_ti_grid(n=n_steps)
     def _sched(step: int) -> np.ndarray:
-        return np.array([float(tis[step % n_steps]), 0.020, _LOG_GRID_TR, 90.0],
+        return np.array([float(tis[step % n_steps]), 0.020, tr_s, 90.0],
                         dtype=np.float32)
     return _sched
 
@@ -486,6 +487,14 @@ def main():
     p.add_argument("--use-gpu", action="store_true",
                    help="Run KomaMRI's Bloch simulation on the GPU "
                         "(requires a CUDA-enabled Julia runtime/project).")
+    p.add_argument("--cpu", action="store_true",
+                   help="Force CPU simulation, overriding a --match-run's saved "
+                        "use_gpu (e.g. on a CPU-only machine).")
+    p.add_argument("--log-grid-tr", type=float, default=_LOG_GRID_TR,
+                   help="TR (s) for the log_grid_trmatched baseline. Default "
+                        f"{_LOG_GRID_TR}. Set to the policy's realised mean TR "
+                        "(e.g. 1.24) to equalise block count and isolate the "
+                        "TI-placement gain from the block-count gain.")
     p.add_argument("--fix-te", action="store_true",
                    help="Match the RL action mode: pin TE=20ms (TI,TR[,α] only). "
                         "Required for an apples-to-apples comparison with a "
@@ -610,6 +619,8 @@ def main():
             learn_alpha=args.learn_alpha,
             log_ti_action=args.log_ti_action,
         )
+    if args.cpu:
+        env_kwargs["use_gpu"] = False
     # CR solver budget defaults to the env's scan-time budget (matched or args).
     cr_budget = (env_kwargs["time_budget_s"] if args.cr_budget is None
                  else args.cr_budget)
@@ -619,10 +630,11 @@ def main():
     npe = int(env_kwargs.get("Npe", args.npe))
     if not args.cr_only:
         budget_s = float(env_kwargs["time_budget_s"])
-        schedules["log_grid_trmatched"] = make_log_grid_trmatched(budget_s, npe)
-        n_trmatched = max(1, int(np.floor(budget_s / (npe * _LOG_GRID_TR))))
+        schedules["log_grid_trmatched"] = make_log_grid_trmatched(
+            budget_s, npe, args.log_grid_tr)
+        n_trmatched = max(1, int(np.floor(budget_s / (npe * args.log_grid_tr))))
         print(f"[baseline_e2] log_grid_trmatched: {n_trmatched} TI points "
-              f"for budget={budget_s:.0f}s, Npe={npe}, TR={_LOG_GRID_TR}s")
+              f"for budget={budget_s:.0f}s, Npe={npe}, TR={args.log_grid_tr}s")
     cr_timing = _cr_timing_constraints_from_env(env_kwargs, seed=args.seed)
     print("[baseline_e2] CR timing constraints from E2 env: "
           f"TR_lo_floor={cr_timing['tr_lo_floor']:.3f}s, "

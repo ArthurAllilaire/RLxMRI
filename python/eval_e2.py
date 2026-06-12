@@ -16,11 +16,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# juliapkg env vars must be set before importing juliacall, and we import
+# juliacall first (below) — earlier than the qalibremd_gym.env module that
+# normally sets these. Without this, juliacall instantiates a fresh
+# .venv/julia_env/ that lacks PythonCall/MRISystemPhantom. setdefault so an
+# explicit env (e.g. run_e2.sh sourcing .envrc.local) still wins.
+_runtime_proj = str(Path(__file__).resolve().parent / "julia_runtime")
+os.environ.setdefault("PYTHON_JULIAPKG_PROJECT", _runtime_proj)
+os.environ.setdefault("PYTHON_JULIAPKG_OFFLINE", "yes")
 
 # Import juliacall before torch (pulled in by stable_baselines3). On macOS, Julia
 # and torch both install mach exception-port handlers at init; whichever loads
@@ -106,6 +116,10 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
     tr_lift_amounts, te_clamp_amounts = [], []
     # D2 readout: per-pool-index MAPE so we can see which T1 values fail.
     pool_apes: dict[int, list[float]] = {}
+    # Flat (realised T1, abs-pct-error) pairs across all spheres and episodes,
+    # for an error-vs-T1 breakdown (the per-pool-index view is uninformative
+    # under the continuous-T1 sampler, where each slot is an i.i.d. draw).
+    t1_true_all, ape_all = [], []
 
     for ep in range(n_episodes):
         obs, _ = raw_env.reset(seed=seed_offset + ep)
@@ -138,6 +152,8 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
         per_sphere.append(ape)
         for pi, a in zip(sphere_idx, ape):
             pool_apes.setdefault(int(pi), []).append(float(a))
+        t1_true_all.extend(t1_true.tolist())
+        ape_all.extend(ape.tolist())
         ti_choices.extend(ep_tis)
         times.append(float(info.get("time_s", raw_env.time_used_s)))
 
@@ -152,6 +168,8 @@ def evaluate_policy(policy_path: Path, vecnorm_path: Optional[Path],
         "success_5pct":       float(np.mean([m < 0.05 for m in mapes])),
         "per_sphere_mape_pct": per_sphere_arr * 100,
         "per_pool_mape_pct":  per_pool,
+        "t1_true_all_s":      t1_true_all,
+        "ape_all":            ape_all,
         "mean_scan_time_s":   float(np.mean(times)),
         "ti_choices_s":       ti_choices,
         "action_repair_rate": float(np.mean(repair_flags)) if repair_flags else 0.0,
@@ -245,6 +263,9 @@ def main():
     p.add_argument("--mape-alpha", type=float, default=1.0)
     p.add_argument("--allow-stop", action="store_true")
     p.add_argument("--use-gpu", action="store_true")
+    p.add_argument("--cpu", action="store_true",
+                   help="Force CPU simulation, overriding the run's saved "
+                        "use_gpu (e.g. for a CPU-only machine).")
     p.add_argument("--nfe", type=int, default=None)
     p.add_argument("--npe", type=int, default=None)
     p.add_argument("--summary-name", type=str, default=None,
@@ -321,6 +342,8 @@ def main():
         env_kwargs["Nfe"] = args.nfe
     if args.npe is not None:
         env_kwargs["Npe"] = args.npe
+    if args.cpu:
+        env_kwargs["use_gpu"] = False
     if args.policy is None:
         p.error("--policy is required unless --from-run is given.")
 
@@ -413,6 +436,12 @@ def main():
         "per_sphere":    res["per_sphere_mape_pct"].tolist(),
         "per_pool":      {str(k): list(v)
                            for k, v in res.get("per_pool_mape_pct", {}).items()},
+        # Flat (realised T1 [s], abs-pct-error [fraction]) pairs for the
+        # error-vs-T1 breakdown. Build the low/mid/high figure from these.
+        "per_episode_t1_err": {
+            "t1_true_s": res.get("t1_true_all_s", []),
+            "ape":       res.get("ape_all", []),
+        },
     }
     out_name = (args.summary_name if args.summary_name is not None else
                 ("eval_summary_oracle.json" if args.oracle_fit
