@@ -1432,6 +1432,19 @@ partly specific to this fitter; a different estimator, such as the EPG or
 learned fit suggested in Chapter~\ref{ch:mri-system-phantom}, could shift the
 optimal policy.
 
+The policy is also far less interpretable than the model-based alternative. It
+is a black box that emits point $T_1$ estimates with no calibrated uncertainty,
+and the one mechanism that tried to expose uncertainty --- the fitter-$\sigma$
+channel (Section~\ref{sec:e2-ablations}) --- gave no measurable benefit. The
+Bayesian scheme of Beracha et al.~\cite{adaptive_mri:23} instead carries an
+explicit posterior $p(T_1,\mathrm{PD})$ throughout the scan, so it yields
+per-voxel standard deviations and credible intervals for free, along with a
+principled stopping rule (halt once the posterior is narrow enough). The
+adaptive gain here therefore comes at the cost of the interpretability and
+uncertainty quantification a model-based prior provides intrinsically --- the
+trade-off the greedy-Cram\'er--Rao baseline of Section~\ref{sec:e2-future} is
+designed to probe.
+
 Finally, the action space is still narrow. The current policy tunes an
 IR-SE-style block, mostly through TI and TR. It cannot choose a different
 sequence family, change the phase-encode budget, or stop early to trade accuracy
