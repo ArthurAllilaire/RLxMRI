@@ -41,10 +41,20 @@ The resulting angle between $M$ and $B_0$ is called the flip angle ($\alpha$) an
     \alpha = \gamma \int B_1(t) \, dt
 \end{equation}
 \begin{figure}
-    \centering
-    \includegraphics[width=0.5\linewidth]{imgs/mri_singal_generation.jpg}
-    \caption{A voltage is induced via electromagnetic induction, making an MR signal. (A) The coils are perpendicular and can measure the phase and amplitude of the transverse magnetic vector. (B) RF pulses progressively "flip" the z-axis magnetisation vector into the transverse plane. 
-    Figure from \cite{MRI_Physics_Primer:12}}
+    \begin{minipage}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{imgs/mri_singal_generation.jpg}
+        \caption{A voltage is induced via electromagnetic induction, making an MR signal. (A) The coils are perpendicular and can measure the phase and amplitude of the transverse magnetic vector. (B) RF pulses progressively "flip" the z-axis magnetisation vector into the transverse plane.
+        Figure from \cite{MRI_Physics_Primer:12}}
+    \end{minipage}\hfill
+    \begin{minipage}[t]{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth]{imgs/relaxation_properties.jpg}
+        \caption{\textbf{Upper Row:} Longitudinal relaxation (decreasing the flip angle).
+        \textbf{Lower Row:} Transverse relaxation (spin dephasing)
+        Figure from \cite{RobPio:99}}
+        \label{fig:relaxation-properties}
+    \end{minipage}
 \end{figure}
 \subsection{T1, T2 \& T2* Relaxation}
 After an RF pulse is switched off, \(M_z\) recovers towards thermal
@@ -73,15 +83,6 @@ A \(180^\circ\) refocusing pulse reverses the static dephasing term
 \(T_2'\), which is why spin-echo sequences measure a signal governed
 primarily by \(T_2\) relaxation. In biological tissue, \(T_2\) is generally
 shorter than \(T_1\).\cite{MRI_Physics_Primer:12}
-
-\begin{figure}
-    \centering
-    \includegraphics[width=0.5\linewidth]{imgs/relaxation_properties.jpg}
-    \caption{\textbf{Upper Row:} Longitudinal relaxation (decreasing the flip angle). \\
-    \textbf{Lower Row:} Transverse relaxation (spin dephasing) 
-    Figure from \cite{RobPio:99}}
-    \label{fig:relaxation-properties}
-\end{figure}
 
 \paragraph{Bloch-equation model.}
 The Bloch equations formalise the relaxation behaviour above. In the
@@ -326,65 +327,19 @@ Digital twins extend the reference idea from hardware to executable models. A
 2026 systematic review of digital twinning in MRI defines a twin as a dynamic
 virtual replica linked to its real-world counterpart through data,
 simulation, and analytics, and maps 51 studies from
-2020--2025~\cite{greggio_digital_twinning_mri_2026}. Two of its findings
-locate this project. First, the MRI-twin literature concentrates on
-diagnosis, treatment planning, and monitoring (63\% of studies); hardware,
-protocol, and infrastructure applications --- the category this project
-contributes to --- account for 20\% and are identified as underdeveloped.
-Second, the review names barriers that this report confronts directly:
-heterogeneity of MRI data across vendors, sequences, and field strengths; the
-computational cost of physics simulation; and validation. This project
-addresses them in a bounded setting --- a standardised phantom model, a
-simulator validated by parameter recovery, and a multi-fidelity training loop
-that attacks simulation cost. The term ``digital twin'' is used in a
-correspondingly bounded sense throughout: the twin represents a calibration
-phantom for simulation, validation, and policy training, not a patient or a
-scanner connected to live clinical data.
-
-Table~\ref{tab:bg-related-gaps} summarises how the approaches reviewed in
-this chapter relate to the adaptive-qMRI problem and what each leaves
-unresolved.
-
-\begin{table}[!htbp]
-\centering
-\small
-\setlength{\tabcolsep}{4pt}
-\renewcommand{\arraystretch}{0.96}
-\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.4cm}
->{\raggedright\arraybackslash}X
->{\raggedright\arraybackslash}X}
-\toprule
-Related approach & Strength & Remaining gap for this project \\
-\midrule
-Physical qMRI phantoms~\cite{keenan_phantoms_2024,russek_system_phantom_characterization_2020} &
-Known $T_1$/$T_2$/PD values; repeatable scanner and protocol validation &
-A hardware object cannot generate randomised simulation episodes or cheap RL rollouts \\
-\addlinespace
-MRI digital twins~\cite{greggio_digital_twinning_mri_2026} &
-Executable virtual replicas for prediction and optimisation &
-Existing work targets diagnosis/treatment planning; protocol-level twins are underdeveloped \\
-\addlinespace
-MRI simulators~\cite{komaMRI:23,stoecker_jemris_2010,liu_mrilab_2017} &
-Bloch-equation forward models; sequence testing before scanner execution &
-Benchmarked on short reference sequences, not end-to-end qMRI recovery under long adaptive acquisitions \\
-\addlinespace
-Offline sequence optimisation~\cite{MRISeqSupLearning:21,Jordan_MRF_AUTO:21} &
-Learns or optimises non-trivial acquisition schedules &
-Schedule is fixed before the scan; no conditioning on the current fit \\
-\addlinespace
-Adaptive MR and RL scanner control~\cite{adaptive_mri:23,Walk_RL_CONTROL_MRI:19,zhu2018autoseq,pineda_active_mri_rl_2020} &
-Closed-loop acquisition demonstrably helps &
-Prior tasks differ: Bayesian T2/MRS adaptation, shape classification, 1-D physics, or k-space sampling --- not fitted $T_1$ mapping on a calibrated phantom \\
-\bottomrule
-\end{tabularx}
-\caption{Related approaches, their strengths, and the gap each leaves for
-closed-loop qMRI sequence design. The project combines the rows: an
-executable phantom twin (Chapter~\ref{ch:mri-system-phantom}) drives a
-validated simulator (Chapter~\ref{ch:validating-komamri}), and an RL agent is
-trained and evaluated on the quantitative recovery objective
-(Chapter~\ref{ch:adaptive-rl}).}
-\label{tab:bg-related-gaps}
-\end{table}
+2020--2025~\cite{greggio_digital_twinning_mri_2026}. The field concentrates
+on diagnosis, treatment planning, and monitoring (63\% of studies); twins for
+hardware and protocol development (this project's category) account for 20\%
+and are identified as underdeveloped. Of the barriers the review names, this
+project attacks the computational cost of physics simulation (a
+multi-fidelity training loop) and validation (parameter recovery against
+known reference values); heterogeneity across vendors, sequences, and
+patients is deliberately out of scope --- as early proof-of-concept work, the
+project targets a single standardised calibration phantom in which that
+variability does not arise. ``Digital twin'' is accordingly used in a bounded
+sense throughout: a virtual replica of the phantom for simulation,
+validation, and policy training, not a patient or scanner connected to live
+clinical data.
 
 \section{Magnetic Resonance Linear Accelerator (MR-LINAC)}
 
@@ -608,6 +563,47 @@ tests~\cite{komaMRI:23}. No prior work pairs an observation-conditioned RL
 policy with a validated digital-twin simulator and a fitted-$T_1$ objective,
 nor confronts the simulation-cost wall a Bloch solver in the training loop
 creates; these two gaps motivate C1--C3 and the achievements that follow.
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{0.96}
+\begin{tabularx}{\linewidth}{>{\raggedright\arraybackslash}p{3.4cm}
+>{\raggedright\arraybackslash}X
+>{\raggedright\arraybackslash}X}
+\toprule
+Related approach & Strength & Remaining gap for this project \\
+\midrule
+Physical qMRI phantoms~\cite{keenan_phantoms_2024,russek_system_phantom_characterization_2020} &
+Known $T_1$/$T_2$/PD values; repeatable scanner and protocol validation &
+A hardware object cannot generate randomised simulation episodes or cheap RL rollouts \\
+\addlinespace
+MRI digital twins~\cite{greggio_digital_twinning_mri_2026} &
+Executable virtual replicas for prediction and optimisation &
+Existing work targets diagnosis/treatment planning; protocol-level twins are underdeveloped \\
+\addlinespace
+MRI simulators~\cite{komaMRI:23,stoecker_jemris_2010,liu_mrilab_2017} &
+Bloch-equation forward models; sequence testing before scanner execution &
+Benchmarked on short reference sequences, not end-to-end qMRI recovery under long adaptive acquisitions \\
+\addlinespace
+Offline sequence optimisation~\cite{MRISeqSupLearning:21,Jordan_MRF_AUTO:21} &
+Learns or optimises non-trivial acquisition schedules &
+Schedule is fixed before the scan; no conditioning on the current fit \\
+\addlinespace
+Adaptive MR and RL scanner control~\cite{adaptive_mri:23,Walk_RL_CONTROL_MRI:19,zhu2018autoseq,pineda_active_mri_rl_2020} &
+Closed-loop acquisition demonstrably helps &
+Prior tasks differ: Bayesian T2/MRS adaptation, shape classification, 1-D physics, or k-space sampling --- not fitted $T_1$ mapping on a calibrated phantom \\
+\bottomrule
+\end{tabularx}
+\caption{Related approaches, their strengths, and the gap each leaves for
+closed-loop qMRI sequence design. The project combines the rows: an
+executable phantom twin (Chapter~\ref{ch:mri-system-phantom}) drives a
+validated simulator (Chapter~\ref{ch:validating-komamri}), and an RL agent is
+trained and evaluated on the quantitative recovery objective
+(Chapter~\ref{ch:adaptive-rl}).}
+\label{tab:bg-related-gaps}
+\end{table}
 
 %"The pulse sequence design task was traditionally handcrafted by MR experts, who combined strong intuitions and an understanding of spin physics with mathematical solutions of the Bloch equations. While a remarkable number of contrast mechanisms and imaging schedules have been developed since the invention of MRI, the reliance on solvable differential equations severely limits our ability to reach a globally optimised schedule and reduce the scan time."\cite{DLINMRI:24}
 

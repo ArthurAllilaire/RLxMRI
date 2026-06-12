@@ -1330,143 +1330,96 @@ in-simulation result.
 \section{Limitations}
 \label{sec:e2-limitations}
 
-The main limitation is scope. The positive result is a proof of concept on a
-controlled five-sphere task, not a solved full-phantom mapping problem. That task
-was deliberately engineered so that adaptivity could matter: the geometry was
-fixed, the active tissues were few, and the relaxation values changed between
-episodes. This is the right experiment for isolating closed-loop timing, but it
-is not yet evidence that the same policy class scales to all 14 T1 spheres, the
-T2 and PD plates, or pose uncertainty.
+\paragraph{Scope and scale.} The positive result is a proof of concept on a
+controlled five-sphere task, not a solved full-phantom mapping problem. The task
+was deliberately engineered so adaptivity could matter: fixed geometry, few
+active tissues, ROI signals read at the spheres' \emph{known} pixel positions,
+and relaxation values that change between episodes. This isolates closed-loop
+timing cleanly, but it is not yet evidence that the same policy class scales to
+all 14 $T_1$ spheres, the $T_2$ and PD plates, joint localisation under unknown
+pose, or the regime where the policy must cover long and short relaxation times
+at once without sacrificing hard pools for easy ones. Run A makes the gap
+concrete: on the full plate it learned a state-dependent policy, but robust
+fixed coverage still won.
 
-The second limitation is task size. With five active spheres, the state estimate
-is compact and the reward signal is relatively direct. A full plate introduces a
-different regime: the policy must cover long and short relaxation times at once,
-avoid sacrificing hard pools for easy pools, and handle a larger set of coupled
-estimation errors. Run A shows this distinction clearly. It learned a
-state-dependent policy, but robust fixed coverage remained stronger.
+\paragraph{Experimental breadth.} The final tables use 24-episode evaluations
+and one training seed per arm, with PPO as the only optimiser. This is adequate
+for the stated conclusions --- Run A is a strict held-out negative result, and
+Run B and the memory ablation are controlled positives with non-overlapping
+confidence intervals --- but not for claiming insensitivity to PPO
+initialisation, curriculum timing, or simulator noise. Because simulator samples
+are expensive, an off-policy actor-critic such as SAC could reuse costly
+transitions through replay and reach a useful policy in fewer calls; that
+comparison was not run. The ROI-averaging radius introduced for Run B was also
+never ablated in isolation: the RL-versus-fixed comparisons are unaffected
+(every arm shares the same extraction), but absolute MAPE should not be compared
+across runs with different ROI settings.
 
-The third limitation is statistical breadth. The final tables use 24-episode
-evaluations and one training seed per arm. This is adequate for the current
-conclusion: Run A is a strict held-out negative result, and Run B and the
-memory ablation are controlled positive results with non-overlapping
-confidence intervals. It is not enough to claim that the method is
-insensitive to PPO initialisation, curriculum timing, or stochastic simulator
-noise. A related gap is that the ROI-averaging radius introduced for Run B
-was never ablated in isolation; the RL-versus-fixed comparisons are
-unaffected because every policy and baseline uses the same measurement
-extraction, but absolute MAPE levels should not be compared across runs with
-different ROI settings.
+\paragraph{Simulation-to-reality gap.} All results are simulator results inside
+the KomaMRI-based twin; transfer to scanner constraints, sequence programming,
+reconstruction pipelines, and real phantom data is untested. The policy is
+trained at a single field strength (1.5\,T) and one calibrated noise level, so
+since $T_1$ is field-dependent and SNR varies with hardware, transfer across
+fields or SNR regimes would likely need retraining or domain randomisation. The
+acquisition is also idealised relative to a clinic: hard RF pulses and a single
+1\,mm axial slab make the scene cleaner than a 3--8\,mm slice-selective
+acquisition with partial-volume averaging, and the policy carries no hardware
+constraints --- SAR, gradient slew, or $B_1^+$ limits --- that a deployable
+sequence must respect.
 
-The fourth limitation is algorithmic breadth. PPO was a pragmatic baseline, not
-a claim that on-policy learning is the best optimiser for this problem. Because
-simulator samples are expensive, an off-policy actor-critic such as SAC could be
-a better fit: replay would reuse costly transitions and might reduce the number
-of simulator calls needed to reach a useful policy. That comparison was not
-run, so the results should be read as evidence that adaptive qMRI can be learned
-with a robust baseline, not as evidence that PPO is the most sample-efficient or
-highest-performing RL method for the task.
+\paragraph{Estimator confound.} Reward flows through a single grid fitter, which
+creates two coupled issues. First, the achievable error floor is not pinned
+independently, so it is unclear how much residual MAPE is sequence design versus
+estimator, noise, and simulator. A noise-free calibration on a 500-point grid
+reaches ${\approx}0.48\%$ across the 14 spheres --- below the ${\approx}1\%$
+quantisation floor of the 300-point grid the RL fitter uses
+(Chapter~\ref{ch:mri-system-phantom}) --- and is nearly insensitive to the
+perfect-spoiling assumption ($0.48\%\!\to\!0.43\%$ with explicit crushers), so
+the floor most likely reflects Bloch time discretisation rather than the
+estimator; a direct Cram\'er--Rao bound or oracle-grid fit to establish it is
+missing. Second, the policy is co-adapted to that one fitter and could exploit
+its quirks rather than the underlying physics. So the reported gain could be fitter-specific and a
+different estimator or simulator could shift the optimal policy.
 
-The fifth limitation is external validation. The original project plan included
-testing the learned protocol on real scanner hardware, but this was not reached.
-All results in this chapter are therefore simulator results. They test whether
-closed-loop sequence design can work inside the KomaMRI-based digital twin; they
-do not yet show that the learned timings transfer to scanner constraints,
-sequence programming details, reconstruction pipelines, or real phantom data.
-The policy is also trained at a single field strength (1.5\,T) and one
-calibrated noise level; since $T_1$ is field-dependent and SNR varies with coil
-and hardware, transfer across fields or SNR regimes would likely need retraining
-or domain randomisation over both.
+\paragraph{Interpretability and uncertainty.} The policy is a black box that
+emits point $T_1$ estimates with no calibrated uncertainty, and the one
+mechanism meant to expose it --- the fitter-$\sigma$ channel
+(Section~\ref{sec:e2-ablations}) --- gave no measurable benefit. The Bayesian
+scheme of Beracha et al.~\cite{adaptive_mri:23} instead carries an explicit
+posterior $p(T_1,\mathrm{PD})$ throughout the scan, yielding per-voxel standard
+deviations, credible intervals, and a principled stopping rule for free. The
+adaptive gain here therefore comes at the cost of the uncertainty
+quantification a model-based prior provides intrinsically --- the trade-off the
+greedy-Cram\'er--Rao baseline of Section~\ref{sec:e2-future} is designed to
+probe.
 
-A related geometric simplification is the slice thickness. To keep the spin
-count tractable, the reported runs image a single 1 mm axial slab through the
-T1 plate, whereas a real slice-selective acquisition would excite a 3--8 mm
-slice and so average over more through-plane water and partial-volume material.
-This makes the simulated scene cleaner than a clinical slice. The choice is not
-believed to change the qualitative result: experiments with thicker slabs gave
-similar \(T_1\)-fit-versus-truth behaviour, because the fitted quantity depends
-on the per-sphere recovery curve rather than on the absolute spin count, and
-the noise level is recalibrated to the geometry in any case
-(Appendix~\ref{app:noise-calibration}). A thicker slice mainly raises
-simulation cost and partial-volume blurring, both of which the multi-fidelity
-machinery is designed to absorb, but a slice-selective study at clinical
-thickness remains future work.
+\paragraph{Structural efficiency.} The ${\sim}30\times$ multi-fidelity speedup
+is structural, not general. The analytic surrogate and the cached- and
+coarsened-water rungs exist only because the background water is a separable,
+homogeneous component that can be cached and down-sampled
+(Section~\ref{sec:e2-water-cache}); a problem without such a cheap, faithful
+approximation would not gain the ladder. The efficiency contribution is a recipe
+that exploits problem structure, not a black-box accelerator.
 
-A further limitation is analytical: the achievable error floor is not pinned
-down, so it is unclear how much of the residual MAPE is the sequence design and
-how much is the estimator, the noise and the simulator itself. A noise-free
-calibration with a finer 500-point fitter grid reached ${\approx}0.48\%$ mean
-MAPE across the 14 spheres, already well below the ${\approx}1\%$ quantisation
-floor of the coarser 300-point grid the RL fitter uses
-(Chapter~\ref{ch:mri-system-phantom}); adopting the same 500-point grid in the
-RL fitter would remove that floor at negligible cost. That residual is largely insensitive to
-the forward model's perfect-spoiling assumption (modelling explicit crusher
-gradients only moves it from $0.48\%$ to $0.43\%$), so it most likely reflects
-Bloch time discretisation in the simulator rather than a fundamental estimator
-floor. Under
-realistic noise there is then limited headroom above this floor for any
-sequence-design method, and establishing it directly (a Cram\'er--Rao bound at
-the true $T_1$, or an oracle-grid fit) is missing here. Relatedly, the ablations
-cleanly attribute the gain to adaptivity and acquisition history, but a deeper
-mechanistic account of what the policy exploits, and why short and long $T_1$
-behave differently, would strengthen the claim.
-
-A scope limitation concerns localisation. The agent reads per-sphere ROI
-signals extracted at the spheres' \emph{known} pixel positions, so although pose
-is randomised each episode the policy is only made robust to that variation; it
-never has to find the spheres. The twin's pose sampler sets up genuinely
-unknown-pose operation, but joint localisation-and-mapping is not attempted
-here.
-
-The multi-fidelity speedup is also structural rather than general. The analytic
-surrogate and the cached- and coarsened-water rungs exist only because the
-background water is a separable, homogeneous component that can be cached and
-down-sampled (Section~\ref{sec:e2-water-cache}); a problem without such a cheap,
-faithful approximation would not gain the ${\sim}30\times$ ladder. The
-efficiency contribution is therefore a recipe that exploits problem structure,
-not a black-box accelerator.
-
-Because reward flows through one fitter, the policy is also co-adapted to that
-estimator and could exploit its quirks rather than the underlying physics ---
-the failure mode behind the degenerate E1 policy. The reported gain is thus
-partly specific to this fitter; a different estimator, such as the EPG or
-learned fit suggested in Chapter~\ref{ch:mri-system-phantom}, could shift the
-optimal policy.
-
-The policy is also far less interpretable than the model-based alternative. It
-is a black box that emits point $T_1$ estimates with no calibrated uncertainty,
-and the one mechanism that tried to expose uncertainty --- the fitter-$\sigma$
-channel (Section~\ref{sec:e2-ablations}) --- gave no measurable benefit. The
-Bayesian scheme of Beracha et al.~\cite{adaptive_mri:23} instead carries an
-explicit posterior $p(T_1,\mathrm{PD})$ throughout the scan, so it yields
-per-voxel standard deviations and credible intervals for free, along with a
-principled stopping rule (halt once the posterior is narrow enough). The
-adaptive gain here therefore comes at the cost of the interpretability and
-uncertainty quantification a model-based prior provides intrinsically --- the
-trade-off the greedy-Cram\'er--Rao baseline of Section~\ref{sec:e2-future} is
-designed to probe.
-
-Finally, the action space is still narrow. The current policy tunes an
-IR-SE-style block, mostly through TI and TR. It cannot choose a different
-sequence family, change the phase-encode budget, or stop early to trade accuracy
-against scan time, and it carries no hardware constraints --- SAR, gradient slew
-or $B_1^+$ limits --- that a deployable adaptive sequence would have to respect.
-The chapter should therefore be read as an adaptive T1 timing study, not as a
-general autonomous MRI protocol designer.
+Taken together these bound the claim: this chapter is an adaptive $T_1$ timing
+study on a calibration phantom, not a general autonomous MRI protocol designer.
+The next section turns each bound into concrete future work.
 
 \section{Future work}
 \label{sec:e2-future}
 
 The next algorithmic step is to improve the curriculum controller. Run A showed
-that \texttt{full3} can be a biased rung; Run B showed that global-best
-checkpointing protects against late drift. A simpler ladder,
-\[
-\texttt{analytic} \rightarrow \texttt{cached} \rightarrow \texttt{full},
-\]
-should be tested against the current five-rung ladder. A more ambitious version
+that water coarsening (\texttt{full3}) can be a biased rung, contributing little speed up. So a leaner ladder that drops the coarsening
+rung should be tested against the current five-rung version. A complementary
+direction is to add fidelity rather than remove it: an EPG-based analytic
+environment (Chapter~\ref{ch:mri-system-phantom}) would sit between the current
+analytic surrogate and full Bloch, capturing echo-train and partial-spoiling
+spin history that the cheap surrogate misses while remaining far cheaper than a
+full isochromat solve. A more ambitious version
 would sample from several fidelities in parallel rather than treating the ladder
 as a serial hand-off. In the current runs, the GPU is largely idle during the
 analytic and cached stages; a parallel design could keep full-Bloch probes
-running while the cheap simulators generate high-throughput rollouts. Longer
+running while the cheap simulators generate high-throughput rollouts. This would save evaluation and probing time. Longer
 term, this becomes pooled multi-fidelity learning: cheap and expensive rollouts
 are used together with bias correction or control variates. This direction is
 directly connected to multi-fidelity control-variate and Gaussian-process RL
@@ -1474,13 +1427,21 @@ methods~\cite{khairy_control_variates_2024,suryan_multifidelity_gp_2020}.
 
 The state-representation question is now partly settled empirically: the
 executed-TI coverage histogram is the best observed memory mechanism, and the
-fitter's own $\sigma$ estimate is not a reliable summary. The open question is
+fitter's own $\sigma$ estimate is not a reliable summary. However, more thorough analysis of how reliable the $\sigma$ estimate was is needed to confirm this hypothesis. The open question is
 the recurrent alternative. The LSTM arm lost under a fixed wall-clock budget,
 but it was ${\approx}5\times$ slower per step and consequently undertrained at
 the target fidelity, so a step-matched RecurrentPPO rerun is needed before
-concluding that recurrence is intrinsically worse. Extending the coverage idea
-to richer action spaces --- joint TI--TR coverage, or coverage per
-estimated-$T_1$ band --- is the natural next encoding.
+concluding that recurrence is intrinsically worse. Extending the historical histogram coverage
+to richer action spaces (joint TI--TR coverage, or coverage per
+estimated-$T_1$ band) is the natural next encoding.
+
+A complementary need is experimental breadth. The reported arms use 24-episode
+evaluations and a single training seed, so repeating the key comparisons across
+multiple seeds, and ablating the Run B ROI-averaging radius in isolation, would
+establish robustness to initialisation and measurement settings. The PPO
+baseline should also be compared against an off-policy actor-critic such as SAC,
+whose replay reuses expensive simulator transitions and could reach a useful
+policy in fewer calls.
 
 The most important scientific extension is to widen the action space and repeat
 the experiment beyond the T1 plate. First, the same adaptive framework should be
@@ -1502,6 +1463,29 @@ a per-spin $\Delta\omega$ channel and an augmentation knob for it
 (Chapter~\ref{ch:mri-system-phantom}), so a natural extension is a policy that
 must capture and fit off-resonance jointly with relaxation, rather than
 treating it as fixed nuisance.
+
+One baseline this chapter identifies but does not implement would sharpen the
+attribution of the gain: a per-sphere Bayesian posterior with greedy
+Cram\'er--Rao re-targeting, the natural bridge between the static CR baseline
+and the learned policy. Each sphere would carry its own grid posterior
+$p(T_1,\mathrm{PD})$, updated from its ROI signal after every block exactly as
+the fitter already evaluates it, and the next $(\mathrm{TI},\mathrm{TR})$ block
+would be chosen by re-minimising the fleet CRLB at the current posterior
+\emph{means} rather than a fixed nominal fleet. Because one block images all
+spheres at once, the per-sphere optima must be aggregated into a single
+action --- precisely the fleet-averaging the static objective already performs,
+but now over the sharpening estimates. Such a scheme would re-target the
+realised $T_1$ values like the RL policy, would be fully interpretable, and
+would supply the calibrated uncertainty and natural stopping criterion (halt
+when every sphere's posterior SD falls below a threshold) that the
+$\sigma$-channel of Section~\ref{sec:e2-ablations} failed to provide. It would
+also isolate \emph{why} reinforcement learning helps: greedy CRLB selection is
+myopic, optimising only the next block, whereas the PPO policy optimises the
+whole-episode return and demonstrably learns a non-myopic probe-then-refine
+strategy (Section~\ref{sec:e2-run-b}). Whether that planning advantage survives
+against a strong greedy-adaptive baseline --- and, paired with a TR matched to
+the policy's realised mean, whether the gain is TI placement or block count ---
+is the cleanest open question left by this chapter.
 
 Two further extensions would close the gap to a realistic acquisition. First,
 the reported runs use the hard-pulse approximation --- RF treated as an
@@ -1545,29 +1529,6 @@ and motion --- and test whether the MAPE reduction holds there, and ultimately
 whether it translates into better downstream outcomes such as sharper tissue
 characterisation or shorter clinical scans. Only at that point does the method
 stop being a proof of concept and become a candidate acquisition strategy.
-
-One baseline this chapter identifies but does not implement would sharpen the
-attribution of the gain: a per-sphere Bayesian posterior with greedy
-Cram\'er--Rao re-targeting, the natural bridge between the static CR baseline
-and the learned policy. Each sphere would carry its own grid posterior
-$p(T_1,\mathrm{PD})$, updated from its ROI signal after every block exactly as
-the fitter already evaluates it, and the next $(\mathrm{TI},\mathrm{TR})$ block
-would be chosen by re-minimising the fleet CRLB at the current posterior
-\emph{means} rather than a fixed nominal fleet. Because one block images all
-spheres at once, the per-sphere optima must be aggregated into a single
-action --- precisely the fleet-averaging the static objective already performs,
-but now over the sharpening estimates. Such a scheme would re-target the
-realised $T_1$ values like the RL policy, would be fully interpretable, and
-would supply the calibrated uncertainty and natural stopping criterion (halt
-when every sphere's posterior SD falls below a threshold) that the
-$\sigma$-channel of Section~\ref{sec:e2-ablations} failed to provide. It would
-also isolate \emph{why} reinforcement learning helps: greedy CRLB selection is
-myopic, optimising only the next block, whereas the PPO policy optimises the
-whole-episode return and demonstrably learns a non-myopic probe-then-refine
-strategy (Section~\ref{sec:e2-run-b}). Whether that planning advantage survives
-against a strong greedy-adaptive baseline --- and, paired with a TR matched to
-the policy's realised mean, whether the gain is TI placement or block count ---
-is the cleanest open question left by this chapter.
 
 \section{Summary}
 \label{sec:e2-summary}

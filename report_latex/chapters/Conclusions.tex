@@ -51,11 +51,17 @@ schedule at two scan budgets on strict held-out episodes (4.62\% versus
 6.86\% MAPE at 240 s; 4.16\% versus 6.04\% at 560 s), with non-overlapping
 confidence intervals. A memory ablation then produced the project's strongest
 result: giving the policy an order-invariant histogram of the inversion times
-it has already executed reached 2.93\% MAPE --- better than the memoryless
-control, a fitter-uncertainty channel, a recurrent policy, and every fixed
-schedule, on every active sphere. The value of the next acquisition depends
+it has already executed reached 2.93\% MAPE, with 95.8\% of episodes under
+5\% --- better than the memoryless control, a fitter-uncertainty channel, a
+recurrent policy, and every fixed schedule, on every active sphere. The value of the next acquisition depends
 on what has already been measured, and exposing that history explicitly
-matters.
+matters. Translated into the acceleration metric of the closest published
+adaptive scheme (Beracha et al.~\cite{adaptive_mri:23}), this
+$6.04\%\!\to\!2.93\%$ precision gain corresponds to a nominal ${\approx}4\times$
+acceleration --- the top of their reported $1.7$--$4\times$ simulated-$T_1$
+range, reached while generalising from their single voxel to a five-sphere
+fleet; for $T_1$ both schemes stay in simulation, their hardware validation
+covering only $T_2$/MRS.
 
 \section{Limitations}
 \label{sec:concl-limitations}
@@ -114,9 +120,10 @@ quantitative claims, the still-open PR~\#789 should be landed upstream, and
 the idealised-scanner assumption should be relaxed to include RF
 inhomogeneity, eddy currents, and $B_0$ imperfections. For the RL environment
 (Chapter~\ref{ch:adaptive-rl}), a step-matched recurrent-policy rerun would
-separate the memory mechanism from its compute cost, and a simpler
-\texttt{analytic}$\rightarrow$\texttt{cached}$\rightarrow$\texttt{full} ladder
-should be tested against the biased \texttt{full3} rung.
+separate the memory mechanism from its compute cost, and the fidelity ladder
+could be leaned out --- water coarsening proved less useful than caching, so
+dropping that rung and re-testing against the biased \texttt{full3} stage is
+the obvious simplification.
 
 The scientifically important direction is to widen the action space and move
 beyond the $T_1$ plate. Letting the agent choose the acquisition family
@@ -144,9 +151,14 @@ real numerical bugs in a widely used simulator; and built a bias-aware
 multi-fidelity training loop that made simulation-in-the-loop qMRI RL
 tractable. Within that pipeline it showed, on a controlled task, that an
 adaptive policy with an explicit memory of its own acquisitions can beat
-strong fixed protocols. The honest boundary of the work is equally clear:
-adaptivity paid only where the task was constructed to require it, and every
-result remains simulated.
+strong fixed protocols. To our knowledge this is the first reinforcement-learning
+agent for adaptive quantitative MRI: a policy that conditions each acquisition
+on the current fitted tissue parameters and is trained and evaluated directly
+on fitted-$T_1$ error, where prior adaptive qMRI derives its acquisition rule
+from a Bayesian model and prior RL in MRI targets non-quantitative objectives
+such as shape classification or k-space sampling. The honest boundary of the
+work is equally clear: adaptivity paid only where the task was constructed to
+require it, and every result remains simulated.
 
 The wider context is the one set out in Chapter~\ref{ch1}: MRI demand is
 growing faster than capacity, and adaptive acquisition attacks the scan-time

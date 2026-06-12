@@ -829,11 +829,37 @@ new acquisition family needs its own bespoke fit, which does not scale. The
 estimators are also discrete log-grid scans, so their accuracy is additionally
 capped by the grid spacing --- about $1\%$ at the 300 points used in training
 and ${\approx}0.5\%$ at 500
-(Section~\ref{shipped-sequences-and-fitting-models}). Replacing them with an
-EPG-based fitting library would both lift that resolution ceiling and break the
-one-to-one coupling, modelling the spin history of echo trains and partial
-spoiling across families; integrating a learned deep-learning reconstruction or
-an end-to-end fit is the further-out alternative, and needs research.
+(Section~\ref{shipped-sequences-and-fitting-models}).
+
+The Extended Phase Graph (EPG) formalism~\cite{weigel2015epg} addresses two
+\emph{distinct} weaknesses, and it is worth separating them because they live in
+different parts of the pipeline. First, as a \emph{forward model}, EPG analytically
+tracks the spin history of echo trains and partial spoiling that the cheap analytic
+surrogate cannot represent; this is a fidelity-and-cost lever, a candidate extra
+rung on the multi-fidelity ladder (Chapter~\ref{ch:adaptive-rl}) sitting between
+the cached-water surrogate and full isochromat KomaMRI, rather than anything to do
+with the fitter. Second, as the \emph{inverse model inside a fitter}, an EPG-based
+estimator would both lift the grid-resolution ceiling and break the one-to-one
+coupling, modelling echo-train and partial-spoiling physics across families with a
+single parameterised model. These two uses are independent: an EPG fitter can be
+run directly on KomaMRI (or scanner) output without EPG ever being the simulator,
+the only caveat being the model mismatch incurred when an ideal-pulse EPG inverse
+is applied to signals that carry KomaMRI's off-resonance and slice-profile physics.
+
+Such fitters need not be written from scratch. EPG-based parameter estimation is
+well established outside Julia --- qMRLab~\cite{qmrlab} and QUIT~\cite{quit} wrap
+EPG forward models for multi-parameter fitting, and differentiable Python EPG
+implementations (sycomore~\cite{sycomore}, epgpy~\cite{epgpy}) expose Jacobians
+suited to gradient-based estimation --- so a production version would adopt and
+extend these rather than reimplement the formalism. Within Julia the picture is
+thinner: EPG forward simulation exists, but EPG-based \emph{fitting} is confined to
+the myelin-water / $T_2$-distribution problem in DECAES.jl~\cite{decaes}, which
+solves a regularised non-negative least-squares (NNLS) inversion for a $T_2$
+spectrum on a fixed log-grid --- itself a single-family, grid-bound fitter, not the
+general framework needed here. Integrating a learned deep-learning reconstruction
+or an end-to-end differentiable fit (e.g.\ MRzero~\cite{MRISeqSupLearning:21}, which
+optimises sequences through a differentiable simulator) is the further-out
+alternative, and needs research.
 
 Several extensions would broaden the twin's reach. Pulseq import/export would
 let it drive real scanners and consume the large community bank of

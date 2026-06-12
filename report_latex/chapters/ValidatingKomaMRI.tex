@@ -521,11 +521,26 @@ The timing failure has implications beyond KomaMRI. The same mechanism ---
 Float64 spacing overrunning a fixed absolute $\epsilon$ at long cumulative time
 --- could silently degrade other Bloch simulators, most of which are checked
 only against plausible-looking images. KomaMRI's own published validation
-reports ${\approx}0.1\%$ agreement with established simulators such as
-JEMRIS~\cite{stoecker_jemris_2010}, but those benchmarks were run on short
-sequences; they should be re-checked at the long cumulative times stressed here,
-and a regression test for long-duration sequences with hard RF pulses should be
-added so the failure is caught before it silently degrades output.
+reports ${\approx}0.1\%$ mean-absolute-difference agreement with
+JEMRIS~\cite{komaMRI:23,stoecker_jemris_2010}, yet that agreement did not
+surface the failure seen here. The reason is visible in the benchmark design:
+its five accuracy experiments are all \emph{single-shot} gradient-echo
+acquisitions (EPI at $\mathrm{TE}=100$\,ms, spiral at $\mathrm{TE}=0.1$\,ms),
+each only of order $100$\,ms in total duration. They use hard RF pulses ---
+matching the regime stressed here on that axis --- but never reach the
+multi-second cumulative times that trigger the collapse, and the metric itself
+is a global mean absolute difference over normalised k-space signal, which can
+average out a per-sample timing drift that nonetheless biases a fitted $T_1$.
+
+A first question for future work is therefore whether extending those
+benchmarks to long-duration sequences would expose the same error, or whether
+it is present but masked in the existing single-shot comparisons. Establishing
+this means re-running the long-duration, hard-RF case against other simulators
+(JEMRIS, MRiLab) to see whether the defect is specific to KomaMRI or a shared
+blind spot. Where it is replicated, the upstream fixes and long-duration
+regression tests contributed to KomaMRI here should be contributed to those
+simulators too, pinning quantitative recovery accuracy at known-good operating
+points so the failure is caught before it silently degrades output.
 
 Broader validation is needed before the simulator is trusted for other qMRI
 pipelines. The no-noise recovery check should be repeated with shaped (sinc) RF
