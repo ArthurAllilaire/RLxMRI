@@ -5,6 +5,7 @@
 # fits T1 per sphere — reproducing the core E0 pipeline.
 
 using MRISystemPhantom, KomaMRI
+using Printf, Statistics, Suppressor
 
 # ## Build the phantom
 #
@@ -30,7 +31,7 @@ println("Phantom spins: ", length(obj.x))
 # `sphere_descriptor_pixels` maps each sphere's physical centre to its
 # (phase-encode, frequency-encode) pixel index in a 64×64, 200 mm-FOV image.
 
-descs  = sphere_descriptors(:T1, cfg)
+descs  = imaged_descriptors(:T1, cfg)   # pose-aware: applies cfg's pose if any
 px     = sphere_descriptor_pixels(descs, 64, 64, 0.2)
 
 # ## Simulate a TI sweep
@@ -43,6 +44,7 @@ TIs = [0.05, 0.1, 0.25, 0.5, 0.8, 1.2, 2.0]
 
 images = Matrix{Float64}[]
 for TI in TIs
+    # args: (TI, TE = 12 ms, TR = 3 s)
     seq = ir_se_2d_sequence(TI, 0.012, 3.0;
         FOV = 0.2, Nfe = 64, Npe = 64,
         spoiler = SpoilerConfig(enabled = true))
@@ -61,8 +63,12 @@ T1_fits = Float64[]
 T1_true = [d.T1 for d in descs]
 
 for (i, p) in enumerate(px)
-    mags = Float64[roi_mean(img, p[1], p[2]; radius = 1) for img in images]
+    mags = Float64[roi_mean(img, p[1], p[2]; r = 1) for img in images]
+    # The sequence runs at a finite TR (3 s, the 3rd positional arg above), so the
+    # fitter MUST be told it — otherwise it assumes TR → ∞ (full recovery) and
+    # systematically under-estimates the long-T1 spheres.
     res  = fit_t1_generalized_ir(TIs, fill(π, length(TIs)), mags;
+               TRs          = fill(3.0, length(TIs)),
                Npe          = 64,
                sigma_method = :profile_likelihood)
     push!(T1_fits, res.T1)
