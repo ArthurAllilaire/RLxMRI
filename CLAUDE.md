@@ -165,15 +165,17 @@ Fixes being applied in E2:
 
 ## The C1–C3 / A1–A3 structure (for report and Wayne emails)
 
-**Challenges:**
-- **C1** — Adaptive pulse sequence design: no fixed-protocol optimum; the optimal sequence depends on unknown tissue properties
-- **C2** — Scalable simulation-in-the-loop RL: live Bloch solver is expensive; need to train feasibly while keeping fidelity
-- **C3** — Spatial localisation under pose uncertainty: phantom/patient position unknown; agent must localise and map jointly
+**Challenges** (canonical wording from `report_latex/chapters/Chapter1.tex`):
+- **C1** — Simulator validation for qMRI: the agent learns entirely from simulation, so the simulator must be numerically trustworthy. A visually plausible image is not enough — the pipeline must recover correct quantitative parameters (T1, T2) from a known phantom.
+- **C2** — Computational efficiency under expensive simulation: a live Bloch solver is far slower than the analytical environments RL usually uses, making training compute-bound. Needs a multi-fidelity strategy (fast configs for learning, accurate sims for validation).
+- **C3** — Adaptive sequence design from tissue-parameter estimates: not just running a fixed protocol faster, but choosing the next acquisition (TI/TE/flip angle) from the current estimate of the tissue parameters.
 
 **Achievements → chapters:**
-- **A1 / Ch3** — Digital twin + conventional baseline (E0): validates simulator, establishes quantitative yardstick
-- **A2 / Ch4** — RL agent for adaptive T1/T2 mapping (E1 → E2): addresses C1, C2
-- **A3 / Ch5** — Spatial localisation and domain generalisation (E2 localisation, E3): addresses C3
+- **A1 / Ch3** — Digital twin of the QalibreMD Model 130 (`MRISystemPhantom.jl`): ground truth + fitting pipeline + randomisation. The foundation for C1.
+- **A2 / Ch4** — Validated Bloch-simulation pipeline: validation-by-recovery exposed and fixed two upstream KomaMRI float bugs (39.4% → 0.48% mean error). Completes C1.
+- **A3 / Ch5** — Adaptive qMRI via multi-fidelity RL: agent chooses timings from current estimates; multi-fidelity curriculum makes Bloch-in-the-loop tractable. Addresses C2 and C3.
+
+> Note: an earlier draft framed C1–C3 as adaptive design / scalable RL / spatial localisation. That is **stale** — the report and presentation use the C1–C3 above. The presentation introduces them on the "Reinforcement learning, and the three challenges" slide (slide 4).
 
 ---
 

@@ -8,6 +8,7 @@ made, and the full speaker script in each slide's notes pane.
 Run:  python presentation/build_deck.py
 """
 import os
+import sys
 from pptx import Presentation
 from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
@@ -98,10 +99,24 @@ def _fit_centered(slide, full, left, top, box_w, box_h):
     slide.shapes.add_picture(full, x, y, width=w, height=h)
 
 
-def image_or_placeholder(slide, paths, left, top, width, height, label):
-    """Embed first existing image(s) fitted into the box, else a placeholder."""
+def image_or_placeholder(slide, paths, left, top, width, height, label,
+                         row=False):
+    """Embed first existing image(s) fitted into the box, else a placeholder.
+
+    row=False stacks up to two images vertically; row=True lays all of them
+    left-to-right in equal-width cells (used when a slide carries 3 panels).
+    """
     existing = [resolve(p) for p in paths if resolve(p)]
     if existing:
+        if row:
+            n = len(existing)
+            gap = Inches(0.12)
+            each_w = Emu(int((width - gap * (n - 1)) / n))
+            x = left
+            for full in existing:
+                _fit_centered(slide, full, x, top, each_w, height)
+                x = Emu(x + each_w + gap)
+            return
         # stack up to two images vertically, each fitted into its sub-box
         n = len(existing[:2])
         gap = Inches(0.12)
@@ -169,7 +184,7 @@ def bullets_as_text(items):
 
 
 def content_slide(title, kicker, bullets, images, img_label, notes="",
-                  text_w=4.5, has_img=True, full_bullets=None):
+                  text_w=4.5, has_img=True, full_bullets=None, img_row=False):
     s = add_slide()
     title_band(s, title)            # kicker no longer printed on the slide
     if has_img:
@@ -177,7 +192,7 @@ def content_slide(title, kicker, bullets, images, img_label, notes="",
                     Inches(text_w), Inches(5.6))
         image_or_placeholder(s, images, Inches(text_w + 0.7), Inches(1.5),
                              Inches(13.333 - text_w - 1.2), Inches(5.4),
-                             img_label)
+                             img_label, row=img_row)
     else:
         bullets_box(s, bullets, Inches(0.5), Inches(1.45),
                     Inches(12.3), Inches(5.6))
@@ -223,12 +238,12 @@ content_slide(
     "Adaptive qMRI: the idea, the gap, and our thesis",
     "Framing (15%) — state the gap as a TENSION, then the novelty claim",
     [(0, "Adaptive MRI ≈ 2.5× faster (Beracha)", False),
-     (0, "Adaptive qMRI: Bayesian model only", False),
-     (0, "RL in MRI: non-quantitative goals only", False),
-     (0, "Thesis: first RL agent for adaptive qMRI", True),
+     (0, "Adaptive qMRI: hand-derived, single-voxel only", False),
+     (0, "RL in MRI: non-quantitative objectives only", False),
+     (0, "Thesis: first learned, adaptive, multi-voxel qMRI", True),
      (0, "phantom (A1) → simulator (A2) → RL (A3)", False)],
-    ["fig2_capability.png"],
-    "FIG-2 capability matrix\n(works × learned/adaptive/\nquantitative)",
+    ["fig2a_qmri.png", "fig2b_rl.png"],
+    "FIG-2 two related-work tables\n(qMRI: adaptive but not learned /\nRL: learned but not quantitative)",
     "Adaptive idea: choose next acquisition from current estimate (Beracha ~2.5x). The gap "
     "as a tension: adaptive qMRI is Bayesian-model-only; RL in MRI targets non-quantitative "
     "goals; nobody combined learned + adaptive + quantitative. Thesis: first RL agent for "
@@ -236,11 +251,11 @@ content_slide(
     "contributions — phantom, validated simulator, RL.",
     full_bullets=[
         (0, "Adaptive MRI: choose the next acquisition from the current estimate (≈2.5× faster, Beracha)", False),
-        (0, "The tension:", True),
-        (1, "adaptive qMRI exists — but only as a hand-derived BAYESIAN model", False),
-        (1, "RL has controlled MRI scanners — but for NON-quantitative goals (k-space, shape)", False),
-        (1, "nobody has put a LEARNED policy on the QUANTITATIVE objective", True),
-        (0, "Thesis: the first RL agent for adaptive quantitative MRI", True),
+        (0, "The tension — two literatures, each missing one property (see tables):", True),
+        (1, "adaptive qMRI exists — but hand-derived (Bayesian/CRLB) and single-voxel, never a learned multi-voxel policy", False),
+        (1, "RL has controlled MRI scanners — but for NON-quantitative objectives (k-space recon, shape, RF pulses)", False),
+        (1, "nobody has put a LEARNED policy on the QUANTITATIVE objective over many tissues at once", True),
+        (0, "Thesis: the first learned, adaptive, multi-voxel qMRI policy", True),
         (1, "conditions each acquisition on the current fitted T1; trained & scored on T1 error", False),
         (0, "Roadmap: trustworthy phantom (A1) → validated simulator (A2) → the RL (A3)", True)])
 
@@ -302,13 +317,16 @@ content_slide(
      (0, "KomaMRI validated only on SHORT sequences", False),
      (0, "Recovery test, no noise: 39.4% error (some ~100%)", True),
      (0, "Spoilers worse, long TR worse → elapsed TIME, not physics", True)],
-    ["komaMRI/buggy_t1_fit_vs_true.png"],
-    "buggy T1 fit",
+    ["komaMRI/buggy_t1_fit_vs_true.png", "bug_recon.png", "bug_recon_clean.png"],
+    "buggy T1 fit + reconstructions",
     "A2. A simulator the agent learns from must be quantitatively correct, not just "
     "plausible. KomaMRI benchmarked only on short sequences. Validate by parameter "
     "recovery, no noise: should be exact, got 39.4% error, images looked fine. Hard part "
     "was diagnostic: spoilers made it worse (ruling out the obvious physics explanation), "
-    "longer TR worse too — pointing at elapsed time, not physics.",
+    "longer TR worse too — pointing at elapsed time, not physics. Figures: 39.4% fitted-T1 "
+    "scatter, and the reconstructed image (raw + zero-padded) that still looks plausible.",
+    text_w=3.2,
+    img_row=True,
     full_bullets=[
         (0, "If the agent learns from a simulator, it must be QUANTITATIVELY right", True),
         (1, "KomaMRI is peer-reviewed — but benchmarked only on SHORT sequences", False),
@@ -327,8 +345,8 @@ content_slide(
      (0, "RF edge marked with a fixed ε = 1e-14 s", True),
      (0, "Float64 is relative: eps(t) ≈ t·2⁻⁵² → t+ε == t past ~128 s", False),
      (0, "Fixed upstream (PR #780, #789): 39.4% → 0.48%", True)],
-    ["fig3_float_collapse.png", "komaMRI/buggy_pixel_grid_overlay.png"],
-    "FIG-3 float-collapse graph\n+ buggy pixel-grid overlay",
+    ["fig3_float_collapse.png", "bug_kspace.png"],
+    "FIG-3 float-collapse graph\n+ buggy k-space (TI=0.065)",
     "A2 bug. Diagnostic: look at k-space directly — collapses after fixed cumulative time, "
     "regardless of shot count. Mechanism: fixed absolute ε=1e-14 marks the RF edge, but "
     "Float64 precision is relative (eps(t)≈t·2⁻⁵²); past ~128s t+ε==t, edge markers "
@@ -344,6 +362,31 @@ content_slide(
         (0, "Reduced to minimal reproducers, fixed, contributed upstream: PR #780 (merged), #789", True),
         (0, "Result: 39.4% → 0.48% mean error (max 1.2%)", True),
         (1, "novel failure mode for an MRI simulator; bites exactly in the long-sequence RL regime", False)])
+
+# SLIDE 7b — A2 after the fixes
+content_slide(
+    "A2 — After the fixes: the validation recovers",
+    "Execution (50%) — the quantitative payoff of the upstream contribution",
+    [(0, "Same no-noise recovery test, both fixes applied", True),
+     (0, "Mean MAPE 39.4% → 0.48% (max 1.2%)", True),
+     (0, "k-space symmetric; spheres well-localised across k_y", False),
+     (0, "→ the simulator is now trustworthy for RL", True)],
+    ["komaMRI/fixed_t1_fit_vs_true.png", "fixed_recon.png", "fixed_kspace.png"],
+    "fixed T1 fit + clean recon + k-space",
+    "After the fixes. Re-run the same no-noise recovery test: fitted-T1 returns to the "
+    "diagonal, 39.4% → 0.48% mean MAPE (max 1.2%); the reconstructed spheres stay localised "
+    "across the whole phase-encode direction and measured k-space matches theory. This is "
+    "what makes the Part 3 RL results trustworthy. Caveat (Q&A): the buggy panels are at "
+    "TI=0.065 and the fixed panels at TI=0.1 — different runs; matched-TI regeneration is a "
+    "TODO, not worth it for the talk.",
+    text_w=3.2,
+    img_row=True,
+    full_bullets=[
+        (0, "Same noise-free recovery test, with both KomaMRI fixes applied", True),
+        (0, "Fitted T1 returns to the diagonal: 39.4% → 0.48% mean MAPE (max 1.2%)", True),
+        (0, "Reconstruction clean: spheres well-localised, measured k-space matches theory", False),
+        (0, "→ the simulator is now quantitatively trustworthy for the RL in Part 3", True),
+        (1, "caveat: buggy panels TI=0.065, fixed panels TI=0.1 (different runs) — matched-TI regen is a TODO", False)])
 
 # SLIDE 8 — RL formulation
 content_slide(
@@ -656,6 +699,32 @@ backup_slide(
     ["FIG_crlb.png"], "(no figure — speak it)",
     "Fixed comparators are CR-optimal, not hand-picked. CRLB = variance floor. "
     "static-optimal vs static-average; CR wins Run A, collapses Run B.")
+
+# ---------------------------------------------------------------------------
+# Slide numbers — bottom-right corner of every slide
+# ---------------------------------------------------------------------------
+for i, s in enumerate(prs.slides, start=1):
+    box = s.shapes.add_textbox(SW - Inches(0.9), SH - Inches(0.45),
+                               Inches(0.7), Inches(0.35))
+    p = box.text_frame.paragraphs[0]
+    p.alignment = PP_ALIGN.RIGHT
+    p.text = str(i)
+    p.font.size = Pt(12)
+    p.font.color.rgb = GREY
+
+# FROZEN: the deck is now hand-edited in PowerPoint and is the source of truth.
+# This script will NOT overwrite it unless you explicitly pass --force, so a
+# stray run can't wipe out manual slide edits. To regenerate from scratch:
+#     python build_deck.py --force
+# --out PATH writes to an alternate file (e.g. for copy/pasting slides into the
+# frozen deck) and bypasses the overwrite guard, since it can't clobber OUT.
+if "--out" in sys.argv:
+    OUT = os.path.abspath(sys.argv[sys.argv.index("--out") + 1])
+elif os.path.exists(OUT) and "--force" not in sys.argv:
+    print(f"REFUSING to overwrite {os.path.basename(OUT)} — deck is frozen "
+          f"(hand-edited in PowerPoint).\nRe-run with --force to regenerate from "
+          f"scratch and discard manual edits.")
+    sys.exit(0)
 
 prs.save(OUT)
 print("Wrote", OUT, "with", len(prs.slides.__iter__.__self__._sldIdLst), "slides")

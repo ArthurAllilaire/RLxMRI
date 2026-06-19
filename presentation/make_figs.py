@@ -32,6 +32,129 @@ plt.rcParams.update({
 
 
 # ===========================================================================
+# FIG-2a / FIG-2b — Two grouped related-work tables (replaces the single
+#   capability matrix). The story is two tensions, one per table:
+#     2a  adaptive qMRI exists, but never as a LEARNED multi-tissue policy
+#     2b  RL controls MRI, but never for the QUANTITATIVE objective
+#   THIS WORK is the only all-✓ row in BOTH tables — it supplies the one
+#   property each group is missing. Method column shows the paradigm so
+#   "learned RL" reads as one option among Bayesian / differentiable / etc.
+# ===========================================================================
+def _grouped_table(out, title, columns, rows, figsize=(11.0, 3.25),
+                   footnote=None):
+    """Render one related-work table. columns = [(header, frac, kind)] with
+    kind in {"text","tick"}; tick cells take "y"/"n". Last row is highlighted
+    as THIS WORK."""
+    GREEN = "#1f8a3b"
+    XGREY = "#b7b7bd"
+
+    # column left-edges and centres from fractional widths
+    L, R = 0.015, 0.985
+    fracs = [c[1] for c in columns]
+    span = R - L
+    edges = [L]
+    for f in fracs:
+        edges.append(edges[-1] + f * span)
+    pad = 0.012
+
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.axis("off")
+
+    ax.text(L, 0.95, title, ha="left", va="top", fontsize=14.5,
+            fontweight="bold", color=NAVY)
+
+    # header row
+    y_hdr = 0.78
+    for j, (hdr, _f, kind) in enumerate(columns):
+        if kind == "tick":
+            xc = (edges[j] + edges[j + 1]) / 2
+            ax.text(xc, y_hdr, hdr, ha="center", va="center", fontsize=11.5,
+                    fontweight="bold", color=NAVY)
+        else:
+            ax.text(edges[j] + pad, y_hdr, hdr, ha="left", va="center",
+                    fontsize=11.5, fontweight="bold", color=NAVY)
+    ax.plot([L, R], [0.70, 0.70], color="#888", lw=1.4)
+
+    n = len(rows)
+    y0, dy = 0.60, min(0.135, 0.58 / n)
+    for i, row in enumerate(rows):
+        y = y0 - i * dy
+        last = (i == n - 1)
+        if last:
+            ax.plot([L, R], [y + dy * 0.52, y + dy * 0.52], color="#888", lw=1.2)
+            ax.add_patch(Rectangle((L - 0.008, y - dy * 0.45), span + 0.016,
+                                   dy * 0.92, facecolor=IMPERIAL, alpha=0.10,
+                                   edgecolor=IMPERIAL, lw=1.4, zorder=0))
+        for j, (_hdr, _f, kind) in enumerate(columns):
+            val = row[j]
+            if kind == "tick":
+                xc = (edges[j] + edges[j + 1]) / 2
+                if val == "y":
+                    ax.text(xc, y, "✓", ha="center", va="center", fontsize=19,
+                            color=GREEN, fontweight="bold")
+                else:
+                    ax.text(xc, y, "✗", ha="center", va="center", fontsize=16,
+                            color=XGREY)
+            else:
+                col = IMPERIAL if last else INK
+                fw = "bold" if (last or j == 0) else "normal"
+                ax.text(edges[j] + pad, y, val, ha="left", va="center",
+                        fontsize=11.5, color=col, fontweight=fw)
+
+    if footnote:
+        y_foot = (y0 - (n - 1) * dy) - dy * 0.75
+        ax.text(L, y_foot, footnote, ha="left", va="top", fontsize=8.6,
+                color=GREY)
+
+    fig.savefig(os.path.join(FIGS, out), dpi=200, bbox_inches="tight",
+                facecolor="white")
+    plt.close(fig)
+    print("wrote", os.path.join(FIGS, out))
+
+
+def fig2a_qmri_table():
+    columns = [
+        ("Quantitative MRI Sequence Design", 0.34, "text"),
+        ("Method", 0.34, "text"),
+        ("Adaptive?", 0.16, "tick"),
+        ("Multi-voxel?", 0.16, "tick"),
+    ]
+    rows = [
+        ["Beracha et al. (2023)", "Bayesian Posterior + CRLB Lookup", "y", "n"],
+        ["MRF Schedule Optimisation", "Differentiable, Offline", "n", "y"],
+        ["MIMOSA (2026)¹", "Optimised Multi-Echo, Offline", "n", "y"],
+        ["THIS WORK", "Learned RL Policy (PPO)", "y", "y"],
+    ]
+    _grouped_table("fig2a_qmri.png",
+                   "Adaptive qMRI exists — but never a learned multi-voxel policy",
+                   columns, rows,
+                   footnote="¹ Chen et al., MIMOSA, Magn. Reson. Med. 2026.")
+
+
+def fig2b_rl_table():
+    columns = [
+        ("RL / Learned Control of MRI", 0.27, "text"),
+        ("Method", 0.21, "text"),
+        ("Objective", 0.34, "text"),
+        ("Quantitative?", 0.18, "tick"),
+    ]
+    rows = [
+        ["Walker-Samuel et al. (2023)", "Deep RL (DDPG)", "Shape Classification", "n"],
+        ["Pineda et al. (2020)", "Deep RL (DQN)", "K-Space Recon Quality", "n"],
+        ["AUTOSEQ (2018)", "Bayesian Optimisation", "Image MSE (1-D Toy)", "n"],
+        ["DeepRF (2021)²", "Deep RL", "RF Pulse Waveform Design", "n"],
+        ["THIS WORK", "Deep RL (PPO)", "Fitted-T1 Error", "y"],
+    ]
+    _grouped_table("fig2b_rl.png",
+                   "RL controls MRI — but never for the quantitative objective",
+                   columns, rows,
+                   footnote="² Shin et al., DeepRF, Nat. Mach. Intell. 2021.")
+
+
+# ===========================================================================
 # FIG-2 — Capability matrix (works x {Learned, Adaptive, Quantitative})
 #   Only THIS WORK ticks all three. No invented coordinates; the three
 #   attributes are exactly the parts of the novelty claim.
@@ -234,8 +357,11 @@ def fig4_ladder():
                  arrowprops=dict(arrowstyle="<->", color=COST, lw=1.3))
     ax2.text(3.62, 0.21, "$\\sim$30$\\times$\ncost range", color=COST,
              fontsize=10.5, fontweight="bold", ha="right", va="center")
-    # 8x cached saving callout (cached vs full3/full)
-    ax.annotate("cached rungs:\n$\\sim$8$\\times$ faster than\nmatched full Bloch",
+    # cached saving callout: ~3x end-to-end per step (0.34 vs 1.03 s, the plotted
+    # staircase); the water SIM in isolation is 8x (4.47->0.56 s, AppendixA), but
+    # the sphere sim + recon + refit floor dilutes that to ~3x per step.
+    ax.annotate("cached rungs:\n$\\sim$3$\\times$ faster per step\n"
+                "(8$\\times$ on sim)",
                 (2, 6000), (2, 8000), fontsize=10, color=IMPERIAL,
                 fontweight="bold", ha="center",
                 arrowprops=dict(arrowstyle="-|>", color=IMPERIAL, lw=1.3))
@@ -301,8 +427,82 @@ def fig4b_water_linearity():
     print("wrote", out)
 
 
+def fig9_positioning():
+    """Acceleration vs the nearest quantitative published comparator (Beracha).
+
+    Honest 'positioning' bar chart, NOT a like-for-like ranking. Our number is
+    the precision^2->time heuristic applied to the TI-histogram policy:
+    (6.04 / 2.93)^2 = 4.25x, with a delta-method 95% CI of [3.05, 5.92]
+    (recovered from the Run B memory-ablation CIs, n=24; verified by Monte
+    Carlo). Beracha rows are the ranges reported in adaptive_mri:23.
+    """
+    ORANGE = "#d98014"
+    GREY2 = "#b9bcc9"
+
+    # (label, central x, (lo, hi) whisker or None, colour, highlight)
+    rows = [
+        ("This work — TI-histogram\n($T_1$, 5 spheres, 560 s)",
+         4.25, (3.05, 5.92), IMPERIAL, True),
+        ("Beracha et al. — simulated $T_1$",
+         2.85, (1.7, 4.0), ORANGE, False),
+        ("Beracha et al. — in vivo\n(healthy volunteers)",
+         2.5, None, GREY2, False),
+    ]
+    labels = {
+        0: "4.25$\\times$   (95% CI 3.0–5.9$\\times$)",
+        1: "1.7–4$\\times$ range",
+        2: "2.5$\\times$",
+    }
+
+    y = np.arange(len(rows))[::-1]   # first row on top
+    fig = plt.figure(figsize=(9.4, 5.0))
+    fig.subplots_adjust(left=0.30, right=0.965, top=0.80, bottom=0.16)
+    ax = fig.add_subplot(1, 1, 1)
+
+    for yi, (lab, cx, whisk, col, hl) in zip(y, rows):
+        ax.barh(yi, cx, height=0.56, color=col, zorder=3,
+                edgecolor=NAVY if hl else "none", linewidth=1.6 if hl else 0)
+        if whisk is not None:
+            ax.errorbar(cx, yi, xerr=[[cx - whisk[0]], [whisk[1] - cx]],
+                        fmt="none", ecolor=NAVY if hl else "#7a5a16",
+                        elinewidth=1.8, capsize=6, capthick=1.8, zorder=4)
+        idx = list(y).index(yi)
+        ax.text(whisk[1] + 0.12 if whisk else cx + 0.12, yi, labels[idx],
+                va="center", ha="left", fontsize=11.5,
+                color=IMPERIAL if hl else INK, fontweight="bold" if hl else "normal")
+
+    ax.set_ylim(-0.75, len(rows) - 0.25)
+    ax.axvline(1.0, color=GREY, ls="--", lw=1.2, zorder=2)
+    ax.text(1.0, -0.62, "no speedup", color=GREY, fontsize=9,
+            ha="center", va="center")
+
+    ax.set_yticks(y)
+    ax.set_yticklabels([r[0] for r in rows], fontsize=11.5, color=INK)
+    ax.set_xlim(0, 7.0)
+    ax.set_xlabel("Acceleration at matched precision  ($\\times$)",
+                  fontsize=12.5, color=NAVY)
+    ax.set_title("Positioning: acceleration vs published adaptive qMRI",
+                 fontsize=14, fontweight="bold", color=NAVY, pad=35)
+    ax.text(0.5, 1.025,
+            "via Beracha's precision$^2\\!\\to$time heuristic  ·  tasks differ — "
+            "heuristic positioning, not a like-for-like ranking",
+            transform=ax.transAxes, ha="center", va="bottom",
+            fontsize=9.5, color=GREY, style="italic")
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.tick_params(axis="y", length=0)
+
+    out = os.path.join(FIGS, "fig9_positioning.png")
+    fig.savefig(out, dpi=200, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print("wrote", out)
+
+
 if __name__ == "__main__":
+    fig2a_qmri_table()
+    fig2b_rl_table()
     fig2_capability()
     fig3_float_collapse()
     fig4_ladder()
     fig4b_water_linearity()
+    fig9_positioning()

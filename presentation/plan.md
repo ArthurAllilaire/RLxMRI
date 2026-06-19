@@ -31,3 +31,4 @@ TODO items:
 1. The failed second RL diagram for the multi-fidelity chapter - could make that into a flow diagram
 2. Could implement the benchmark of the other paper to better compare my results. Could even run on T2 plate to see results of that. Need a time estimate for these - and will be done at the end post a working presentation.
 3. Could keep running the LSTM to see if step bound they're the same
+4. Pixel-grid overlay panels (slides 6/7/7b) use mismatched TIs: buggy run is TI=0.065 (npe64/nfe128) and the fixed/clean run is TI=0.1 (npe32/nfe64). For a clean before/after, regenerate both at the same TI and matrix size via `scripts/pixel_grid_overlay.jl`. Modest effort (re-run the script twice with matched config) but needs the Julia/KomaMRI env on Linux/WSL/GPU VM — juliacall does not run on local macOS. Not worth it for the talk; do it if the figure goes in the report.
