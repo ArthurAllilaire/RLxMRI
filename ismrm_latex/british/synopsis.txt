@@ -1,0 +1,1 @@
+An open-source digital phantom was used to train and evaluate reinforcement learning for adaptive T1 mapping. A history-aware policy halved simulated T1 estimation error versus a fixed acquisition, demonstrating a reproducible testbed for adaptive quantitative MRI.

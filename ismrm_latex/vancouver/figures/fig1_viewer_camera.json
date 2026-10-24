@@ -1,0 +1,16 @@
+{
+ "source": "report_latex/imgs/mri_system_phantom/T1_voxel_phantom.png",
+ "eye": {
+  "x": 1.8291502550764203,
+  "y": 0.9520647905023265,
+  "z": 0.6597590310405971
+ },
+ "plot_area_css": {
+  "left": 22.298312018132776,
+  "top": 29.455674648752606,
+  "width": 668.3349882175169,
+  "height": 477.6198296804517
+ },
+ "colourbar_left_css": 714.0,
+ "corner_rms_device_px": 2.308308012813039
+}

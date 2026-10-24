@@ -1,0 +1,122 @@
+[
+  {
+    "name": "stage0_analytic_end",
+    "rung": "analytic",
+    "kind": "end of rung",
+    "step": 4096,
+    "hours": 0.03425846576690674,
+    "blocks": 6.541666666666667,
+    "mape": 14.7789420096235,
+    "lo": 11.770446074817666,
+    "hi": 18.024608984927408,
+    "same_weights_as": null
+  },
+  {
+    "name": "stage1_cached3_best",
+    "rung": "cached3",
+    "kind": "best in rung",
+    "step": 10000,
+    "hours": 0.15755983180469937,
+    "blocks": 6.958333333333333,
+    "mape": 5.795389589852823,
+    "lo": 5.1084532886554435,
+    "hi": 6.508370233285002,
+    "same_weights_as": null
+  },
+  {
+    "name": "stage1_cached3_end",
+    "rung": "cached3",
+    "kind": "end of rung",
+    "step": 12288,
+    "hours": 0.2182352230283949,
+    "blocks": 7.416666666666667,
+    "mape": 4.671352418542021,
+    "lo": 3.906792936840797,
+    "hi": 5.4927742971963935,
+    "same_weights_as": null
+  },
+  {
+    "name": "stage2_cached_best",
+    "rung": "cached",
+    "kind": "best in rung",
+    "step": 12289,
+    "hours": 0.22527503457334305,
+    "blocks": 7.416666666666667,
+    "mape": 4.568025137904184,
+    "lo": 3.8503554135281273,
+    "hi": 5.366523954100904,
+    "same_weights_as": "stage1_cached3_end"
+  },
+  {
+    "name": "stage2_cached_end",
+    "rung": "cached",
+    "kind": "end of rung",
+    "step": 20480,
+    "hours": 0.43502724375989704,
+    "blocks": 6.083333333333333,
+    "mape": 5.500836174503618,
+    "lo": 4.810316588921043,
+    "hi": 6.269490673591436,
+    "same_weights_as": null
+  },
+  {
+    "name": "stage3_full3_best",
+    "rung": "full3",
+    "kind": "best in rung",
+    "step": 20481,
+    "hours": 0.43806574291653105,
+    "blocks": 6.083333333333333,
+    "mape": 5.500836174503618,
+    "lo": 4.810316588921043,
+    "hi": 6.269490673591436,
+    "same_weights_as": "stage2_cached_end"
+  },
+  {
+    "name": "stage3_full3_end",
+    "rung": "full3",
+    "kind": "end of rung",
+    "step": 32768,
+    "hours": 0.763278916478157,
+    "blocks": 7.458333333333333,
+    "mape": 7.195775990933884,
+    "lo": 6.093840826901715,
+    "hi": 8.369441304511337,
+    "same_weights_as": null
+  },
+  {
+    "name": "global_best",
+    "rung": "full",
+    "kind": "selected",
+    "step": 242769,
+    "hours": 7.001988037692176,
+    "blocks": 13.166666666666666,
+    "mape": 3.0030870004257313,
+    "lo": 2.524996385861241,
+    "hi": 3.496084051610139,
+    "same_weights_as": null
+  },
+  {
+    "name": "stage4_full_best",
+    "rung": "full",
+    "kind": "best in rung",
+    "step": 282769,
+    "hours": 8.231888339055908,
+    "blocks": 14.291666666666666,
+    "mape": 2.836610249789415,
+    "lo": 2.4897919102265744,
+    "hi": 3.221578079032382,
+    "same_weights_as": null
+  },
+  {
+    "name": "stage4_full_end",
+    "rung": "full",
+    "kind": "end of rung",
+    "step": 307305,
+    "hours": 8.992749344574081,
+    "blocks": 15.541666666666666,
+    "mape": 3.1565197383538877,
+    "lo": 2.4979163095269312,
+    "hi": 3.9249002741415175,
+    "same_weights_as": null
+  }
+]

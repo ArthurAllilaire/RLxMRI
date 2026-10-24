@@ -1,0 +1,70 @@
+{
+  "hist": {
+    "diagnose_e2 recipe (all recorded blocks)": {
+      "pearson_log_r": -0.1198554202409025,
+      "n_blocks": 302
+    },
+    "executed blocks only": {
+      "pearson_log_r": -0.11369354582478003,
+      "n_blocks": 292
+    },
+    "executed blocks decided on a fitted estimate": {
+      "pearson_log_r": 0.23263850960109822,
+      "n_blocks": 268
+    },
+    "block2_T1_est_at_decision_values_s": [
+      0.173205
+    ]
+  },
+  "nomem": {
+    "diagnose_e2 recipe (all recorded blocks)": {
+      "pearson_log_r": 0.2289879051676517,
+      "n_blocks": 311
+    },
+    "executed blocks only": {
+      "pearson_log_r": 0.2259748166265457,
+      "n_blocks": 306
+    },
+    "executed blocks decided on a fitted estimate": {
+      "pearson_log_r": 0.5274032267056944,
+      "n_blocks": 282
+    },
+    "block2_T1_est_at_decision_values_s": [
+      0.173205
+    ]
+  },
+  "sigma": {
+    "diagnose_e2 recipe (all recorded blocks)": {
+      "pearson_log_r": -0.2509709578498066,
+      "n_blocks": 316
+    },
+    "executed blocks only": {
+      "pearson_log_r": -0.250906773062352,
+      "n_blocks": 310
+    },
+    "executed blocks decided on a fitted estimate": {
+      "pearson_log_r": 0.3370435526610411,
+      "n_blocks": 286
+    },
+    "block2_T1_est_at_decision_values_s": [
+      0.173205
+    ]
+  },
+  "lstm": {
+    "diagnose_e2 recipe (all recorded blocks)": {
+      "pearson_log_r": 0.7783950022403695,
+      "n_blocks": 240
+    },
+    "executed blocks only": {
+      "pearson_log_r": 0.7769875509843546,
+      "n_blocks": 222
+    },
+    "executed blocks decided on a fitted estimate": {
+      "pearson_log_r": 0.6148322948891591,
+      "n_blocks": 198
+    },
+    "block2_T1_est_at_decision_values_s": [
+      0.173205
+    ]
+  }
+}
