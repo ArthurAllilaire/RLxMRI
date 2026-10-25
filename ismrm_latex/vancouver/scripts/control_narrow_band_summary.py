@@ -10,6 +10,7 @@ Wide-range references are the same arms on the 24 default held-out phantoms.
 from __future__ import annotations
 
 import json
+from typing import NamedTuple
 
 import numpy as np
 
@@ -27,9 +28,40 @@ DATA = figstyle.FIGURES / "control_data" / "control_narrow_band.json"
 WIDE = figstyle.FIGURES / "control_data" / "control_results.json"
 OUT = figstyle.FIGURES / "control_narrow_band.md"
 BIN_EDGES_S = (0.1, 0.5)
+ADAPTIVE_ARM = ("Adaptive (policy in the loop)", "own, chosen online")
 FIXED_ARMS = {"distilled": ("Distilled fixed protocol", "medians of validation schedules"),
               "log_grid_trmatched": ("Fixed log TI grid, TR 1.7 s", "fixed"),
               "cr_optimal": ("Cramer-Rao optimal", "fixed")}
+
+
+class Arms(NamedTuple):
+    """Per-phantom MAPE, block count and scan time of every arm; mape also holds the swap mean."""
+    mape: dict[str, np.ndarray]
+    blocks: dict[str, list[int]]
+    times: dict[str, list[float]]
+    swap_keys: list[str]
+
+
+def load_arms(d: dict) -> Arms:
+    mape = {k: np.array([r["mape"] for r in v]) for k, v in d["arms"].items()}
+    swap_keys = [f"swap_{s}" for s in d["shifts"]]
+    mape["swap_mean"] = np.mean([mape[k] for k in swap_keys], axis=0)
+    return Arms(mape, {k: [r["n_blocks"] for r in v] for k, v in d["arms"].items()},
+                {k: [r["time_s"] for r in v] for k, v in d["arms"].items()}, swap_keys)
+
+
+def swap_label(n_shifts: int) -> str:
+    return f"Swapped, mean of {n_shifts} shifts"
+
+
+def arm_table(a: Arms, sel: np.ndarray) -> dict:
+    """Per-arm stats over the phantoms in sel; the swap mean pools its shifts' runs."""
+    out = {k: arm_stats(a.mape[k][sel], a.mape[k][sel], [a.blocks[k][i] for i in sel], [a.times[k][i] for i in sel])
+           for k in ["adaptive", *a.swap_keys, *FIXED_ARMS]}
+    out["swap_mean"] = arm_stats(np.concatenate([a.mape[k][sel] for k in a.swap_keys]), a.mape["swap_mean"][sel],
+                                 [a.blocks[k][i] for k in a.swap_keys for i in sel],
+                                 [a.times[k][i] for k in a.swap_keys for i in sel])
+    return out
 
 
 def boot_r(x: np.ndarray, y: np.ndarray) -> tuple[float, float, float]:
@@ -53,27 +85,13 @@ def main() -> None:
     d = json.loads(DATA.read_text())
     wide = json.loads(WIDE.read_text())
     arms, shifts, n_scans = d["arms"], d["shifts"], d["n_scans"]
-    mape = {k: np.array([r["mape"] for r in v]) for k, v in arms.items()}
-    blocks = {k: [r["n_blocks"] for r in v] for k, v in arms.items()}
-    times = {k: [r["time_s"] for r in v] for k, v in arms.items()}
-
-    swap_keys = [f"swap_{s}" for s in shifts]
+    a_all = load_arms(d)
+    mape, blocks, swap_keys = a_all.mape, a_all.blocks, a_all.swap_keys
     swap_runs = np.concatenate([mape[k] for k in swap_keys])
-    mape["swap_mean"] = np.mean([mape[k] for k in swap_keys], axis=0)
-    swap_label = f"Swapped, mean of {len(shifts)} shifts"
 
-    def arm_table(sel: np.ndarray) -> dict:
-        """Per-arm stats over the phantoms in sel; the swap mean pools its shifts' runs."""
-        out = {k: arm_stats(mape[k][sel], mape[k][sel], [blocks[k][i] for i in sel], [times[k][i] for i in sel])
-               for k in ["adaptive", *swap_keys, *FIXED_ARMS]}
-        out["swap_mean"] = arm_stats(np.concatenate([mape[k][sel] for k in swap_keys]), mape["swap_mean"][sel],
-                                     [blocks[k][i] for k in swap_keys for i in sel],
-                                     [times[k][i] for k in swap_keys for i in sel])
-        return out
-
-    stats = arm_table(np.arange(n_scans))
+    stats = arm_table(a_all, np.arange(n_scans))
     compared = [*swap_keys, "swap_mean", *FIXED_ARMS]
-    labels = {**{k: f"Swapped, shift {s}" for s, k in zip(shifts, swap_keys)}, "swap_mean": swap_label,
+    labels = {**{k: f"Swapped, shift {s}" for s, k in zip(shifts, swap_keys)}, "swap_mean": swap_label(len(shifts)),
               **{k: label for k, (label, _) in FIXED_ARMS.items()}}
     paired = {k: paired_stats(mape[k], mape["adaptive"]) for k in compared}
 
@@ -107,7 +125,7 @@ def main() -> None:
     for b, label in enumerate((f"c < {e0} s", f"{e0} <= c < {e1} s", f"c >= {e1} s")):
         sel = np.flatnonzero(bins == b)
         assert sel.size > 0, f"no phantom has {label}"
-        by_bin.append({"label": label, "sel": sel, "stats": arm_table(sel),
+        by_bin.append({"label": label, "sel": sel, "stats": arm_table(a_all, sel),
                        "paired": {k: paired_stats(mape[k][sel], mape["adaptive"][sel]) for k in bin_arms[1:]}})
 
     a, ds = stats["adaptive"], stats["distilled"]
@@ -131,9 +149,9 @@ def main() -> None:
         return (f"| {bb['label']} | {sel.size} | {1e3 * np.median(centre[sel]):.0f} | {np.mean([blocks['adaptive'][i] for i in sel]):.1f} | "
                 f"{1e3 * np.median(min_ti[sel]):.0f} | {1e3 * np.median(med_ti[sel]):.0f} |")
 
-    rows = [("Adaptive (policy in the loop)", "own, chosen online", stats["adaptive"], wide_ref["adaptive"])]
+    rows = [(*ADAPTIVE_ARM, stats["adaptive"], wide_ref["adaptive"])]
     rows += [(f"Swapped, shift {s}", f"scan (k + {s}) mod {n_scans}", stats[k], None) for s, k in zip(shifts, swap_keys)]
-    rows.append((swap_label, "another scan's", stats["swap_mean"], wide_ref["swap_mean"]))
+    rows.append((labels["swap_mean"], "another scan's", stats["swap_mean"], wide_ref["swap_mean"]))
     rows += [(label, source, stats[k], wide_ref[k]) for k, (label, source) in FIXED_ARMS.items()]
 
     short, mid, long_ = by_bin

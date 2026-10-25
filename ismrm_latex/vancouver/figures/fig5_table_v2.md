@@ -16,10 +16,10 @@ The fixed comparators' per-scan values were replayed by `scripts/fixed_comparato
 | Fixed log TI grid | - | 240 s | 163 s | 6.86 [5.83, 7.90] | 20.8% | 12.04 |
 | Cramér-Rao optimal | - | 240 s | 240 s | 15.96 [12.26, 19.81] | 0.0% | 35.53 |
 
-† LSTM: selected checkpoint came from the cached rung, before any full-Bloch training; the run had 7.3× fewer full-Bloch steps than the TI-histogram run (37,862 vs 274,537).
+† Undertrained: the LSTM ran 4.6× slower, so within the same 9 h budget it took 7.3× fewer full-Bloch steps. Its best checkpoint predates full-Bloch training, so this is not a fair test of recurrent memory.
 ‡ Policy also chose the flip angle.
 § One fixed schedule: per-block median TI and TR of the TI-histogram policy's schedules on 24 validation scans (13 blocks, 549 s).
 
-## Caption (488 characters)
+## Caption (429 characters)
 
-T1 error on 24 held-out random phantoms, identical across methods, unseen in training or checkpoint selection. MAPE: mean absolute percentage error of a scan's five spheres, averaged over scans (bootstrap 95% CI). Worst scan: highest scan MAPE. Fixed grid: log-spaced TIs, TR 1.7 s. Cramér-Rao: (TI, TR) optimised for the plate's T1 range. Distilled: one fixed schedule from the policy's validation scans. Same T1 fitter for all. † LSTM checkpoint selected before any full-Bloch training.
+T1 error on 24 held-out random phantoms, identical across methods, unseen in training or checkpoint selection. MAPE: mean absolute percentage error of a scan's five spheres, averaged over scans (bootstrap 95% CI). Worst scan: highest scan MAPE. Fixed grid: log-spaced TIs, TR 1.7 s. Cramér-Rao: (TI, TR) optimised for the plate's T1 range. Distilled: one fixed schedule from the policy's validation scans. Same T1 fitter for all.

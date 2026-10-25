@@ -47,10 +47,13 @@ function python_action(env::E2Env, ti, tr; learn_alpha::Bool, numpy2::Bool)
     Float64[ti_out, Float32(TE_S), tr_out, alpha_out]
 end
 
-function log_grid_schedule(budget_s::Real, npe::Integer)
-    n = max(1, floor(Int, budget_s / (npe * LOG_GRID_TR_S)))
-    tis = exp.(range(log(LOG_GRID_TI_RANGE_S[1]), log(LOG_GRID_TI_RANGE_S[2]); length = n))
-    (TIs = collect(tis), TRs = fill(LOG_GRID_TR_S, n), max_steps = nothing)
+"""make_log_grid_trmatched: floor(budget / (Npe TR)) TIs log-spaced up to ti_hi_s, all at TR tr_s.
+grid_tr_sweep.jl lowers ti_hi_s and max_blocks for its TI-capped variant; the defaults are the comparator."""
+function log_grid_schedule(budget_s::Real, npe::Integer; tr_s::Real = LOG_GRID_TR_S,
+                           ti_hi_s::Real = LOG_GRID_TI_RANGE_S[2], max_blocks::Integer = typemax(Int))
+    n = clamp(floor(Int, budget_s / (npe * tr_s)), 1, max_blocks)
+    tis = exp.(range(log(LOG_GRID_TI_RANGE_S[1]), log(ti_hi_s); length = n))
+    (TIs = collect(tis), TRs = fill(Float64(tr_s), n), max_steps = nothing)
 end
 
 function cr_schedule(dir::AbstractString)
@@ -63,12 +66,15 @@ function run_episode(env::E2Env, seed::Integer, sched; learn_alpha::Bool, numpy2
     e2_reset!(env; rng_seed = seed)
     n = length(sched.TIs)
     step, done, info = 0, false, Dict{String,Any}()
-    executed = Vector{Float64}[]
+    executed, executed_mape = Vector{Float64}[], Float64[]
     while !done
         a = python_action(env, sched.TIs[step % n + 1], sched.TRs[step % n + 1];
                           learn_alpha = learn_alpha, numpy2 = numpy2)
         _, _, done, info = e2_step!(env, a)
-        get(info, "budget_exceeded", false) || push!(executed, [info["TI"], info["TR"], info["alpha_deg"]])
+        if !get(info, "budget_exceeded", false)
+            push!(executed, [info["TI"], info["TR"], info["alpha_deg"]])
+            push!(executed_mape, info["mape"])
+        end
         step += 1
         sched.max_steps !== nothing && step >= sched.max_steps && break
     end
@@ -76,5 +82,5 @@ function run_episode(env::E2Env, seed::Integer, sched; learn_alpha::Bool, numpy2
                      "ape" => abs.(env.T1_est .- env.T1_true) ./ env.T1_true,
                      "T1_true" => copy(env.T1_true), "T1_est" => copy(env.T1_est),
                      "n_blocks" => env.n_blocks, "time_s" => env.time_used_s, "ep_len" => step,
-                     "executed_TI_TR_alpha" => executed)
+                     "executed_TI_TR_alpha" => executed, "executed_mape" => executed_mape)
 end

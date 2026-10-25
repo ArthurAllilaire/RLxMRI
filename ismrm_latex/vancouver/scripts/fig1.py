@@ -273,17 +273,27 @@ def panel_twin(ax, cax, panel: PanelA, t1_norm):
     style_colourbar(cb, panel.colourbar_label, t1_ticks(t1_norm))
 
 
+def b1_half_width(slabs, meta) -> float:
+    """Half-width (mm) shown around each B1 slab: every phantom's footprint plus a margin."""
+    groups = [slabs[f"b1_{d['seed']}_group"] for d in meta["b1"]]
+    return occupied_half_width(groups, 2.0, slabs["grid_mm"])
+
+
+def draw_training_slab(ax, slabs, d, t1_norm, half, removed_lw=0.6):
+    """One training phantom's T1-plate slab, with the plate positions it leaves as water dotted."""
+    s = d["seed"]
+    draw_slab(ax, slabs["grid_mm"], slabs[f"b1_{s}_group"], slabs[f"b1_{s}_T1"], figstyle.T1_CMAP, t1_norm,
+              d["spheres"], half)
+    active = {sp["label"] for sp in d["spheres"]}
+    for pos in d["plate_positions"]:
+        if pos["label"] not in active:
+            ax.add_patch(Circle(pos["centre_mm"], pos["radius_mm"], fill=False, lw=removed_lw, ls=(0, (1, 1.5)),
+                                ec=REMOVED_SPHERE))
+
+
 def panel_b1(axes, slabs, meta, t1_norm, half):
-    grid = slabs["grid_mm"]
     for i, (ax, d) in enumerate(zip(axes, meta["b1"])):
-        s = d["seed"]
-        draw_slab(ax, grid, slabs[f"b1_{s}_group"], slabs[f"b1_{s}_T1"], figstyle.T1_CMAP, t1_norm,
-                  d["spheres"], half)
-        active = {sp["label"] for sp in d["spheres"]}
-        for pos in d["plate_positions"]:
-            if pos["label"] not in active:
-                ax.add_patch(Circle(pos["centre_mm"], pos["radius_mm"], fill=False, lw=0.6, ls=(0, (1, 1.5)),
-                                    ec=REMOVED_SPHERE))
+        draw_training_slab(ax, slabs, d, t1_norm, half)
         ax.set_title(f"Training phantom {i + 1}", fontsize=SMALL + 0.5, pad=2)
         tx, ty = d["translation_mm"]
         ax.text(0.5, -0.02, f"shift ({fmt_signed(tx, 1)}, {fmt_signed(ty, 1)}) mm\n"
@@ -426,8 +436,7 @@ def build(variant: str, panel_a: PanelA, rungs: list[Rung], slabs, slab_meta, tw
     slab_y = top - title_h - slab
     b_axes = [add(x_r + i * (slab + gap), slab_y, slab, slab) for i in range(3)]
     if variant == "B1":
-        groups = [slabs[f"b1_{d['seed']}_group"] for d in slab_meta["b1"]]
-        panel_b1(b_axes, slabs, slab_meta, t1_norm, occupied_half_width(groups, 2.0, slabs["grid_mm"]))
+        panel_b1(b_axes, slabs, slab_meta, t1_norm, b1_half_width(slabs, slab_meta))
     else:
         groups = [slabs[f"b2_{p}_group"] for p in ("T1", "T2", "PD")]
         c_axes = [add(x_r + i * (slab + gap) + 0.15, slab_y - 0.13, slab - 0.3, 0.07) for i in range(3)]

@@ -12,29 +12,39 @@ and its training time on fig3's axis (PPO start = first tensorboard event file).
 
 Also writes figures/fig3_ci_checkpoints.{json,md}.
 
+With --narrow-band it writes only fig3_combo variants whose panel D shows the narrow-band control
+(control_narrow_band.jl) instead: the selected policy's executed TIs coloured by band centre, on all
+96 scans (fig3_combo_narrowband_all), on 24 of them evenly spaced in centre (fig3_combo_narrowband_24),
+and on those 24 with the TI-centre correlation (fig3_combo_narrowband_24_annotated).
+
 Run from the RLxMRI repo root (after the rollouts):
-  .venv/bin/python ismrm_latex/vancouver/scripts/fig3_ci_figure.py
+  .venv/bin/python ismrm_latex/vancouver/scripts/fig3_ci_figure.py [--narrow-band]
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import LogNorm
 
 import figstyle
 from control_summary import boot_ci
-from fig3_figure import (CM, FIG_W, RUN, WAVEFORMS, CheckpointMape, add_axes_cm, add_panel_b_with_inset,
-                         draw_panel_a, full_figure, load_scans, load_training_curve, ppo_start_wall_s, read_json)
+from fig3_figure import (CM, FIG_W, INSET_FROM_BLOCK, MEAN_T1_LINES, RUN, SMALL, WAVEFORMS, CheckpointMape, Scan,
+                         ScanLines, ValidationScans, add_axes_cm, add_panel_b_with_inset, draw_panel_a, draw_panel_b,
+                         full_figure, inset_rect, load_scans, load_training_curve, opening_probe_blocks,
+                         ppo_start_wall_s, read_json)
 from fig3_v2_figure import mape_stats
 from fig3evo_figure import CHECKPOINTS as FEATURED
 from fig3evo_figure import draw_running_mape, draw_ti_tr, format_hours, load_checkpoints
 
 MAX_CAPTION_CHARS = 500
 N_SCANS = 24
+NARROW_BAND = figstyle.FIGURES / "control_data" / "control_narrow_band.json"
 # name -> (rung, how the checkpoint was saved)
 CHECKPOINTS = {
     "stage0_analytic_end": ("analytic", "end of rung"),
@@ -142,12 +152,76 @@ def axis_max(rows: list[Row]) -> float:
     return 5.0 * math.ceil(max(r.hi for r in rows) * 1.08 / 5.0)
 
 
+# ---------------------------------------------------------------- panel D
+
+
+@dataclass
+class PanelD:
+    """What panel D shows, and the caption sentence that describes it."""
+    scans: ValidationScans
+    caption: str
+    lines: ScanLines = MEAN_T1_LINES
+    # Text in the panel's lower right corner, level with the colourbar's tick labels.
+    note: str | None = None
+
+
+def validation_panel_d() -> PanelD:
+    return PanelD(load_scans(), "(D) Selected policy's TI per block, coloured by mean sphere T1; inset: one IR-SE shot.")
+
+
+def validation_inset(vs: ValidationScans) -> list[float]:
+    """Panel D's inset rectangle on the validation scans, which every variant of D keeps."""
+    fig, ax = plt.subplots()
+    draw_panel_b(ax, vs)
+    rect = inset_rect(ax, vs.scans, INSET_FROM_BLOCK)
+    plt.close(fig)
+    return rect
+
+
+def evenly_by_centre(vs: ValidationScans, n: int) -> ValidationScans:
+    """The n scans at evenly spaced ranks of band centre, the shortest and longest band included."""
+    ranked = sorted(vs.scans, key=lambda s: s.colour_t1_s)
+    picked = [ranked[i] for i in np.linspace(0, len(ranked) - 1, n).round().astype(int)]
+    return ValidationScans(picked, vs.shots_per_block, opening_probe_blocks(picked))
+
+
+def load_narrow_band() -> tuple[dict, ValidationScans]:
+    """The narrow-band control's data, and its adaptive schedules with each scan coloured by band centre."""
+    data = read_json(NARROW_BAND)
+    # control_narrow_band.jl stores the adaptive arm's executed schedules, phantom by phantom.
+    scans = [Scan(np.asarray(s["TI_s"]), c) for s, c in zip(data["schedules"], data["T1_band_centre"])]
+    return data, ValidationScans(scans, int(data["Npe"]), opening_probe_blocks(scans))
+
+
+def narrow_band_panels() -> dict[str, PanelD]:
+    data, every = load_narrow_band()
+    scans = every.scans
+    some = evenly_by_centre(every, N_SCANS)
+
+    norm = LogNorm(*data["centre_range_s"])
+    ticks = [t for t in (0.03, 0.1, 0.3, 1.0) if norm.vmin <= t <= norm.vmax]
+    # Short bands fill the lower right with TIs near 50 ms; the lower left, after the probe, stays empty.
+    lines = ScanLines(norm, "cluster centre T$_1$ (s)", ticks, [f"{t:g}" for t in ticks],
+                      colourbar_at=(0.13, 0.1, 0.25, 0.03))
+    thin = replace(lines, line_kw={"lw": 0.6, "marker": "o", "ms": 1.2, "alpha": 0.6})
+    r = np.corrcoef(np.log([s.colour_t1_s for s in scans]), np.log([s.ti_s.min() for s in scans]))[0, 1]
+    note = f"shortest TI vs cluster centre: r = {r:.2f} ({len(scans)} scans)"
+
+    def caption(n: int) -> str:
+        return f"(D) Selected policy's TIs, {n} clustered-T1 scans coloured by centre; inset: IR-SE shot."
+
+    return {
+        "fig3_combo_narrowband_all": PanelD(every, caption(len(scans)), thin),
+        "fig3_combo_narrowband_24": PanelD(some, caption(N_SCANS), lines),
+        "fig3_combo_narrowband_24_annotated": PanelD(some, caption(N_SCANS), lines, note),
+    }
+
+
 # ---------------------------------------------------------------- layouts
 
 
-def combo_figure(rows: list[Row]) -> plt.Figure:
+def combo_figure(rows: list[Row], panel_d: PanelD) -> plt.Figure:
     curve = load_training_curve()
-    vs = load_scans()
     wf = read_json(WAVEFORMS)
     cps = load_checkpoints()
     kw = read_json(RUN / "run_config.json")["base_env_kwargs"]
@@ -169,8 +243,14 @@ def combo_figure(rows: list[Row]) -> plt.Figure:
 
     d_left = left + w_c + 2.3
     w_d = FIG_W - d_left - right
-    add_panel_b_with_inset(fig, (d_left, 1.0, w_d, row_h), vs, wf, labels=("D", None), label_x=-1.2 / w_d,
-                           compact=True)
+    ax_d = add_panel_b_with_inset(fig, (d_left, 1.0, w_d, row_h), panel_d.scans, wf, labels=("D", None),
+                                  label_x=-1.2 / w_d, compact=True, lines=panel_d.lines,
+                                  inset=validation_inset(load_scans()))
+    if panel_d.note is not None:
+        # On the colourbar's tick-label line: 2 pt ticks and 1 pt pad below the bar.
+        ax_d.annotate(panel_d.note, xy=(0.97, panel_d.lines.colourbar_at[1]), xycoords="axes fraction",
+                      xytext=(0, -3), textcoords="offset points", ha="right", va="top", fontsize=SMALL,
+                      color=figstyle.INK)
     return fig
 
 
@@ -184,7 +264,7 @@ def caption_ci(rows: list[Row]) -> str:
     )
 
 
-def caption_combo(rows: list[Row]) -> str:
+def caption_combo(rows: list[Row], panel_d: PanelD) -> str:
     early = next(r for r in rows if r.name == "stage0_analytic_end")
     sel = next(r for r in rows if r.kind == "selected")
     return (
@@ -192,14 +272,27 @@ def caption_combo(rows: list[Row]) -> str:
         "saved checkpoint, full Bloch (mean, bootstrap 95% CI); faint: logged probes; star and lines: selected "
         "checkpoint and fixed protocols, 24 held-out phantoms. Coloured: checkpoints followed in B and C. (B) Executed "
         f"(TI, TR): pairing short TIs with short TRs fits {sel.blocks:.0f} blocks, not {early.blocks:.0f}. (C) T1 "
-        "MAPE within a scan (median, IQR). (D) Selected policy's TI per block, coloured by mean "
-        "sphere T1; inset: one IR-SE shot."
+        f"MAPE within a scan (median, IQR). {panel_d.caption}"
     )
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Figure 3 with 95% CIs on the training curve.")
+    parser.add_argument("--narrow-band", action="store_true",
+                        help="write only the fig3_combo variants whose panel D shows the narrow-band control")
+    args = parser.parse_args()
     figstyle.apply()
     rows = load_rows()
+    if args.narrow_band:
+        for stem, panel_d in narrow_band_panels().items():
+            fig = combo_figure(rows, panel_d)
+            figstyle.save(fig, stem)
+            plt.close(fig)
+            cap = caption_combo(rows, panel_d)
+            assert len(cap) <= MAX_CAPTION_CHARS, (stem, len(cap))
+            print(f"\n{stem} caption ({len(cap)} characters):\n{cap}")
+        return
+
     write_table(rows)
 
     fig = full_figure(load_training_curve(), load_scans(), read_json(WAVEFORMS), checkpoints=plotted(rows),
@@ -207,11 +300,12 @@ def main() -> None:
     figstyle.save(fig, "fig3_ci")
     plt.close(fig)
 
-    fig = combo_figure(rows)
+    panel_d = validation_panel_d()
+    fig = combo_figure(rows, panel_d)
     figstyle.save(fig, "fig3_combo")
     plt.close(fig)
 
-    for name, cap in (("fig3_ci", caption_ci(rows)), ("fig3_combo", caption_combo(rows))):
+    for name, cap in (("fig3_ci", caption_ci(rows)), ("fig3_combo", caption_combo(rows, panel_d))):
         assert len(cap) <= MAX_CAPTION_CHARS, (name, len(cap))
         print(f"\n{name} caption ({len(cap)} characters):\n{cap}")
 

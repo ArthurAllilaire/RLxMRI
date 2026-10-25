@@ -16,11 +16,12 @@ Run from the RLxMRI repo root:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
 
 import figstyle
 from fig3_figure import CM, FIG_W, RUN, SMALL, add_axes_cm, load_training_curve, read_json
@@ -38,6 +39,10 @@ TR_LIM = (0.0, 5.0)
 MAPE_YMAX = 50.0
 
 
+def executed(ep: dict) -> list[dict]:
+    return [b for b in ep["blocks"] if b["executed"]]
+
+
 @dataclass
 class Checkpoint:
     name: str
@@ -46,12 +51,9 @@ class Checkpoint:
     hours: float
     episodes: list[dict]
 
-    def executed(self, ep: dict) -> list[dict]:
-        return [b for b in ep["blocks"] if b["executed"]]
-
     @property
     def blocks_per_scan(self) -> float:
-        return float(np.mean([len(self.executed(ep)) for ep in self.episodes]))
+        return float(np.mean([len(executed(ep)) for ep in self.episodes]))
 
     @property
     def per_scan_mape(self) -> np.ndarray:
@@ -89,23 +91,30 @@ def checkpoint_stats(cp: Checkpoint) -> str:
     return f"{cp.blocks_per_scan:.1f} blocks/scan\nMAPE {cp.mape_pct:.1f}%"
 
 
+def executed_ti_tr(cp: Checkpoint) -> tuple[list[float], list[float]]:
+    blocks = [b for ep in cp.episodes for b in executed(ep)]
+    return [b["TI"] for b in blocks], [b["TR"] for b in blocks]
+
+
+def format_ti_tr_axes(ax: plt.Axes) -> None:
+    ax.set_xscale("log")
+    ax.set_xlim(*TI_LIM)
+    ax.set_ylim(*TR_LIM)
+    ticks = [0.03, 0.1, 0.3, 1]
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([f"{t:g}" for t in ticks])
+    ax.xaxis.set_minor_formatter(plt.NullFormatter())
+    ax.set_xlabel("TI (s)")
+
+
 def draw_ti_tr(axes: list[plt.Axes], cps: list[Checkpoint],
                stats: Callable[[Checkpoint], str] = checkpoint_stats, stats_y: float = 0.96) -> None:
     for ax, cp in zip(axes, cps):
-        ti = [b["TI"] for ep in cp.episodes for b in cp.executed(ep)]
-        tr = [b["TR"] for ep in cp.episodes for b in cp.executed(ep)]
-        ax.scatter(ti, tr, s=9, color=cp.colour, alpha=0.55, lw=0, zorder=2, clip_on=False)
-        ax.set_xscale("log")
-        ax.set_xlim(*TI_LIM)
-        ax.set_ylim(*TR_LIM)
-        ticks = [0.03, 0.1, 0.3, 1]
-        ax.set_xticks(ticks)
-        ax.set_xticklabels([f"{t:g}" for t in ticks])
-        ax.xaxis.set_minor_formatter(plt.NullFormatter())
+        ax.scatter(*executed_ti_tr(cp), s=9, color=cp.colour, alpha=0.55, lw=0, zorder=2, clip_on=False)
+        format_ti_tr_axes(ax)
         ax.set_title(f"{cp.label}, {format_hours(cp.hours)}", fontsize=SMALL + 1, loc="left", pad=3)
         ax.text(0.97, stats_y, stats(cp), transform=ax.transAxes, ha="right", va="top", fontsize=SMALL,
                 color=figstyle.INK, linespacing=1.1)
-        ax.set_xlabel("TI (s)")
     axes[0].set_ylabel("TR (s)")
     for ax in axes[1:]:
         ax.tick_params(labelleft=False)
@@ -114,11 +123,20 @@ def draw_ti_tr(axes: list[plt.Axes], cps: list[Checkpoint],
 # ---------------------------------------------------------------- panel B
 
 
-def running_mape(cp: Checkpoint, t_grid: np.ndarray, shots: int) -> np.ndarray:
+@dataclass
+class Reference:
+    """A fixed protocol run on the same scans, drawn in its figstyle colour and line style."""
+    key: str
+    episodes: list[dict]
+    # Legend text; figstyle.METHOD_LABELS by default.
+    label: str | None = None
+
+
+def running_mape(episodes: list[dict], t_grid: np.ndarray, shots: int) -> np.ndarray:
     """Per-scan MAPE after the blocks finished by each time; NaN before the first fit."""
     rows = []
-    for ep in cp.episodes:
-        blocks = cp.executed(ep)
+    for ep in episodes:
+        blocks = executed(ep)
         t_end = shots * np.cumsum([b["TR"] for b in blocks])
         mape = np.array([100.0 * b["mape"] for b in blocks])
         # The env reports 100% until two blocks exist, i.e. before any fit.
@@ -129,15 +147,26 @@ def running_mape(cp: Checkpoint, t_grid: np.ndarray, shots: int) -> np.ndarray:
 
 
 def draw_running_mape(ax: plt.Axes, cps: list[Checkpoint], budget_s: float, shots: int,
-                      note: str = "line: median, band: interquartile range (24 scans)") -> None:
+                      note: str = "line: median, band: interquartile range (24 scans)",
+                      references: Sequence[Reference] = (), reference_lw: float = 0.9) -> None:
+    """references: fixed protocols drawn under the checkpoints, with a lighter band and a legend."""
     t = np.linspace(0, budget_s, 1121)
+
+    def quartiles(episodes: list[dict]) -> tuple[np.ndarray, ...]:
+        m = running_mape(episodes, t, shots)
+        ok = np.all(np.isfinite(m), axis=0)
+        return t[ok], *np.percentile(m[:, ok], [25, 50, 75], axis=0)
+
+    for ref in references:
+        colour = figstyle.METHOD_COLOURS[ref.key]
+        tt, q25, q50, q75 = quartiles(ref.episodes)
+        ax.fill_between(tt, q25, q75, color=colour, alpha=0.1, lw=0, step="post")
+        ax.step(tt, q50, where="post", color=colour, ls=figstyle.METHOD_LINESTYLES[ref.key], lw=reference_lw)
     ends = []
     for cp in cps:
-        m = running_mape(cp, t, shots)
-        ok = np.all(np.isfinite(m), axis=0)
-        q25, q50, q75 = np.percentile(m[:, ok], [25, 50, 75], axis=0)
-        ax.fill_between(t[ok], q25, q75, color=cp.colour, alpha=0.18, lw=0, step="post")
-        ax.step(t[ok], q50, where="post", color=cp.colour, lw=1.6)
+        tt, q25, q50, q75 = quartiles(cp.episodes)
+        ax.fill_between(tt, q25, q75, color=cp.colour, alpha=0.18, lw=0, step="post")
+        ax.step(tt, q50, where="post", color=cp.colour, lw=1.6)
         ends.append((q50[-1], format_hours(cp.hours)))
     # End labels sit at their line's final value, nudged apart just enough not to touch.
     min_gap = 0.075 * MAPE_YMAX
@@ -152,6 +181,11 @@ def draw_running_mape(ax: plt.Axes, cps: list[Checkpoint], budget_s: float, shot
     ax.set_ylabel("Running T$_1$ MAPE (%)")
     ax.text(1.0, 1.0, note, transform=ax.transAxes, ha="right", va="bottom", fontsize=SMALL,
             color=figstyle.INK_SECONDARY)
+    if references:
+        handles = [Line2D([], [], color=figstyle.METHOD_COLOURS[r.key], ls=figstyle.METHOD_LINESTYLES[r.key],
+                          lw=reference_lw, label=r.label or figstyle.METHOD_LABELS[r.key]) for r in references]
+        ax.legend(handles=handles, loc="upper right", fontsize=SMALL, handlelength=2.2, handletextpad=0.5,
+                  borderaxespad=0.3)
 
 
 # ---------------------------------------------------------------- assembly

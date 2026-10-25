@@ -17,7 +17,8 @@ Run from the RLxMRI repo root:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -47,6 +48,18 @@ PROBE_SHADE = "#EDEDED"
 RUNG_TINT = 0.2
 # The logged probes and evaluations, once re-rolled checkpoints carry the curve.
 FAINT_TINT = 0.4
+
+
+@dataclass(frozen=True)
+class PanelAContrast:
+    """Panel A's rung shading and the weight of the elements drawn over it."""
+    rung_tint: float = RUNG_TINT
+    faint_tint: float = FAINT_TINT
+    faint_lw: float = 0.8
+    reference_lw: float = 0.9
+
+
+DEFAULT_CONTRAST = PanelAContrast()
 
 
 def read_json(path: Path):
@@ -160,7 +173,8 @@ class CheckpointMape:
 @dataclass
 class Scan:
     ti_s: np.ndarray
-    mean_t1_s: float
+    # The T1 its line is coloured by: the scan's mean sphere T1, or a narrow band's centre.
+    colour_t1_s: float
 
 
 @dataclass
@@ -168,6 +182,30 @@ class ValidationScans:
     scans: list[Scan]
     shots_per_block: int
     opening_probe_blocks: int
+
+
+@dataclass
+class ScanLines:
+    """How panel B draws each scan: the T1 scale that colours it (Scan.colour_t1_s) and the line style."""
+    norm: Normalize
+    colourbar_label: str
+    colourbar_ticks: Sequence[float]
+    # None keeps the colourbar's own tick labels.
+    colourbar_tick_labels: Sequence[str] | None = None
+    # Axes-fraction rectangle of the colourbar; None leaves it to the caller.
+    colourbar_at: Sequence[float] | None = (0.72, 0.1, 0.25, 0.03)
+    line_kw: dict = field(default_factory=lambda: {"lw": 1.0, "marker": "o", "ms": 2.2, "alpha": 0.9})
+
+
+MEAN_T1_LINES = ScanLines(T1_NORM, "scan's mean sphere T$_1$ (s)", np.arange(T1_NORM.vmin, T1_NORM.vmax + 1e-9, 0.5))
+
+
+def opening_probe_blocks(scans: list[Scan]) -> int:
+    """Leading blocks with the same TI in every scan."""
+    n = 0
+    while all(len(s.ti_s) > n and np.isclose(s.ti_s[n], scans[0].ti_s[n], rtol=1e-6) for s in scans):
+        n += 1
+    return n
 
 
 def load_scans() -> ValidationScans:
@@ -182,11 +220,7 @@ def load_scans() -> ValidationScans:
         if npe * sum(ep["TR"]) > budget_s:
             n -= 1
         scans.append(Scan(np.asarray(ep["TI"][:n]), float(np.mean(ep["T1_true"]))))
-    n_probe = 0
-    while all(len(s.ti_s) > n_probe and np.isclose(s.ti_s[n_probe], scans[0].ti_s[n_probe], rtol=1e-6)
-              for s in scans):
-        n_probe += 1
-    return ValidationScans(scans, npe, n_probe)
+    return ValidationScans(scans, npe, opening_probe_blocks(scans))
 
 
 # ---------------------------------------------------------------- panel A
@@ -207,7 +241,8 @@ def draw_break(ax_left: plt.Axes, ax_right: plt.Axes, size_cm: float = 0.12) -> 
 
 
 def draw_panel_a(fig: plt.Figure, left: float, bottom: float, height: float, data: TrainingCurve,
-                 checkpoints: list[CheckpointMape] | None = None, ymax: float = MAPE_YMAX) -> None:
+                 checkpoints: list[CheckpointMape] | None = None, ymax: float = MAPE_YMAX,
+                 contrast: PanelAContrast = DEFAULT_CONTRAST) -> None:
     """Broken time axis: the cheap rungs stretched, then the full rung, then the held-out result.
 
     With checkpoints, the logged probes and evaluations recede and the re-rolled checkpoints
@@ -233,7 +268,7 @@ def draw_panel_a(fig: plt.Figure, left: float, bottom: float, height: float, dat
     label_kw = dict(fontsize=SMALL, color=figstyle.INK, linespacing=1.0)
     for name, h0, h1 in data.rungs:
         ax = ax_full if h0 >= full_start else ax_cheap
-        ax.axvspan(h0, h1, color=tint(figstyle.RUNG_COLOURS[name], RUNG_TINT), lw=0, zorder=0)
+        ax.axvspan(h0, h1, color=tint(figstyle.RUNG_COLOURS[name], contrast.rung_tint), lw=0, zorder=0)
         if h0 > ax.get_xlim()[0]:
             ax.axvline(h0, color="white", lw=1.0, zorder=0.5)
         label = figstyle.RUNG_LABELS[name]
@@ -249,7 +284,7 @@ def draw_panel_a(fig: plt.Figure, left: float, bottom: float, height: float, dat
     for key, value in data.baselines.items():
         for ax in (ax_cheap, ax_full, ax_ho):
             ax.axhline(value, color=figstyle.METHOD_COLOURS[key], ls=figstyle.METHOD_LINESTYLES[key],
-                       lw=0.9, zorder=1)
+                       lw=contrast.reference_lw, zorder=1)
     upper, lower = sorted(data.baselines, key=data.baselines.get, reverse=True)
     for key, va, dy in ((upper, "bottom", 0.15), (lower, "top", -0.15)):
         value = data.baselines[key]
@@ -260,8 +295,8 @@ def draw_panel_a(fig: plt.Figure, left: float, bottom: float, height: float, dat
     probe_kw = dict(marker="o", ms=3.6, mfc="white", mec=figstyle.ACCENT, mew=1.0, ls="none")
     eval_kw = dict(color=figstyle.ACCENT, lw=1.3, marker="o", ms=2.6)
     if faint:
-        probe_kw.update(ms=3.0, mew=0.7, mec=tint(figstyle.ACCENT, FAINT_TINT))
-        eval_kw.update(lw=0.8, ms=0, color=tint(figstyle.ACCENT, FAINT_TINT))
+        probe_kw.update(ms=3.0, mew=0.7, mec=tint(figstyle.ACCENT, contrast.faint_tint))
+        eval_kw.update(lw=contrast.faint_lw, ms=0, color=tint(figstyle.ACCENT, contrast.faint_tint))
     for ax in (ax_cheap, ax_full):
         h0, h1 = ax.get_xlim()
         inside = (data.probe_h >= h0) & (data.probe_h < h1)
@@ -349,14 +384,16 @@ def draw_panel_a(fig: plt.Figure, left: float, bottom: float, height: float, dat
 # ---------------------------------------------------------------- panel B
 
 
-def draw_panel_b(ax: plt.Axes, vs: ValidationScans, compact: bool = False) -> None:
-    n_max = max(len(s.ti_s) for s in vs.scans)
+def draw_panel_b(ax: plt.Axes, vs: ValidationScans, compact: bool = False, lines: ScanLines = MEAN_T1_LINES,
+                 n_blocks: int | None = None, vertical_probe_label: bool = False) -> None:
+    """n_blocks: the block axis length, by default the longest scan's; vertical_probe_label runs the probe's
+    label up the shaded band, for blocks too narrow to hold it across."""
+    n_max = n_blocks or max(len(s.ti_s) for s in vs.scans)
     ax.axvspan(0.5, vs.opening_probe_blocks + 0.5, color=PROBE_SHADE, lw=0, zorder=0)
     cmap = plt.get_cmap(figstyle.T1_CMAP)
-    for s in sorted(vs.scans, key=lambda s: s.mean_t1_s):
+    for s in sorted(vs.scans, key=lambda s: s.colour_t1_s):
         blocks = np.arange(1, len(s.ti_s) + 1)
-        ax.plot(blocks, s.ti_s, color=cmap(T1_NORM(s.mean_t1_s)), lw=1.0, marker="o", ms=2.2, alpha=0.9,
-                zorder=2)
+        ax.plot(blocks, s.ti_s, color=cmap(lines.norm(s.colour_t1_s)), zorder=2, **lines.line_kw)
     ax.set_yscale("log")
     ax.set_ylim(*TI_YLIM)
     ax.set_xlim(0.5, n_max + 0.5)
@@ -367,15 +404,30 @@ def draw_panel_b(ax: plt.Axes, vs: ValidationScans, compact: bool = False) -> No
     ax.yaxis.set_minor_formatter(plt.NullFormatter())
     ax.set_xlabel(f"Block ({vs.shots_per_block} shots each)")
     ax.set_ylabel("TI (s)")
-    ax.text((vs.opening_probe_blocks + 1) / 2, 0.97, "fixed\nopening\nprobe", transform=ax.get_xaxis_transform(),
-            ha="center", va="top", fontsize=SMALL, color=figstyle.INK, linespacing=1.0)
+    probe_x = (vs.opening_probe_blocks + 1) / 2
+    if vertical_probe_label:
+        # Every scan's probe TIs lie above 0.3 s, so the band's lower half is free.
+        ax.text(probe_x, 0.03, "fixed opening probe", transform=ax.get_xaxis_transform(), rotation=90,
+                ha="center", va="bottom", fontsize=SMALL, color=figstyle.INK)
+    else:
+        ax.text(probe_x, 0.97, "fixed\nopening\nprobe", transform=ax.get_xaxis_transform(),
+                ha="center", va="top", fontsize=SMALL, color=figstyle.INK, linespacing=1.0)
+    if lines.colourbar_at is not None:
+        add_colourbar(ax, lines, lines.colourbar_at, title_loc="right" if compact else "left")
 
-    cax = ax.inset_axes([0.72, 0.1, 0.25, 0.03])
-    cb = plt.colorbar(plt.cm.ScalarMappable(norm=T1_NORM, cmap=cmap), cax=cax, orientation="horizontal")
+
+def add_colourbar(ax: plt.Axes, lines: ScanLines, rect: Sequence[float], title_loc: str = "left") -> plt.Axes:
+    """lines' T1 colour scale as a horizontal bar at the axes-fraction rect, titled above."""
+    cax = ax.inset_axes(rect)
+    cb = plt.colorbar(plt.cm.ScalarMappable(norm=lines.norm, cmap=plt.get_cmap(figstyle.T1_CMAP)), cax=cax,
+                      orientation="horizontal")
     cb.outline.set_visible(False)
-    cb.set_ticks(np.arange(T1_NORM.vmin, T1_NORM.vmax + 1e-9, 0.5))
+    cb.set_ticks(lines.colourbar_ticks, labels=lines.colourbar_tick_labels)
+    # A log scale would otherwise add unlabelled minor ticks.
+    cb.minorticks_off()
     cb.ax.tick_params(labelsize=SMALL, length=2, pad=1)
-    cax.set_title("scan's mean sphere T$_1$ (s)", fontsize=SMALL, pad=2.5, loc="right" if compact else "left")
+    cax.set_title(lines.colourbar_label, fontsize=SMALL, pad=2.5, loc=title_loc)
+    return cax
 
 
 def inset_rect(ax: plt.Axes, scans: list[Scan], x_start: float, clearance_decades: float = 0.05) -> list[float]:
@@ -516,15 +568,26 @@ def frame_inset(ax: plt.Axes) -> None:
 
 def add_panel_b_with_inset(fig: plt.Figure, rect_cm: tuple[float, float, float, float], vs: ValidationScans,
                            wf: dict, labels: tuple[str, str | None] = ("B", "C"), label_x: float = -0.075,
-                           compact: bool = False) -> None:
+                           compact: bool = False, lines: ScanLines = MEAN_T1_LINES,
+                           inset: Sequence[float] | None = None) -> plt.Axes:
+    """inset: the shot inset's axes-fraction rectangle, reaching the right edge; by default the largest one
+    right of INSET_FROM_BLOCK that clears every TI line."""
     ax_b = add_axes_cm(fig, *rect_cm)
-    draw_panel_b(ax_b, vs, compact=compact)
-    ax_c = ax_b.inset_axes(inset_rect(ax_b, vs.scans, INSET_FROM_BLOCK))
+    draw_panel_b(ax_b, vs, compact=compact, lines=lines)
+    if inset is None:
+        inset = inset_rect(ax_b, vs.scans, INSET_FROM_BLOCK)
+    else:
+        # A given inset only has to clear the lines, not keep the default placement's margin.
+        x0, x1 = ax_b.get_xlim()
+        clear = inset_rect(ax_b, vs.scans, x0 + inset[0] * (x1 - x0), clearance_decades=0.0)
+        assert inset[1] >= clear[1], "the inset would hide TI lines"
+    ax_c = ax_b.inset_axes(inset)
     draw_sequence(ax_c, wf, compact=compact)
     frame_inset(ax_c)
     figstyle.panel_label(ax_b, labels[0], x=label_x, y=1.0)
     if labels[1] is not None:
         figstyle.panel_label(ax_c, labels[1], x=0.008, y=0.97, va="top")
+    return ax_b
 
 
 def full_figure(curve: TrainingCurve, vs: ValidationScans, wf: dict,

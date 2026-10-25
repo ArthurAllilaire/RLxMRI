@@ -32,10 +32,22 @@ const FIXED_HELDOUT = joinpath(FIGURES, "fig5_v2_data", "fixed_comparators_heldo
 const COMPARATORS = ("log_grid_trmatched", "cr_optimal")
 const OUT = joinpath(CONTROL_DATA, "control_narrow_band.json")
 
-function run_comparator!(results, wall, name, env, sched; n_scans, learn_alpha, numpy2)
+"""The recorded 560 s comparators: their schedules, the action round trip they ran with, and their
+per-scan held-out results."""
+function recorded_comparators(env::E2Env)
+    rec = JSON.parsefile(FIXED_HELDOUT)
+    fixed = rec["budgets"][string(round(Int, env.time_budget_s))]
+    fixed["env_run"] == basename(RUN) || error("the recorded comparators used another run's env")
+    (schedules = Dict("log_grid_trmatched" => log_grid_schedule(env.time_budget_s, env.Npe),
+                      "cr_optimal" => cr_schedule(joinpath(ROOT, fixed["baseline_dir"]))),
+     learn_alpha = fixed["learn_alpha_action_layout"], numpy_promotion = rec["numpy_promotion"],
+     numpy2 = rec["numpy_promotion"] == "numpy2", scans = Dict(name => fixed[name]["scans"] for name in COMPARATORS))
+end
+
+function run_comparator!(results, wall, name, env, sched; n_scans, learn_alpha, numpy2, seed_base = HELDOUT_SEED)
     t0 = time()
     results[name] = map(0:(n_scans - 1)) do k
-        r = run_episode(env, HELDOUT_SEED + k, sched; learn_alpha = learn_alpha, numpy2 = numpy2)
+        r = run_episode(env, seed_base + k, sched; learn_alpha = learn_alpha, numpy2 = numpy2)
         @printf("%-18s phantom %2d: %2d blocks, %.1f s, MAPE %.4f%%\n", name, k, r["n_blocks"], r["time_s"],
                 100 * r["mape"])
         flush(stdout)
@@ -60,13 +72,8 @@ function main(args)
     protocol = collect(zip(Float64.(distilled["TI_s"]), Float64.(distilled["TR_s"])))
 
     default_env = build_env(kw)
-    fixed_rec = JSON.parsefile(FIXED_HELDOUT)
-    fixed_560 = fixed_rec["budgets"][string(round(Int, default_env.time_budget_s))]
-    fixed_560["env_run"] == basename(RUN) || error("the recorded comparators used another run's env")
-    numpy2 = fixed_rec["numpy_promotion"] == "numpy2"
-    learn_alpha = fixed_560["learn_alpha_action_layout"]
-    schedules_fixed = Dict("log_grid_trmatched" => log_grid_schedule(default_env.time_budget_s, default_env.Npe),
-                           "cr_optimal" => cr_schedule(joinpath(ROOT, fixed_560["baseline_dir"])))
+    fixed = recorded_comparators(default_env)
+    schedules_fixed, learn_alpha, numpy2 = fixed.schedules, fixed.learn_alpha, fixed.numpy2
 
     check, check_wall = Dict{String,Any}(), Dict{String,Float64}()
     run_adaptive!(check, check_wall, default_env, actor)
@@ -78,7 +85,7 @@ function main(args)
     for name in COMPARATORS
         run_comparator!(check, check_wall, name, default_env, schedules_fixed[name];
                         n_scans = N_SCANS, learn_alpha = learn_alpha, numpy2 = numpy2)
-        check_identical(name, check[name], fixed_560[name]["scans"])
+        check_identical(name, check[name], fixed.scans[name])
     end
 
     env = build_env(merge(kw, Dict{String,Any}("t1_sampler" => "narrow_band", "t1_band_rel" => T1_BAND_REL)))
@@ -109,7 +116,7 @@ function main(args)
             "n_scans" => n_scans, "t1_sampler" => "narrow_band", "t1_band_rel" => T1_BAND_REL,
             "centre_range_s" => collect(extrema(T1_ARRAY[env.cfg_field])), "shifts" => collect(shifts),
             "budget_s" => env.time_budget_s, "Npe" => env.Npe, "threads" => Threads.nthreads(),
-            "julia_version" => string(VERSION), "numpy_promotion" => fixed_rec["numpy_promotion"],
+            "julia_version" => string(VERSION), "numpy_promotion" => fixed.numpy_promotion,
             "regression_check" => Dict("adaptive" => reproduction, "per_scan_identical" => ["distilled", COMPARATORS...],
                                        "wall_s" => check_wall),
             "T1_band_centre" => [p.centre for p in phantoms],
@@ -123,4 +130,7 @@ function main(args)
     println("wrote ", OUT)
 end
 
-main(ARGS)
+# fig3_comparators_validation.jl includes this file for the comparator setup and runner.
+if abspath(PROGRAM_FILE) == @__FILE__
+    main(ARGS)
+end

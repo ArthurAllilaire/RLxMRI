@@ -25,8 +25,19 @@ import numpy as np
 
 import figstyle
 from control_summary import boot_ci
-from fig5_table import (DAGGER, DOUBLE_DAGGER, MAX_CAPTION_CHARS, NUMBER_WORDS, RL_RUNS, RUNS,
-                        SUCCESS_THRESHOLD, Row, _round, _tex_escape, collect)
+from fig5_table import (
+    DAGGER,
+    DOUBLE_DAGGER,
+    MAX_CAPTION_CHARS,
+    NUMBER_WORDS,
+    RL_RUNS,
+    RUNS,
+    SUCCESS_THRESHOLD,
+    Row,
+    _round,
+    _tex_escape,
+    collect,
+)
 
 STEM = "fig5_table_v2"
 FIXED_REPLAY = figstyle.FIGURES / "fig5_v2_data" / "fixed_comparators_heldout.json"
@@ -38,6 +49,13 @@ HEADER = ["Method", "Memory", "Budget", "Mean scan time", "MAPE % [95% CI]", "Sc
 REPLAY_SCHEDULES = {"log_grid": "log_grid_trmatched", "cr_optimal": "cr_optimal"}
 # The replay must reproduce the recorded means; anything looser is a different run.
 MATCH_TOL_PCT = 1e-6
+# E2Env clamps a scan's MAPE at 100% (e2.jl, e2_step!), so a scan at the cap only bounds its error.
+SCAN_MAPE_CAP = 1.0
+COLUMNS = r"@{}llrrr@{\hspace{3pt}}lrr@{}"
+TABLE_HEAD = r"""\toprule
+ & & & Mean scan & & & Scans & Worst scan \\
+Method & Memory & Budget & time & \multicolumn{2}{c}{MAPE \% [95\% CI]} & \textless{}\,5\% & MAPE \% \\
+\midrule"""
 
 
 @dataclass(frozen=True)
@@ -120,6 +138,12 @@ def build() -> tuple[list[TableRow], dict]:
     return table, info
 
 
+def worst_cell(t: TableRow) -> str:
+    if t.per_scan_mape.max() >= SCAN_MAPE_CAP:
+        return f"≥{_round(100 * SCAN_MAPE_CAP)}"
+    return _round(t.worst_pct, 2)
+
+
 def cells(t: TableRow) -> list[str]:
     r = t.row
     lo, hi = r.ci_pct
@@ -130,7 +154,7 @@ def cells(t: TableRow) -> list[str]:
         f"{_round(r.scan_time_s)} s",
         f"{_round(r.mape_pct, 2)} [{_round(lo, 2)}, {_round(hi, 2)}]",
         f"{_round(r.success * 100, 1)}%",
-        _round(t.worst_pct, 2),
+        worst_cell(t),
     ]
 
 
@@ -138,7 +162,7 @@ def _sup(mark: str) -> str:
     return rf"\textsuperscript{{{mark}}}" if mark else ""
 
 
-def table_tex(table: list[TableRow], info: dict) -> str:
+def body_tex(table: list[TableRow], best_key: str) -> str:
     body = []
     for i, t in enumerate(table):
         r = t.row
@@ -150,14 +174,22 @@ def table_tex(table: list[TableRow], info: dict) -> str:
                (_tex_escape(r.memory) + _sup(r.mark)) if r.memory else "--",
                budget, time, _round(r.mape_pct, 2), f"[{_round(lo, 2)}, {_round(hi, 2)}]",
                _tex_escape(success), worst]
-        if r.key == info["best_key"]:
+        if r.key == best_key:
             tex = [rf"\textbf{{{c}}}" for c in tex]
         body.append(" & ".join(tex) + r" \\")
+    return "\n".join(body)
 
-    marks = {t.row.mark for t in table} | {t.method_mark for t in table}
-    notes = "\n".join(_sup(m) + rf"\,{_tex_escape(info['notes'][m])}\par"
-                      for m in (DAGGER, DOUBLE_DAGGER, SECTION) if m in marks)
-    rule = "\n".join(body)
+
+def note_marks(table: list[TableRow], order: tuple[str, ...]) -> list[str]:
+    used = {t.row.mark for t in table} | {t.method_mark for t in table}
+    return [m for m in order if m in used]
+
+
+def notes_tex(notes: dict[str, str], marks: list[str]) -> str:
+    return "\n".join(_sup(m) + rf"\,{_tex_escape(notes[m])}\par" for m in marks)
+
+
+def document_tex(tabular: str, notes: str) -> str:
     ink = figstyle.INK.lstrip("#")
     return rf"""\documentclass[border=1pt]{{standalone}}
 \usepackage{{fontspec}}
@@ -170,14 +202,7 @@ def table_tex(table: list[TableRow], info: dict) -> str:
 \fontsize{{9}}{{11}}\selectfont\color{{ink}}%
 \setlength{{\tabcolsep}}{{4.5pt}}%
 \begin{{lrbox}}{{\tbl}}%
-\begin{{tabular}}{{@{{}}llrrr@{{\hspace{{3pt}}}}lrr@{{}}}}
-\toprule
- & & & Mean scan & & & Scans & Worst scan \\
-Method & Memory & Budget & time & \multicolumn{{2}}{{c}}{{MAPE \% [95\% CI]}} & \textless{{}}\,5\% & MAPE \% \\
-\midrule
-{rule}
-\bottomrule
-\end{{tabular}}%
+{tabular}%
 \end{{lrbox}}%
 \begin{{minipage}}{{\wd\tbl}}
 \usebox{{\tbl}}\par\vspace{{2.5pt}}
@@ -188,17 +213,24 @@ Method & Memory & Budget & time & \multicolumn{{2}}{{c}}{{MAPE \% [95\% CI]}} & 
 """
 
 
-def render(table: list[TableRow], info: dict) -> None:
+def table_tex(table: list[TableRow], info: dict) -> str:
+    tabular = "\n".join([rf"\begin{{tabular}}{{{COLUMNS}}}", TABLE_HEAD, body_tex(table, info["best_key"]),
+                         r"\bottomrule", r"\end{tabular}"])
+    marks = note_marks(table, (DAGGER, DOUBLE_DAGGER, SECTION))
+    return document_tex(tabular, notes_tex(info["notes"], marks))
+
+
+def render(tex: str, stem: str) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
-        (tmp / "table.tex").write_text(table_tex(table, info))
+        (tmp / "table.tex").write_text(tex)
         proc = subprocess.run(["lualatex", "-interaction=nonstopmode", "-halt-on-error", "table.tex"],
-                              cwd=tmp, capture_output=True, text=True)
+                              check=False, cwd=tmp, capture_output=True, text=True)
         if proc.returncode != 0:
             raise RuntimeError(f"lualatex failed:\n{proc.stdout[-3000:]}")
-        shutil.copy(tmp / "table.pdf", figstyle.FIGURES / f"{STEM}.pdf")
+        shutil.copy(tmp / "table.pdf", figstyle.FIGURES / f"{stem}.pdf")
         subprocess.run(["pdftoppm", "-r", "300", "-png", "-singlefile", str(tmp / "table.pdf"),
-                        str(figstyle.FIGURES / STEM)], check=True)
+                        str(figstyle.FIGURES / stem)], check=True)
 
 
 def caption(info: dict) -> str:
@@ -208,7 +240,7 @@ def caption(info: dict) -> str:
         f"{NUMBER_WORDS[info['n_spheres']]} spheres, averaged over scans (bootstrap 95% CI). Worst scan: "
         f"highest scan MAPE. Fixed grid: log-spaced TIs, TR {info['tr_s']:g} s. Cramér-Rao: (TI, TR) "
         "optimised for the plate's T1 range. Distilled: one fixed schedule from the policy's validation "
-        f"scans. Same T1 fitter for all. {DAGGER} LSTM checkpoint selected before any full-Bloch training."
+        "scans. Same T1 fitter for all."
     )
 
 
@@ -219,18 +251,17 @@ def write_text(table: list[TableRow], info: dict, cap: str) -> None:
         writer.writerow(HEADER)
         writer.writerows(cells(t) for t in table)
 
-    marks = [m for m in (DAGGER, DOUBLE_DAGGER, SECTION)
-             if any(m in (t.row.mark, t.method_mark) for t in table)]
+    marks = note_marks(table, (DAGGER, DOUBLE_DAGGER, SECTION))
     replay = ", ".join(f"{k} {v:.1g} pp" for k, v in info["replay"].items())
     lines = [
         "# Figure 5 v2 - main results table with worst scan",
         "",
-        f"Generated by `scripts/fig5_table_v2.py`; held-out seeds {info['seed']}-"
-        f"{info['seed'] + info['n_scans'] - 1}; bold is the best row.",
+        (f"Generated by `scripts/fig5_table_v2.py`; held-out seeds {info['seed']}-"
+         f"{info['seed'] + info['n_scans'] - 1}; bold is the best row."),
         "Worst scan: the largest of the 24 per-scan MAPEs.",
-        "The fixed comparators' per-scan values were replayed by `scripts/fixed_comparators_heldout.jl` "
-        f"({info['numpy_promotion']} promotion rules for the wrapper's action round trip); "
-        f"largest difference of the replayed mean from `baseline_summary.json`: {replay}.",
+        ("The fixed comparators' per-scan values were replayed by `scripts/fixed_comparators_heldout.jl` "
+         f"({info['numpy_promotion']} promotion rules for the wrapper's action round trip); "
+         f"largest difference of the replayed mean from `baseline_summary.json`: {replay}."),
         "",
         "| " + " | ".join(HEADER) + " |",
         "|" + "---|" * len(HEADER),
@@ -248,7 +279,7 @@ def write_text(table: list[TableRow], info: dict, cap: str) -> None:
 def main() -> None:
     figstyle.apply()
     table, info = build()
-    render(table, info)
+    render(table_tex(table, info), STEM)
     cap = caption(info)
     assert len(cap) <= MAX_CAPTION_CHARS, len(cap)
     write_text(table, info, cap)
