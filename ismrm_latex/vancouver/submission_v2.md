@@ -25,7 +25,7 @@ Presenting author: Andreas Wetscherek.
 
 ## Impact (max 40 words)
 
-An open-source, KomaMRI-based digital twin of a calibration phantom lets reinforcement learning design quantitative MRI protocols before scanning. Learned sequences halved T1 error versus standard designs. Adapting mid-scan helps most when tissue T1 is a narrow range.
+An open-source, KomaMRI-based digital twin of a calibration phantom lets reinforcement learning design quantitative MRI protocols before scanning. Learned sequences nearly halved T1 error versus standard designs. Adapting mid-scan helps most when tissue T1 is a narrow range.
 
 ## Synopsis (max 100 words across the four parts)
 
@@ -35,7 +35,7 @@ An open-source, KomaMRI-based digital twin of a calibration phantom lets reinfor
 
 **Approach:** We built an open-source Bloch-simulated twin of the phantom with multi-fidelity forward models and trained policies that choose each inversion and repetition time from the data acquired so far.
 
-**Results:** On held-out phantoms the policy halved T1 error against log-spaced and Cramér-Rao-optimal schedules (2.9% versus 6.0% and 7.7%). A fixed protocol distilled from the adaptive policy kept most of the gain (3.3%).
+**Results:** On held-out phantoms the policy cut T1 error against log-spaced and Cramér-Rao-optimal schedules (2.9% versus 5.1% and 7.7%). A fixed protocol distilled from the adaptive policy kept most of the gain (3.3%).
 
 ## Body (max 750 words, references excluded)
 
@@ -48,7 +48,7 @@ We built an open-source digital twin of a calibration phantom and trained the fi
 
 **Digital twin.** MRISystemPhantom.jl models the ISMRM/NIST system phantom<sup>6</sup> with manufacturer reference values at 1.5 and 3 T and returns KomaMRI<sup>7</sup> phantoms (Fig 1A).
 Random phantoms with hidden ground truth vary pose, sphere selection, and T1 and T2 from any chosen distribution (Fig 1B).
-The package also provides inversion-recovery spin-echo (IR-SE) sequences (Fig 1C), complex Gaussian k-space noise, a T1 fitter modelling incomplete recovery and a Cramér-Rao schedule solver.
+The package also provides inversion-recovery spin-echo (IR-SE) sequences (Fig 1C), complex Gaussian k-space noise, a grid-search T1 fitter (200 values, 2.9% apart) modelling incomplete recovery and a Cramér-Rao schedule solver.
 Noise-free simulations recover reference T1 with 0.48% mean error.
 
 **Task.** Each scan fills five T1-plate spheres with T1s drawn uniformly over the plate's T1 range (Fig 1B); 1.5 T, 64x32 matrix, 200 mm field of view, noise at peak NEMA SNR 25. Each action is one IR-SE block (Fig 1C); scans stop at 560 s.
@@ -60,31 +60,31 @@ The water is homogeneous, so its k-space can be cached and scaled per shot, leav
 One policy climbs a fidelity ladder from an analytic model to full Bloch (Fig 1D), warm-starting on cheap rungs before full-Bloch training (Figs 2B, 3A); 9 GPU hours per policy.
 
 **Evaluation.** We tested on 24 held-out phantoms from the training distribution and on 96 clustered-T1 phantoms from a new distribution: five T1s within ±15% of a log-uniform centre.
-Fixed comparators were a log-spaced TI grid (TR 1.7 s) and a Cramér-Rao-optimal (TI, TR) schedule<sup>9</sup> for the plate's T1 range, with the same fitter and budget.
+Fixed comparators were a log-spaced TI grid (TR 2.0 s, best of a held-out TR sweep) and a Cramér-Rao-optimal (TI, TR) schedule<sup>9</sup> for the plate's T1 range, with the same fitter and budget.
 To separate adaptation from schedule shape, we swapped learned schedules between scans and distilled one fixed protocol from the policy's median TI and TR at each block on validation scans.
 
 ### Results
 
 Training moved the policy to short TIs paired with short TRs (Fig 3A-C).
-On held-out phantoms the TI-histogram policy reached 2.93% MAPE, against 6.04% for the log grid and 7.74% for Cramér-Rao (Figs 4, 5A).
+On held-out phantoms the TI-histogram policy reached 2.93% MAPE, against 5.12% for the best log grid and 7.74% for Cramér-Rao (Figs 4, 5A).
 Without memory the policy reached 4.16%; with an LSTM, 7.31%.
-With 240 s, an RL policy (4.62%) was already more accurate than both fixed designs at 560 s.
-Most of the gain survived without adaptation: the distilled protocol reached 3.34% and swapped schedules 3.61%.
-Adaptation showed in the worst case (5.1% versus 10.3-17.9% for fixed schedules; Fig 5A): the policy rescued two spheres of 41 and 46 ms that the distilled protocol missed by up to 74% (Fig 4).
-Adaptation mattered more on clustered-T1 scans: swapping schedules cost 2.57 points [95% CI 1.21-4.24], against 0.67 (not significant) on spread T1s, and fixed protocols 8.3-12.2% against the policy's 2.76%, mostly at short T1 (Figs 3D, 5B).
+With 240 s, an RL policy was more accurate (4.62%) than both fixed designs at 560 s.
+Without adaptation most of the gain survived: distilled 3.34%, swapped schedules 3.61%.
+Adaptation helped in the worst case (5.1% versus 8.7-17.9%; Fig 5A), rescuing two spheres of 41 and 46 ms that the distilled protocol missed by up to 74% (Fig 4).
+Adaptation mattered more on clustered-T1 scans: swapping schedules cost 2.57 points [95% CI 1.21-4.24], mostly at short T1, versus 0.67 (not significant) on spread T1s, and fixed protocols reached 8.5-12.2% versus 2.76% (Figs 3D, 5B).
 
 ### Discussion
 
 RL worked mainly as protocol discovery: short TRs, which the fitter's incomplete-recovery model permits, fit more blocks than either comparator.
-Look-Locker<sup>10</sup> and MR fingerprinting<sup>11</sup> sequences exploit incomplete recovery further; letting RL design them is our next step.
+Sequences acquiring several TIs or k-space lines per inversion exploit this further and are our next target.
 Variance-optimal Cramér-Rao design did worst at this noise level.
-A fixed schedule nearly matched the adaptive policy on average, as each scan's five spheres usually spanned most of the T1 range.
+A fixed schedule nearly matched the policy because each scan's spheres usually spanned most of the T1 range.
 Adaptation paid off on rare short-T1 spheres and clustered T1s, so it should matter most when tissue T1 is narrow but unknown.
 Limitations: simulation only (ideal RF, no B1, eddy currents or motion), one phantom, five spheres, one training seed per policy, one cluster width; the two-sphere effect is post hoc.
 
 ### Conclusion
 
-RL in an open-source digital twin found a T1 protocol halving the error of established fixed designs; distilled, it runs as a conventional sequence, with the adaptive policy safeguarding unusual tissue.
+RL in an open-source digital twin found a T1 protocol that nearly halves fixed-design error and runs as a conventional sequence; adapting each scan protects unusual tissue.
 Next: validation on the physical phantom and T2 mapping.
 
 ## References
@@ -98,8 +98,6 @@ Next: validation on the physical phantom and T2 mapping.
 7. Castillo-Passi C, Coronado R, Varela-Mattatall G, Alberola-Lopez C, Botnar R, Irarrazaval P. KomaMRI.jl: an open-source framework for general MRI simulations with GPU acceleration. Magn Reson Med. 2023;90(1):329-342. doi:10.1002/mrm.29635
 8. Schulman J, Wolski F, Dhariwal P, Radford A, Klimov O. Proximal policy optimization algorithms. arXiv. 2017;1707.06347. doi:10.48550/arXiv.1707.06347
 9. Jones JA, Hodgkinson P, Barker AL, Hore PJ. Optimal sampling strategies for the measurement of spin-spin relaxation times. J Magn Reson B. 1996;113(1):25-34. doi:10.1006/jmrb.1996.0151
-10. Look DC, Locker DR. Time saving in measurement of NMR and EPR relaxation times. Rev Sci Instrum. 1970;41(2):250-251. doi:10.1063/1.1684482
-11. Ma D, Gulani V, Seiberlich N, et al. Magnetic resonance fingerprinting. Nature. 2013;495(7440):187-192. doi:10.1038/nature11971
 
 ## Figures (captions max 500 characters)
 
@@ -123,15 +121,15 @@ TI-histogram policy over training, 24 validation phantoms unless stated. (A) T1 
 
 ### Figure 4
 
-![Figure 4](figures/fig4_t1maps_p7_roidiff.png)
+![Figure 4](figures/fig4_t1maps_p7_roidiff_v2.png)
 
-T1 maps of the held-out scan with the shortest sphere T1 of the 24 (41 ms), chosen to show where per-scan adaptation matters (representative errors: Fig 5A). Rows: TI-histogram policy (adaptive), a fixed protocol distilled from it (shortest TI 243 ms), fixed log TI grid, Cramér-Rao. The policy moved its TIs down to 113 ms and measured the 41 ms sphere to 0.3%; the distilled protocol missed it by 33%. Left: per-pixel T1 fit; right: scored ROI error (3x3-pixel ROI fit) per sphere.
+T1 maps of the held-out scan with the shortest sphere T1 of the 24 (41 ms), chosen to show where per-scan adaptation matters (representative errors: Fig 5A). Rows: TI-histogram policy (adaptive), a fixed protocol distilled from it (shortest TI 243 ms), fixed log TI grid (TR 2.0 s), Cramér-Rao. The policy moved its TIs down to 113 ms and measured the 41 ms sphere to 0.3%; the distilled protocol missed it by 33%. Left: per-pixel T1 fit; right: scored ROI error (3x3-pixel ROI fit) per sphere.
 
 ### Figure 5
 
 ![Figure 5](figures/fig5_table_v3.png)
 
-T1 error on phantoms identical across methods, unseen in training or checkpoint selection: (A) 24 held-out; (B) 96 clustered-T1 (T1s within ±15% of a random centre). MAPE: mean absolute percentage error over a scan's spheres, averaged over scans (bootstrap 95% CI); worst: highest scan MAPE. Fixed grid: log-spaced TIs, TR 1.7 s. Cramér-Rao: optimised for the plate's T1 range. Distilled: per-block median TI and TR of the policy. Same T1 fitter for all.
+T1 error on phantoms identical across methods, unseen in training or checkpoint selection: (A) 24 held-out; (B) 96 clustered-T1 (T1s within ±15% of a random centre). MAPE: mean absolute percentage error over a scan's spheres, averaged over scans (bootstrap 95% CI); worst: highest scan MAPE. Fixed grid: log-spaced TIs, TR 2.0 s (best of a 0.8-4 s sweep), top TI capped to fit. Cramér-Rao: optimised for the plate's T1 range. Distilled: policy's per-block median TI and TR. Same T1 fitter for all.
 
 ### Preview figure (no caption)
 
@@ -154,7 +152,7 @@ ECHO may count hyphenated tokens differently; re-check there and trim the Discus
 | 1 | `figures/fig1_v2_alt.png` | Done (twin, compact training slabs, generic IR-SE shot, fidelity ladder); `fig1_B1_shotreexport.png` is the previous version without the shot |
 | 2 | `figures/fig2_loops_minimal_logicfix.png` | Done: original diagrams, minimal edits, lookahead logic corrected to match the code; `fig2_loops_minimal.png` keeps the original logic |
 | 3 | `figures/fig3_combo_v3.png` | Done (training curve, superposed TI-TR of three checkpoints, within-scan MAPE with fixed comparators, TI per block on spread vs clustered-T1 scans); `fig3_combo.png` is the previous version with the sequence inset |
-| 4 | `figures/fig4_t1maps_p7_roidiff.png` | Done (held-out phantom 7, log T1 scale, flat scored-error discs on +/-15%); `fig4_t1maps_p7.png` has per-pixel difference maps instead |
+| 4 | `figures/fig4_t1maps_p7_roidiff_v2.png` | Done (held-out phantom 7, log T1 scale, flat scored-error discs on +/-15%; log grid at TR 2.0 s); `fig4_t1maps_p7_roidiff.png` is the TR 1.7 s grid version |
 | 5 | `figures/fig5_table_v3.png` | Done (A: held-out table with distilled row and worst scan; B: clustered-T1 phantoms); `fig5_table_v2.png` is the single-table version |
 | Preview | `figures/preview.png` | Done |
 

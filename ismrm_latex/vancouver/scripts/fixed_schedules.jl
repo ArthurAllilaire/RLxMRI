@@ -56,6 +56,18 @@ function log_grid_schedule(budget_s::Real, npe::Integer; tr_s::Real = LOG_GRID_T
     (TIs = collect(tis), TRs = fill(Float64(tr_s), n), max_steps = nothing)
 end
 
+# The float32 action round trip moves TI and TR by about one ulp, enough to trip the env's
+# lift test (> 1e-12 s) if the top TI sat exactly at the limit.
+const CAP_MARGIN_S = 1e-3
+capped_ti_hi(env::E2Env, tr) = min(LOG_GRID_TI_RANGE_S[2], e2_tr_headroom(env) * tr - TE_S - CAP_MARGIN_S)
+
+# The best grid of grid_tr_sweep.md, the abstract's log TI grid comparator: TR 2.0 s with the top
+# TI capped so every block runs at its nominal TR.
+const BEST_GRID_TR_S = 2.0
+best_log_grid_schedule(env::E2Env) =
+    log_grid_schedule(env.time_budget_s, env.Npe; tr_s = BEST_GRID_TR_S,
+                      ti_hi_s = capped_ti_hi(env, BEST_GRID_TR_S), max_blocks = env.max_blocks)
+
 function cr_schedule(dir::AbstractString)
     s = JSON.parsefile(joinpath(dir, "cr_optimal_schedule.json"))
     (TIs = Float64.(s["TIs"]), TRs = Float64.(s["TRs"]), max_steps = Int(s["n_blocks"]))

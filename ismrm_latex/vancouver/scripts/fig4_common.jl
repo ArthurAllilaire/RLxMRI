@@ -34,7 +34,18 @@ function env_from_run(run::AbstractString)
     E2Env(; kw...)
 end
 
-# Scan tags: "k15" is validation scan 15 (seed 500015), "heldout_k07" held-out scan 7 (seed 600007).
-scan_tag(k::Int; heldout::Bool = false) = (heldout ? "heldout_" : "") * @sprintf("k%02d", k)
+# Scan tags: "k15" is validation scan 15 (seed 500015), "heldout_k07" held-out scan 7 (seed 600007),
+# "heldout_k07_bestgrid" the same scan with the log TI grid row run as best_log_grid_schedule.
+scan_tag(k::Int; heldout::Bool = false, best_grid::Bool = false) =
+    (heldout ? "heldout_" : "") * @sprintf("k%02d", k) * (best_grid ? "_bestgrid" : "")
+
+"""Command line of fig4_replay.jl and fig4_pixelfit.jl: [--heldout [--best-grid]] [scan numbers]."""
+function scan_args(args)
+    flags = filter(startswith("--"), args)
+    flags ⊆ ("--heldout", "--best-grid") || error("unknown option among $flags")
+    heldout, best_grid = "--heldout" in flags, "--best-grid" in flags
+    best_grid && !heldout && error("--best-grid replaces the held-out log TI grid row; add --heldout")
+    (heldout = heldout, best_grid = best_grid, nums = parse.(Int, filter(!startswith("--"), args)))
+end
 replay_path(tag::AbstractString) = joinpath(DATA_DIR, "fig4_replay_$(tag).npz")
 maps_path(tag::AbstractString) = joinpath(DATA_DIR, "fig4_maps_$(tag).npz")

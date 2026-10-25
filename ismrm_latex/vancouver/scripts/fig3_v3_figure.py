@@ -8,9 +8,12 @@ follow the scan's T1s.
 (D) The selected policy's TI per block on the 24 validation scans (T1s spread as in training) and on
     24 clustered-T1 scans (control_narrow_band.jl, picked by evenly_by_centre), on one colour scale:
     the scan's mean sphere T1. The IR-SE shot inset of fig3_combo moves to Figure 1.
+In A and C the fixed log TI grid is best_log_grid_schedule (TR 2.0 s, the best row of grid_tr_sweep.md),
+which replaces fig3_combo's log_grid_trmatched (TR 1.7 s).
 
 Inputs as fig3_ci_figure.py, plus figures/fig3_comparators_validation.json
-(fig3_comparators_validation.jl) and figures/control_data/control_narrow_band.json.
+(fig3_comparators_validation.jl), figures/control_data/best_log_grid_heldout.json (best_log_grid.jl) and
+figures/control_data/control_narrow_band.json.
 
 Run from the RLxMRI repo root:
   .venv/bin/python ismrm_latex/vancouver/scripts/fig3_v3_figure.py
@@ -22,9 +25,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-import figstyle
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import LogNorm
+
+import figstyle
 from fig3_ci_figure import (
     MAX_CAPTION_CHARS,
     N_SCANS,
@@ -42,6 +47,7 @@ from fig3_figure import (
     SMALL,
     PanelAContrast,
     ScanLines,
+    TrainingCurve,
     ValidationScans,
     add_axes_cm,
     add_colourbar,
@@ -60,13 +66,13 @@ from fig3evo_figure import (
     format_ti_tr_axes,
     load_checkpoints,
 )
-from matplotlib.colors import LogNorm
 
 COMPARATORS = figstyle.FIGURES / "fig3_comparators_validation.json"
+BEST_GRID_HELDOUT = figstyle.FIGURES / "control_data" / "best_log_grid_heldout.json"
 # figstyle key -> (name in fig3_comparators_validation.json, legend text), top to bottom as in A.
 # Two-line labels keep C's legend in the empty corner right of the Cramer-Rao plateau.
 REFERENCE_RUNS = {"cr_optimal": ("cr_optimal", "Cramér-Rao\noptimal"),
-                  "log_grid": ("log_grid_trmatched", "Fixed log\nTI grid")}
+                  "log_grid": ("best_log_grid", "Fixed log\nTI grid")}
 CONTRAST = PanelAContrast(rung_tint=0.12, faint_tint=0.6, faint_lw=1.0, reference_lw=1.1)
 # Unclipped, so a marker at the 3 s TI ceiling stays whole.
 D_LINE_KW = {"lw": 0.9, "marker": "o", "ms": 1.8, "alpha": 0.9, "clip_on": False}
@@ -80,6 +86,15 @@ LABEL_X_CM = 1.125
 
 
 # ---------------------------------------------------------------- data
+
+
+def load_curve() -> TrainingCurve:
+    """fig3_combo's training curve, with the fixed log TI grid's held-out MAPE from best_log_grid.jl."""
+    curve = load_training_curve()
+    data = read_json(BEST_GRID_HELDOUT)
+    assert data["seed_base"] == 600_000 and data["n_scans"] == curve.n_heldout
+    grid = 100 * float(np.mean([s["mape"] for s in data["scans"]]))
+    return replace(curve, baselines={**curve.baselines, "log_grid": grid})
 
 
 def load_references(cps: list[Checkpoint]) -> list[Reference]:
@@ -168,7 +183,7 @@ def v3_figure(rows: list[Row], d: PanelDData) -> plt.Figure:
     cps = load_checkpoints()
     kw = read_json(RUN / "run_config.json")["base_env_kwargs"]
     fig = plt.figure(figsize=(FIG_W * CM, 16.7 * CM))
-    draw_panel_a(fig, left=LEFT, bottom=13.3, height=3.0, data=load_training_curve(),
+    draw_panel_a(fig, left=LEFT, bottom=13.3, height=3.0, data=load_curve(),
                  checkpoints=plotted(rows, True), ymax=axis_max(rows), contrast=CONTRAST)
 
     row_b, row_h = 8.25, 3.35

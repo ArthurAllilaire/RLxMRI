@@ -5,6 +5,7 @@
 #   julia -t 8 --project=<RLxMRI> fig4_pixelfit.jl                # every replayed validation scan
 #   julia -t 8 --project=<RLxMRI> fig4_pixelfit.jl 6              # selected validation scans
 #   julia -t 8 --project=<RLxMRI> fig4_pixelfit.jl --heldout 7    # selected held-out scans
+#   julia -t 8 --project=<RLxMRI> fig4_pixelfit.jl --heldout --best-grid 7   # fig4_replay.jl --best-grid
 #
 # Writes figures/fig4_data/fig4_maps_<tag>.npz per scan (tags as in fig4_common.jl).
 
@@ -50,12 +51,11 @@ function fit_scan(env::E2Env, tag::AbstractString)
 end
 
 function main(args)
-    heldout = !isempty(args) && args[1] == "--heldout"
-    nums = parse.(Int, heldout ? args[2:end] : args)
-    tags = isempty(nums) ?
+    a = scan_args(args)
+    tags = isempty(a.nums) ?
         sort([m[1] for m in (match(r"^fig4_replay_(k\d+)\.npz$", f) for f in readdir(DATA_DIR))
               if m !== nothing]) :
-        [scan_tag(k; heldout = heldout) for k in nums]
+        [scan_tag(k; heldout = a.heldout, best_grid = a.best_grid) for k in a.nums]
     env = env_from_run(BASELINE_RUN)
     for tag in tags
         fit_scan(env, tag)

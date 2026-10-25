@@ -5,6 +5,7 @@
 #   julia -t 8 --project=<RLxMRI> fig4_replay.jl                  # validation scans 0-23
 #   julia -t 8 --project=<RLxMRI> fig4_replay.jl 6 14             # selected validation scans
 #   julia -t 8 --project=<RLxMRI> fig4_replay.jl --heldout 7      # selected held-out scans
+#   julia -t 8 --project=<RLxMRI> fig4_replay.jl --heldout --best-grid 7
 #
 # Validation scans (seed 500000 + k): TI-histogram and no-memory policies (schedules from
 # their global_best/diagnostics/episodes.json), fixed log TI grid, Cramer-Rao.
@@ -13,10 +14,14 @@
 # schedules (control_results.json), fixed log TI grid and Cramer-Rao (their executed
 # held-out schedules from fig5_v2_data/fixed_comparators_heldout.json). Every held-out
 # replay must reproduce the final T1 estimates recorded in those files.
+# --best-grid: the log TI grid row is fixed_schedules.jl's best_log_grid_schedule instead (the
+# capped TR 2.0 s grid of grid_tr_sweep.md), which must reproduce its scan in
+# control_data/grid_tr_sweep.json.
 #
 # Writes figures/fig4_data/fig4_replay_<tag>.npz per scan (tags as in fig4_common.jl).
 
 include(joinpath(@__DIR__, "fig4_common.jl"))
+include(joinpath(@__DIR__, "fixed_schedules.jl"))
 
 const VALIDATION_SEED0 = 500_000
 const HELDOUT_SEED0 = 600_000
@@ -24,6 +29,7 @@ const N_SCANS = 24
 const CR_SCHEDULE = joinpath(RUNS, "baselines_heldout_560s", "cr_optimal_schedule.json")
 const CONTROL_DATA = joinpath(@__DIR__, "..", "figures", "control_data")
 const FIXED_HELDOUT = joinpath(@__DIR__, "..", "figures", "fig5_v2_data", "fixed_comparators_heldout.json")
+const GRID_SWEEP = joinpath(CONTROL_DATA, "grid_tr_sweep.json")
 
 # The wrapper hands Julia a float32 action vector, so fixed schedules arrive float32-rounded.
 f32(x) = Float64(Float32(x))
@@ -83,7 +89,25 @@ function validation_plans(envs, k::Int)
     plans, t1
 end
 
-function heldout_plans(envs, k::Int)
+"""best_log_grid_schedule with the action round trip grid_tr_sweep.jl ran it with, and that sweep's
+record of held-out scan k. The sweep stops unless every block of its capped grids ran once at its
+nominal TR, so one pass of the schedule is what it executed."""
+function best_grid_actions(env::E2Env, k::Int)
+    sw = JSON.parsefile(GRID_SWEEP)
+    basename(sw["env_run"]) == BASELINE_RUN || error("grid_tr_sweep.json ran another run's env")
+    point = only(p for p in sw["series"]["capped"] if p["TR_s"] == BEST_GRID_TR_S)
+    sched = best_log_grid_schedule(env)
+    sched.TIs == point["schedule"]["TI_s"] && sched.TRs == point["schedule"]["TR_s"] ||
+        error("best_log_grid_schedule is not grid_tr_sweep.json's capped TR $(BEST_GRID_TR_S) s schedule")
+    rec = point["scans"][k + 1]
+    Int(rec["seed"]) == HELDOUT_SEED0 + k || error("grid_tr_sweep.json scan $k is not seed $(HELDOUT_SEED0 + k)")
+    numpy2 = sw["numpy_promotion"] == "numpy2"
+    actions = [python_action(env, ti, tr; learn_alpha = sw["learn_alpha_action_layout"], numpy2 = numpy2)
+               for (ti, tr) in zip(sched.TIs, sched.TRs)]
+    actions, rec
+end
+
+function heldout_plans(envs, k::Int; best_grid::Bool = false)
     ad = JSON.parsefile(joinpath(CONTROL_DATA, "control_adaptive_heldout.json"))["episodes"][k + 1]
     Int(ad["seed"]) == HELDOUT_SEED0 + k || error("control_adaptive_heldout.json episode $k is not seed $(HELDOUT_SEED0 + k)")
     ctrl = JSON.parsefile(joinpath(CONTROL_DATA, "control_results.json"))
@@ -100,12 +124,13 @@ function heldout_plans(envs, k::Int)
     end
     executed(scan) = [action(x[1], x[2]; alpha_deg = x[3]) for x in scan["executed_TI_TR_alpha"]]
     grid, cr = fixed["log_grid_trmatched"]["scans"][k + 1], fixed["cr_optimal"]["scans"][k + 1]
+    grid_actions, grid_rec = best_grid ? best_grid_actions(envs.baseline, k) : (executed(grid), grid)
     plans = [
         Plan(:hist, envs.hist, [action(b["TI"], b["TR"]) for b in ad["blocks"] if b["executed"]],
              final_check(:hist, ctrl["arms"]["adaptive"][k + 1])),
         Plan(:distilled, envs.baseline, [action(ti, tr) for (ti, tr) in zip(distilled["TI_s"], distilled["TR_s"])],
              final_check(:distilled, ctrl["arms"]["fixed_median_validation"][k + 1])),
-        Plan(:log_grid, envs.baseline, executed(grid), final_check(:log_grid, grid)),
+        Plan(:log_grid, envs.baseline, grid_actions, final_check(:log_grid, grid_rec)),
         Plan(:cr_optimal, envs.baseline, executed(cr), final_check(:cr_optimal, cr)),
     ]
     plans, Float64.(ad["T1_true"])
@@ -212,15 +237,14 @@ function run_scan(tag::AbstractString, k::Int, seed::Int, plans, T1_expected)
 end
 
 function main(args)
-    heldout = !isempty(args) && args[1] == "--heldout"
-    nums = parse.(Int, heldout ? args[2:end] : args)
-    scans = isempty(nums) ? collect(0:N_SCANS-1) : nums
+    a = scan_args(args)
+    scans = isempty(a.nums) ? collect(0:N_SCANS-1) : a.nums
     envs = (hist = env_from_run(RL_RUNS.hist), nomem = env_from_run(RL_RUNS.nomem),
             baseline = env_from_run(BASELINE_RUN))
     for k in scans
-        plans, t1 = heldout ? heldout_plans(envs, k) : validation_plans(envs, k)
-        seed = (heldout ? HELDOUT_SEED0 : VALIDATION_SEED0) + k
-        run_scan(scan_tag(k; heldout = heldout), k, seed, plans, t1)
+        plans, t1 = a.heldout ? heldout_plans(envs, k; best_grid = a.best_grid) : validation_plans(envs, k)
+        seed = (a.heldout ? HELDOUT_SEED0 : VALIDATION_SEED0) + k
+        run_scan(scan_tag(k; heldout = a.heldout, best_grid = a.best_grid), k, seed, plans, t1)
     end
 end
 

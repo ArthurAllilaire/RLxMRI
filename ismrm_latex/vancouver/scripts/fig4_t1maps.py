@@ -10,9 +10,11 @@ Held-out version (--heldout K): one held-out scan with the TI-histogram policy, 
 protocol distilled from it, the fixed log TI grid and Cramer-Rao; draws
   fig4_t1maps_pK          per-pixel T1 fit and per-pixel difference
   fig4_t1maps_pK_roidiff  per-pixel T1 fit, difference column showing the scored ROI error
+With --best-grid, the log TI grid row is best_log_grid_schedule (fig4_replay.jl --best-grid)
+and the held-out figures are saved with a _v2 suffix.
 
     .venv/bin/python ismrm_latex/vancouver/scripts/fig4_t1maps.py [--scan K]
-    .venv/bin/python ismrm_latex/vancouver/scripts/fig4_t1maps.py --heldout 7
+    .venv/bin/python ismrm_latex/vancouver/scripts/fig4_t1maps.py --heldout 7 [--best-grid]
 """
 
 from __future__ import annotations
@@ -78,7 +80,8 @@ VARIANTS = {
 }
 
 
-LINEAR_T1 = dict(t1_range_s=figstyle.T1_NORM, t1_log=False, t1_ticks=[0, 0.5, 1.0, 1.5, 2.0], t1_extend="max")
+LINEAR_T1 = {"t1_range_s": figstyle.T1_NORM, "t1_log": False, "t1_ticks": [0, 0.5, 1.0, 1.5, 2.0],
+             "t1_extend": "max"}
 # Validation scan: pixel noise and partial-volume edges reach 25%, ROI errors stay within 15%.
 VALIDATION_SCALES = {
     "pixel": Scales(**LINEAR_T1, diff_lim=0.25, diff_tick_step=0.10),
@@ -144,7 +147,7 @@ def per_method_summary(r: dict, mp: dict, methods: list[str]) -> dict:
     npe = r["truth_T1"].shape[0]
     return {m: {
         "mape_pct": 100 * float(r[f"{m}_mape"][-1]),
-        "n_blocks": int(len(r[f"{m}_mape"])),
+        "n_blocks": len(r[f"{m}_mape"]),
         "scan_time_s": float(npe * r[f"{m}_actions"][:, 2].sum()),
         "min_TI_s": float(r[f"{m}_actions"][:, 0].min()),
         "roi_T1_s": mp[f"{m}_roi_T1"].tolist(),
@@ -184,7 +187,7 @@ def t1_label(t1_s: float) -> str:
 
 
 def draw(r: dict, mp: dict, methods: list[str], variant: Variant, scales: Scales,
-         roi_box: bool = True) -> plt.Figure:
+         roi_box: bool = True, labels: dict[str, str] = LABELS) -> plt.Figure:
     geo = scan_geometry(r)
     masks = sphere_masks(r)
     t1_true = r["T1_true"]
@@ -234,7 +237,7 @@ def draw(r: dict, mp: dict, methods: list[str], variant: Variant, scales: Scales
         ax.set_ylim(y0 - TILE_HALF_MM, y0 + TILE_HALF_MM)
         ax.set_aspect("equal")
 
-    rows = [("truth", "Ground truth")] + [(m, LABELS[m]) for m in methods]
+    rows = [("truth", "Ground truth")] + [(m, labels[m]) for m in methods]
     for row, (m, label) in enumerate(rows):
         y_mid = top + row * row_h + tile / 2
         if m != "truth":
@@ -341,9 +344,14 @@ def main_validation(scan: int | None) -> None:
     print(json.dumps(summary["chosen_scan"]["per_method"], indent=1))
 
 
-def main_heldout(k: int) -> None:
-    tag = f"heldout_k{k:02d}"
+def main_heldout(k: int, best_grid: bool) -> None:
+    tag = f"heldout_k{k:02d}" + ("_bestgrid" if best_grid else "")
     r, mp = load(tag)
+    labels = LABELS
+    if best_grid:
+        grid_tr = np.unique(r["log_grid_actions"][:, 2])
+        assert grid_tr.size == 1, f"the log TI grid ran at several TRs: {grid_tr}"
+        labels = {**LABELS, "log_grid": f"{LABELS['log_grid']}\nTR {grid_tr[0]:.1f} s"}
     # fig4_replay.jl stops unless each replay reproduces its recorded final T1 estimates.
     check = {m: {"replayed_T1_est_s": r[f"{m}_T1_est"][-1].tolist(),
                  "recorded_T1_est_s": r[f"{m}_final_T1_est_recorded"].tolist(),
@@ -358,8 +366,8 @@ def main_heldout(k: int) -> None:
     }
     (DATA / f"fig4_summary_{tag}.json").write_text(json.dumps(summary, indent=1))
     for name, suffix in (("pixel", ""), ("pixel_roidiff", "_roidiff")):
-        fig = draw(r, mp, HELDOUT_METHODS, VARIANTS[name], HELDOUT_SCALES, roi_box=False)
-        figstyle.save(fig, f"fig4_t1maps_p{k}{suffix}")
+        fig = draw(r, mp, HELDOUT_METHODS, VARIANTS[name], HELDOUT_SCALES, roi_box=False, labels=labels)
+        figstyle.save(fig, f"fig4_t1maps_p{k}{suffix}" + ("_v2" if best_grid else ""))
         plt.close(fig)
     print(json.dumps(summary, indent=1))
 
@@ -368,12 +376,16 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--scan", type=int, default=None, help="override the automatic validation-scan choice")
     p.add_argument("--heldout", type=int, default=None, help="draw this held-out scan instead")
+    p.add_argument("--best-grid", action="store_true",
+                   help="with --heldout: the log TI grid row is best_log_grid_schedule (fig4_replay.jl --best-grid)")
     args = p.parse_args()
+    if args.best_grid and args.heldout is None:
+        p.error("--best-grid needs --heldout")
     figstyle.apply()
     if args.heldout is None:
         main_validation(args.scan)
     else:
-        main_heldout(args.heldout)
+        main_heldout(args.heldout, args.best_grid)
 
 
 if __name__ == "__main__":
