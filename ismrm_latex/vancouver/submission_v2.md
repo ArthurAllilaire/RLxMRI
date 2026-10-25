@@ -77,15 +77,14 @@ Adaptation mattered more on clustered-T1 scans: swapping schedules cost 2.57 poi
 
 RL worked mainly as protocol discovery: short TRs, which the fitter's incomplete-recovery model permits, fit more blocks than either comparator.
 Sequences acquiring several TIs or k-space lines per inversion exploit this further and are our next target.
-Variance-optimal Cramér-Rao design did worst at this noise level.
+Variance-optimal Cramér-Rao design did the worst at this noise level.
 A fixed schedule nearly matched the policy because each scan's spheres usually spanned most of the T1 range.
 Adaptation paid off on rare short-T1 spheres and clustered T1s, so it should matter most when tissue T1 is narrow but unknown.
-Limitations: simulation only (ideal RF, no B1, eddy currents or motion), one phantom, five spheres, one training seed per policy, one cluster width; the two-sphere effect is post hoc.
+Limitations: simulation only at one field strength and noise level (ideal RF, no motion), only five sphere ROIs at known positions, one seed per policy, and a single fitter the policy may exploit.
 
 ### Conclusion
 
-RL in an open-source digital twin found a T1 protocol that nearly halves fixed-design error and runs as a conventional sequence; adapting each scan protects unusual tissue.
-Next: validation on the physical phantom and T2 mapping.
+In a digital twin, RL learned a T1 policy that nearly halves fixed-design error. Most of the gain survives as a fixed sequence; adaptation adds most when tissue T1 is narrow but unknown. Future work includes physical-phantom validation, T2 mapping and full-resolution T1 maps.
 
 ## References
 
@@ -133,7 +132,7 @@ T1 error on phantoms identical across methods, unseen in training or checkpoint 
 
 ### Preview figure (no caption)
 
-![Preview](figures/preview.png)
+![Preview](figures/preview_v2.png)
 
 ## Acknowledgements (not shown to reviewers)
 
@@ -154,7 +153,7 @@ ECHO may count hyphenated tokens differently; re-check there and trim the Discus
 | 3 | `figures/fig3_combo_v3.png` | Done (training curve, superposed TI-TR of three checkpoints, within-scan MAPE with fixed comparators, TI per block on spread vs clustered-T1 scans); `fig3_combo.png` is the previous version with the sequence inset |
 | 4 | `figures/fig4_t1maps_p7_roidiff_v2.png` | Done (held-out phantom 7, log T1 scale, flat scored-error discs on +/-15%; log grid at TR 2.0 s); `fig4_t1maps_p7_roidiff.png` is the TR 1.7 s grid version |
 | 5 | `figures/fig5_table_v3.png` | Done (A: held-out table with distilled row and worst scan; B: clustered-T1 phantoms); `fig5_table_v2.png` is the single-table version |
-| Preview | `figures/preview.png` | Done |
+| Preview | `figures/preview_v2.png` | Done (clean twin render beside RL vs best fixed grid vs Cramér-Rao; 3:2, 767 kB); `preview.png` is the old bars-only version |
 
 ## Before submitting
 
