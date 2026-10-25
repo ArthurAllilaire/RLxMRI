@@ -8,7 +8,6 @@ The fixed comparators' per-scan values were replayed by `scripts/fixed_comparato
 |---|---|---|---|---|---|---|
 | **RL** | **TI histogram** | **560 s** | **541 s** | **2.93 [2.58, 3.30]** | **95.8%** | **5.13** |
 | RL | none | 560 s | 548 s | 4.16 [3.41, 4.99] | 66.7% | 9.50 |
-| RL | fitter uncertainty (σ) | 560 s | 544 s | 5.25 [4.32, 6.22] | 58.3% | 10.40 |
 | RL | LSTM† | 560 s | 525 s | 7.31 [6.10, 8.65] | 25.0% | 15.02 |
 | Fixed, distilled from RL policy§ | - | 560 s | 549 s | 3.34 [2.30, 4.86] | 91.7% | 17.87 |
 | Fixed log TI grid | - | 560 s | 504 s | 6.04 [5.36, 6.70] | 25.0% | 10.29 |

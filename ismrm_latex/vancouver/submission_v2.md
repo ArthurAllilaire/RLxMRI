@@ -6,9 +6,7 @@ Sources for every number: `figures_plan.md` (corrections and control sections), 
 
 ## Title (max 125 characters)
 
-Reinforcement learning in a digital twin of the ISMRM/NIST phantom discovers more accurate T1 mapping protocols
-
-Chosen by Arthur, 24 Oct.
+Reinforcement learning using a digital twin of the ISMRM/NIST phantom discovers more accurate T1 mapping protocols
 
 ## Authors
 
@@ -27,7 +25,7 @@ Presenting author: Andreas Wetscherek.
 
 ## Impact (max 40 words)
 
-An open-source digital twin lets reinforcement learning design quantitative MRI protocols in simulation. The protocol it found halves T1 error against established fixed designs and, distilled into a fixed sequence, could run on scanners without learning at scan time.
+An open-source, KomaMRI-based digital twin of the ISMRM/NIST phantom lets reinforcement learning design quantitative MRI protocols before scanning. Learned sequences halved T1 error versus standard designs. Adapting during the scan could protect accuracy for atypical tissue.
 
 ## Synopsis (max 100 words across the four parts)
 
@@ -37,44 +35,41 @@ An open-source digital twin lets reinforcement learning design quantitative MRI 
 
 **Approach:** We built an open-source Bloch-simulated twin of the ISMRM/NIST phantom with multi-fidelity forward models and trained policies that choose each inversion and repetition time from the data acquired so far.
 
-**Results:** On held-out phantoms the policy halved T1 error against log-spaced and Cramér-Rao-optimal schedules (2.9% versus 6.0% and 7.7%); a fixed protocol distilled from it kept most of the gain (3.3%).
+**Results:** On held-out phantoms the policy halved T1 error against log-spaced and Cramér-Rao-optimal schedules (2.9% versus 6.0% and 7.7%). A fixed protocol distilled from the adaptive policy kept most of the gain (3.3%).
 
 ## Body (max 750 words, references excluded)
 
 ### Introduction
 
-T1 mapping protocols fix their inversion times (TIs) in advance to stay informative for every plausible tissue.
-Adaptive acquisition instead chooses each timing from the running estimate; simulations report 1.7-4x acceleration for a single voxel and tissue<sup>1</sup>.
-Reinforcement learning (RL) could learn such rules from Bloch simulation, for several tissues and including reconstruction, but RL in MRI has so far optimised fixed protocols offline<sup>2,3</sup> or image-level goals<sup>4,5</sup>.
-This needs a cheap simulator with known ground truth.
-We built an open-source digital twin of a calibration phantom, trained RL policies that choose each TI and repetition time (TR) from the data so far, and asked where their benefit comes from.
+The best inversion times (TIs) depend on the T1 being measured, so fixed T1 mapping protocols hedge across all plausible tissues. Instead, adaptive acquisition chooses each timing from the running estimate; simulations report 1.7-4x acceleration for a single voxel<sup>1</sup>. Reinforcement learning (RL) could learn such rules for several tissues at once, but in MRI it has so far designed fixed protocols before scanning<sup>2,3</sup> or adapted acquisition for image reconstruction (using k-space sampling) or shape recognition<sup>4,5</sup>.
+We built an open-source digital twin of a calibration phantom and trained the first RL agent to choose each TI and repetition time (TR) from the tissue estimates it is refining.
 
 ### Methods
 
-**Digital twin.** MRISystemPhantom.jl models the ISMRM/NIST system phantom<sup>6</sup> (CaliberMRI QalibreMD Model 130) with its T1, T2 and proton-density plates and manufacturer reference values at 1.5 and 3 T, and returns KomaMRI<sup>7</sup> phantoms (Fig 1A).
-It samples random phantoms with hidden ground truth (Fig 1B) and provides 2D inversion-recovery spin-echo (IR-SE) sequences, reconstruction, a T1 fitter modelling incomplete recovery, and a Cramér-Rao schedule solver.
+**Digital twin.** MRISystemPhantom.jl models the ISMRM/NIST system phantom<sup>6</sup> with its T1, T2 and proton-density plates and manufacturer reference values at 1.5 and 3 T, and returns KomaMRI<sup>7</sup> phantoms (Fig 1A).
+It samples random phantoms with hidden ground truth (pose, sphere subsets, and T1 and T2 from user-set distributions; Fig 1B), adds complex Gaussian k-space noise, and provides 2D inversion-recovery spin-echo (IR-SE) sequences, reconstruction, a T1 fitter modelling incomplete recovery, and a Cramér-Rao schedule solver.
 Noise-free simulations recover reference T1 with 0.48% mean error.
 
-**Task.** Each scan draws five T1-plate sphere T1s uniformly over 0.024-1.88 s (other positions water) and jitters the pose; 1.5 T, 64x32 matrix, 200 mm field of view, complex Gaussian k-space noise.
+**Task.** Each scan draws five T1-plate sphere T1s uniformly over 0.024-1.88 s and jitters the pose; 1.5 T, 64x32 matrix, 200 mm field of view, noise at NEMA dual-acquisition SNR 25 (brightest sphere).
 Each action is one IR-SE block of 32 phase-encode shots with TI 0.01-3 s and TR 0.5-5 s (TE 20 ms, 90°); scans stop at 560 s.
 T1 is refitted per sphere after every block.
 
 **Agent.** A PPO<sup>8</sup> policy observes the log T1 estimates, budget used and a 12-bin histogram of acquired TIs; the reward is the per-block drop in log mean absolute percentage error (MAPE) (Fig 2A).
-Alternatives: no memory, the fitter's uncertainty, or an LSTM.
+Alternatives: no memory or an LSTM.
 
 **Multi-fidelity training.** Full Bloch simulation costs about 1 s per block.
 Because simulation is linear in spins and the water homogeneous, the water's k-space is a per-shot scalar times a fixed template; caching it leaves only sphere spins to simulate (T1 within 0.12% of full Bloch).
 One policy climbs from an analytic model through cached and coarse water to full Bloch (Fig 1C), promoted on full-Bloch probes (Fig 2B); 9 h on one GPU per arm.
 
-**Evaluation.** Twenty-four held-out phantoms, never used for training or checkpoint selection, were shared by all methods.
+**Evaluation.** All methods shared 24 held-out phantoms unseen in training or checkpoint selection.
 Comparators were a log-spaced TI grid (TR 1.7 s) and a Cramér-Rao-optimal (TI, TR) schedule<sup>9</sup> for the plate's T1 range, with the same fitter and budget.
 To separate adaptation from schedule shape, we gave each phantom another scan's learned schedule, and distilled one fixed protocol from the per-block median TI and TR of the policy's validation schedules.
 
 ### Results
 
-Training moved the policy from few long-TR blocks to short TIs paired with short TRs, acquiring about 13 blocks per scan instead of 7 (Fig 3A-C); scans share a two-block opening, then diverge (Fig 3D).
+Training moved the policy from few long-TR blocks to short TIs paired with short TRs (Fig 3A-C); scans share a two-block opening, then diverge (Fig 3D).
 On held-out phantoms the TI-histogram policy reached 2.93% MAPE [95% CI 2.58-3.30], against 6.04% [5.36-6.70] for the log grid and 7.74% [7.08-8.42] for Cramér-Rao, with 96% versus 25% and 8% of scans below 5% error (Figs 4, 5).
-Memory mattered: 4.16% without it, 5.25% with the fitter's uncertainty, 7.31% with an LSTM.
+Without memory the policy reached 4.16%; with an LSTM, 7.31%.
 Tripling the grid's scan time (163 to 504 s) reduced its error only from 6.86% to 6.04%.
 Most of the gain survived without adaptation: the distilled protocol reached 3.34% [2.30-4.86] and swapped schedules 3.61% [3.01-4.45].
 Adaptation showed in the worst case (5.1% versus 10.3-17.9% for the fixed schedules): the policy's shortest TI tracked the phantom's shortest T1 (r = 0.57), rescuing two spheres of 41 and 46 ms that the distilled protocol missed by up to 74%.
@@ -83,8 +78,7 @@ Adaptation showed in the worst case (5.1% versus 10.3-17.9% for the fixed schedu
 
 Closed-loop RL worked mainly as protocol discovery: the learned schedule acquires more blocks than either comparator (12.5 versus 9-10) by keeping TR short unless TI is long.
 The Cramér-Rao schedule, optimal for an unbiased estimator's variance, did worst at this noise level and block count.
-Whether memory mainly steers training towards better schedules is untested; the LSTM checkpoint predated full-Bloch training.
-Per-scan adaptation added robustness for unusual tissue, not mean accuracy.
+Because each scan's five spheres usually spanned most of the T1 range, one schedule suited most scans; per-scan adaptation paid off only for rare outliers, adding robustness rather than mean accuracy.
 Limitations: simulation only (ideal RF, no B1, eddy currents or motion), one phantom, five spheres, one seed per arm, 24 held-out scans; the two-sphere effect is post hoc.
 
 ### Conclusion

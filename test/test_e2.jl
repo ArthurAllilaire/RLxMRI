@@ -1151,6 +1151,59 @@
         @test length(env.T1_true) == 5
     end
 
+    @testset "t1_sampler = :narrow_band: band respected, deterministic per seed, defaults unchanged" begin
+        kw = (; subset_size = 5, forced_sphere_indices = [1, 3, 6, 8, 14],
+                forward_model = :analytic, translation_sigma_mm = 2.0,
+                rotation_sigma_rad = 0.05)
+        w = 0.15
+        band = E2Env(; kw..., t1_sampler = :narrow_band, t1_band_rel = w)
+        lin  = E2Env(; kw..., t1_sampler = :linear_uniform_range)
+        lo, hi = extrema(T1_ARRAY[:T15])
+        # e2_reset! draws the episode seed from env.rng and nothing else.
+        after_reset(seed) = (r = MersenneTwister(seed); rand(r, 0:typemax(Int32)); r)
+
+        centres = Float64[]
+        for seed in 600_000:600_063
+            e2_reset!(band; rng_seed = seed)
+            e2_reset!(lin; rng_seed = seed)
+            c = band.T1_band_centre
+            push!(centres, c)
+            @test lo <= c <= hi
+            @test all(c * (1 - w) .<= band.T1_true .<= c * (1 + w))
+            @test band.episode_rotation == lin.episode_rotation
+            @test band.episode_translation_m == lin.episode_translation_m
+            @test band.rng == lin.rng == after_reset(seed)
+            @test isnan(lin.T1_band_centre)
+        end
+        # Log-uniform centres cover both ends of the plate range.
+        @test minimum(centres) < 0.1 && maximum(centres) > 0.5
+
+        e2_reset!(band; rng_seed = 600_005)
+        T1, c = copy(band.T1_true), band.T1_band_centre
+        e2_reset!(band; rng_seed = 600_006)
+        @test band.T1_band_centre != c
+        e2_reset!(band; rng_seed = 600_005)
+        @test band.T1_true == T1
+        @test band.T1_band_centre == c
+        _, _, _, info = e2_step!(band, [0.3, 0.02, 3.0, 90.0])
+        @test info["T1_band_centre"] == c
+
+        # Recorded before :narrow_band existed; seed 600000 is held-out scan 0 of the
+        # 5-sphere E2 runs.
+        e2_reset!(lin; rng_seed = 600_000)
+        @test lin.T1_true == [0.8627537061857664, 0.9073404433065884, 0.19504767830874153,
+                              0.6714159935979747, 0.8301075832575959]
+        logn = E2Env(; kw..., t1_sampler = :lognormal)
+        e2_reset!(logn; rng_seed = 600_000)
+        @test logn.T1_true == [1.8223488667755512, 1.0763474304712155, 0.38874755884543016,
+                               0.18897159339786693, 0.02501664570123371]
+        @test logn.rng == after_reset(600_000)
+        @test isnan(logn.T1_band_centre)
+
+        @test_throws ErrorException E2Env(; t1_sampler = :narrow_band, t1_band_rel = 0.0)
+        @test_throws ErrorException E2Env(; t1_sampler = :narrow_band, t1_band_rel = 1.0)
+    end
+
     @testset "E2 observation channels are gated by include_image / include_sigma" begin
         Nfe, Npe, k = 8, 4, 5
         # Default: image + σ dropped → obs = n_spheres + 3.

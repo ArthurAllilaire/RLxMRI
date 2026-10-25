@@ -117,8 +117,8 @@ def main() -> None:
     stats = {"adaptive": arm_stats(mape["adaptive"], mape["adaptive"], blocks["adaptive"], times["adaptive"])}
     for k in swap_keys:
         stats[k] = arm_stats(mape[k], mape[k], blocks[k], times[k])
-    stats["swap_mean"] = arm_stats(swap_runs, mape["swap_mean"], sum((blocks[k] for k in swap_keys), []),
-                                   sum((times[k] for k in swap_keys), []))
+    stats["swap_mean"] = arm_stats(swap_runs, mape["swap_mean"], [b for k in swap_keys for b in blocks[k]],
+                                   [t for k in swap_keys for t in times[k]])
     for k in MEDIAN_ARMS:
         stats[k] = arm_stats(mape[k], mape[k], blocks[k], times[k])
     refs = references(d)

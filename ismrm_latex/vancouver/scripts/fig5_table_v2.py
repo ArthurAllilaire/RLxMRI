@@ -213,7 +213,7 @@ def caption(info: dict) -> str:
 
 
 def write_text(table: list[TableRow], info: dict, cap: str) -> None:
-    # The BOM lets Excel and Word detect UTF-8, so the marks, sigma and e-acute survive a paste.
+    # The BOM lets Excel and Word detect UTF-8, so the marks and e-acute survive a paste.
     with open(figstyle.FIGURES / f"{STEM}.csv", "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(HEADER)

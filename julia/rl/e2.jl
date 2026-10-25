@@ -94,7 +94,10 @@ mutable struct E2Env
     success_tol::Float64                   # MAPE threshold for terminal bonus
     noise_sigma_abs::Float64               # absolute complex-Gaussian σ on k-space
     T1_sigma_rel::Float64                  # per-sphere T1 jitter (relative)
-    t1_sampler::Symbol                     # :lognormal | :linear_uniform_range
+    t1_sampler::Symbol                     # :lognormal | :linear_uniform_range | :narrow_band
+    t1_band_rel::Float64                   # :narrow_band half-width w: sphere T1s are
+                                            # uniform over c·(1 ± w) around a per-episode
+                                            # centre c, log-uniform over the plate range
     translation_sigma_mm::Float64          # pose translation σ per axis [mm]
     rotation_sigma_rad::Float64            # pose rotation σ per axis [rad]
     pose_mode::Symbol                      # :auto | :fixed | :inplane_jitter
@@ -202,6 +205,8 @@ mutable struct E2Env
                                             # Built once (global scope) or per reset
                                             # (per-episode scope); nothing under :bloch.
     T1_true::Vector{Float64}               # per-sphere true T1 this episode
+    T1_band_centre::Float64                # :narrow_band centre c this episode; NaN for
+                                            # the other samplers
     sphere_px::Vector{NTuple{2,Int}}       # (i_pe, i_fe) per sphere in image
     episode_rotation::NTuple{3,Float64}    # Euler XYZ [rad]
     episode_translation_m::NTuple{3,Float64}  # [m]
@@ -249,6 +254,7 @@ function E2Env(;
     noise_sigma_abs::Real          = 50.0,    # σ* for NEMA dual-acq SNR ≈ 25 (E2_RERUN_PLAN §3.1)
     T1_sigma_rel::Real             = 0.05,
     t1_sampler::Symbol             = :lognormal,
+    t1_band_rel::Real              = 0.15,             # :narrow_band half-width (relative)
     forced_sphere_indices = Int[],
     translation_sigma_mm::Real     = 5.0,
     rotation_sigma_rad::Real       = 0.15,   # ~8.6°
@@ -285,8 +291,10 @@ function E2Env(;
         error("sigma_method must be :asymptotic, :profile_likelihood, or :bootstrap")
     water_model ∈ (:bloch, :cached_perline) ||
         error("water_model must be :bloch or :cached_perline")
-    t1_sampler ∈ (:lognormal, :linear_uniform_range) ||
-        error("t1_sampler must be :lognormal or :linear_uniform_range")
+    t1_sampler ∈ (:lognormal, :linear_uniform_range, :narrow_band) ||
+        error("t1_sampler must be :lognormal, :linear_uniform_range or :narrow_band")
+    0.0 < Float64(t1_band_rel) < 1.0 ||
+        error("t1_band_rel must be in (0, 1)")
     pose_mode ∈ (:auto, :fixed, :inplane_jitter) ||
         error("pose_mode must be :auto, :fixed, or :inplane_jitter")
     (water_model === :bloch || include_water) ||
@@ -326,6 +334,7 @@ function E2Env(;
         Float64(terminal_bonus), Float64(success_tol),
         Float64(noise_sigma_abs), Float64(T1_sigma_rel),
         t1_sampler,
+        Float64(t1_band_rel),
         Float64(translation_sigma_mm), Float64(rotation_sigma_rad),
         pose_mode,
         Float64.(T1_sample_range),
@@ -352,7 +361,9 @@ function E2Env(;
         MersenneTwister(rng_seed),
         nothing,                            # phantom (filled at reset)
         nothing,                            # cached_water (filled at reset if cached)
-        zeros(n_spheres), fill((1, 1), n_spheres),
+        zeros(n_spheres),
+        NaN,                                # T1_band_centre (set at reset)
+        fill((1, 1), n_spheres),
         (0.0, 0.0, 0.0), (0.0, 0.0, 0.0),
         [Float64[] for _ in 1:n_spheres],   # block_TIs
         [Float64[] for _ in 1:n_spheres],   # block_TRs
@@ -439,10 +450,27 @@ function _e2_build_episode_phantom(env::E2Env, rng_seed::Int; forced_indices=not
                            translation_sigma_mm = env.translation_sigma_mm)
     end
 
+    env.T1_band_centre = NaN
     material_sampler = if env.t1_sampler === :linear_uniform_range
         vals = T1_ARRAY[env.cfg_field]
         MaterialDistributionSampler(
             T1  = Uniform(minimum(vals), maximum(vals)),
+            T2  = PreserveNominalRatio(:T2, :T1),
+            T2s = PreserveNominalRatio(:T2s, :T1),
+        )
+    elseif env.t1_sampler === :narrow_band
+        # Centre from its own stream, seeded by the episode seed: from env.rng it would
+        # shift the noise stream, from the episode RNG (MersenneTwister(rng_seed) in
+        # sample_phantom_config; the second seed word keeps the streams apart) the pose.
+        # The episode RNG then draws once per sphere, as under :linear_uniform_range,
+        # so each seed keeps that sampler's pose and noise.
+        lo, hi = log.(extrema(T1_ARRAY[env.cfg_field]))
+        u = rand(MersenneTwister(UInt32[rng_seed, 0x62616e64]))
+        c = exp(lo + u * (hi - lo))
+        w = env.t1_band_rel
+        env.T1_band_centre = c
+        MaterialDistributionSampler(
+            T1  = Uniform(c * (1 - w), c * (1 + w)),
             T2  = PreserveNominalRatio(:T2, :T1),
             T2s = PreserveNominalRatio(:T2s, :T1),
         )
@@ -898,6 +926,7 @@ function e2_step!(env::E2Env, action_vec, stop::Bool = false)
             "mape"            => final_mape,
             "T1_true"         => copy(env.T1_true),
             "T1_est"          => copy(env.T1_est),
+            "T1_band_centre"  => env.T1_band_centre,
             "sphere_indices"  => copy(env.sphere_indices),
             "n_blocks"        => env.n_blocks,
             "time_s"          => env.time_used_s,
@@ -953,6 +982,7 @@ function e2_step!(env::E2Env, action_vec, stop::Bool = false)
         "mape"        => mape,
         "T1_true"     => copy(env.T1_true),
         "T1_est"      => copy(env.T1_est),
+        "T1_band_centre" => env.T1_band_centre,
         "sphere_indices" => copy(env.sphere_indices),
         "n_blocks"    => env.n_blocks,
         "time_s"      => env.time_used_s,

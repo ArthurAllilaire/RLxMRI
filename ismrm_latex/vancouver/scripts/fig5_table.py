@@ -31,7 +31,6 @@ MAX_CAPTION_CHARS = 500
 RL_RUNS = {
     "hist": "mf_runB_5sphere_hist_560s_gpu",
     "nomem": "mf_runB_5sphere_560s_gpu",
-    "sigma": "mf_runB_5sphere_sigma_560s_gpu",
     "lstm": "mf_runB_5sphere_lstm_560s_gpu",
     "nomem_240": "mf_runB_cached3_cached_full3_full_gpu",
 }
@@ -85,8 +84,6 @@ def _memory_label(cfg: dict) -> str:
         return "LSTM"
     if env.get("include_ti_history"):
         return "TI histogram"
-    if env.get("include_sigma"):
-        return "fitter uncertainty (σ)"
     return "none"
 
 
@@ -196,7 +193,7 @@ def collect() -> tuple[list[Row], dict]:
     for k in flip_angle_arms:
         rl[k] = replace(rl[k], mark=DOUBLE_DAGGER)
 
-    rows = [rl["hist"], rl["nomem"], rl["sigma"], rl["lstm"], *base560,
+    rows = [rl["hist"], rl["nomem"], rl["lstm"], *base560,
             rl["nomem_240"], *base240]
     info = {
         "n_scans": n_scans.pop(),
@@ -313,7 +310,7 @@ def caption(info: dict) -> str:
 
 
 def write_text_tables(rows: list[Row], info: dict, cap: str) -> None:
-    # The BOM lets Excel and Word detect UTF-8, so the daggers, sigma and e-acute survive a paste.
+    # The BOM lets Excel and Word detect UTF-8, so the daggers and e-acute survive a paste.
     with open(figstyle.FIGURES / "fig5_table.csv", "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(HEADER)

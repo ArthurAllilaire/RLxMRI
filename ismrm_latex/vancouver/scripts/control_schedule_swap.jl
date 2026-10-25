@@ -29,8 +29,8 @@ const MATCH_TOL = 1e-9
 
 executed_schedule(ep) = [(Float64(b["TI"]), Float64(b["TR"])) for b in ep["blocks"] if b["executed"]]
 
-function validation_schedules(env::E2Env)
-    map(JSON.parsefile(joinpath(RUN, "global_best", "diagnostics", "episodes.json"))) do ep
+function validation_schedules(env::E2Env, run::AbstractString)
+    map(JSON.parsefile(joinpath(run, "global_best", "diagnostics", "episodes.json"))) do ep
         s = [(Float64(ti), Float64(tr)) for (ti, tr) in zip(ep["TI"], ep["TR"])]
         # diagnose_e2.py also records the final proposal the budget guard rejected.
         env.Npe * sum(last.(s)) > env.time_budget_s ? s[1:end-1] : s
@@ -91,10 +91,28 @@ function median_protocol(env::E2Env, schedules)
     Dict("TI_s" => TIs, "TR_s" => TRs, "n_scans_at_block" => n_at, "time_s" => env.Npe * sum(TRs))
 end
 
-function run_arm!(results, wall, name, env, schedule_of)
+function run_adaptive!(results, wall, env, actor; n_scans = N_SCANS)
+    t0 = time()
+    episodes, adaptive = Dict{String,Any}[], Dict{String,Any}[]
+    for k in 0:(n_scans - 1)
+        ep = rollout(env, actor, HELDOUT_SEED + k)
+        r = final_result(env, ep["blocks"][end]["mape"])
+        r["schedule_scan"] = k
+        push!(episodes, ep)
+        push!(adaptive, r)
+        @printf("%-12s phantom %2d: %2d blocks, %.1f s, MAPE %.4f%%\n", "adaptive", k, r["n_blocks"],
+                r["time_s"], 100 * r["mape"])
+        flush(stdout)
+    end
+    wall["adaptive"] = time() - t0
+    results["adaptive"] = adaptive
+    episodes
+end
+
+function run_arm!(results, wall, name, env, schedule_of; n_scans = N_SCANS)
     t0 = time()
     out = Dict{String,Any}[]
-    for k in 0:(N_SCANS - 1)
+    for k in 0:(n_scans - 1)
         src, schedule = schedule_of(k)
         r = replay(env, HELDOUT_SEED + k, schedule)
         r["schedule_scan"] = src
@@ -114,20 +132,8 @@ function main()
     actor = load_actor("global_best")
     results, wall = Dict{String,Any}(), Dict{String,Float64}()
 
-    t0 = time()
-    episodes, adaptive = Dict{String,Any}[], Dict{String,Any}[]
-    for k in 0:(N_SCANS - 1)
-        ep = rollout(env, actor, HELDOUT_SEED + k)
-        r = final_result(env, ep["blocks"][end]["mape"])
-        r["schedule_scan"] = k
-        push!(episodes, ep)
-        push!(adaptive, r)
-        @printf("%-12s phantom %2d: %2d blocks, %.1f s, MAPE %.4f%%\n", "adaptive", k, r["n_blocks"],
-                r["time_s"], 100 * r["mape"])
-        flush(stdout)
-    end
-    wall["adaptive"] = time() - t0
-    results["adaptive"] = adaptive
+    episodes = run_adaptive!(results, wall, env, actor)
+    adaptive = results["adaptive"]
     open(io -> JSON.print(io, Dict("checkpoint" => "global_best", "seed_base" => HELDOUT_SEED,
                                    "episodes" => episodes)),
          joinpath(CONTROL_DATA, "control_adaptive_heldout.json"), "w")
@@ -146,7 +152,7 @@ function main()
     end
 
     protocols = Dict("fixed_median" => median_protocol(env, schedules),
-                     "fixed_median_validation" => median_protocol(env, validation_schedules(env)))
+                     "fixed_median_validation" => median_protocol(env, validation_schedules(env, RUN)))
     for name in ("fixed_median", "fixed_median_validation")
         proto = collect(zip(protocols[name]["TI_s"], protocols[name]["TR_s"]))
         run_arm!(results, wall, name, env, k -> (nothing, proto))
@@ -164,4 +170,7 @@ function main()
     println("wrote ", joinpath(CONTROL_DATA, "control_results.json"))
 end
 
-main()
+# control_distill_variants.jl and control_narrow_band.jl include this file for the replay code.
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
